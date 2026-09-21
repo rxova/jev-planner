@@ -39,6 +39,16 @@ Pick the agents with `--agents`, two or more, comma-separated:
   limits. Only tracked files are read, so an ignored `.env` is never sent. Outside a git repository
   the snapshot is empty. The model is told to name the files it would need rather than guess them.
 
+Each agent keeps one conversation through a run. An agent CLI's draft session is continued for its
+cross-review and the final synthesis (`codex exec resume`, `claude --resume`), so those stages start
+with what it already read instead of exploring the repository again; a resumed Codex keeps its
+read-only sandbox. A chat API is sent its earlier messages, so the repository snapshot goes once.
+If a session cannot be continued, the call starts afresh with the whole prompt.
+
+The CLIs keep those sessions as they keep any other: in `~/.codex/sessions` and
+`~/.claude/projects`, and Claude's appear in its `/resume` list. `--no-resume` starts every call
+afresh and keeps none, as before.
+
 Every provider's API key, and Jev's, is removed from the environment of every agent subprocess:
 an agent never sees another provider's credentials.
 
@@ -124,6 +134,8 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--review-rounds 1` to disable Jev's optional second review pass.
+- `--no-resume` to start every agent call afresh rather than continue its draft session
+  ([Agents](#agents)).
 - `--verbose` to watch the agents work, then print Jev's typed verdict to stderr (below).
 - `--rounds-dir <path>` to keep every round's plans somewhere other than `.jev-planner/`, or
   `--no-rounds` to keep none (below).
@@ -248,7 +260,9 @@ cliProvider({
 ```
 
 `effort: true` says `args` passes an effort on, so `--effort` is accepted for it. `auth` is
-optional: arguments that exit 0 when the CLI is logged in, or a check function. The same
+optional: arguments that exit 0 when the CLI is logged in, or a check function. So is `sessions`,
+for a CLI that can continue a conversation: `start(overrides, id)` and `resume(overrides, id)`
+return the arguments that keep one and continue it, and without it every call starts afresh. The same
 two builders are exported, so a program using the library can build its own agents from them and
 pass them to `Planner`.
 

@@ -2,6 +2,7 @@ import { finalPlanPrompt, initialPlanPrompt, listLabels, revisionPrompt } from '
 import { validateTask } from './task.js'
 import type {
   AgentName,
+  AgentSession,
   JevJudge,
   JevVerdict,
   PlanOptions,
@@ -84,44 +85,60 @@ export class Planner {
       jevMs = undefined
     }
     const { onAgentProgress } = options
-    const request = (agent: PlanningAgent, prompt: string) => ({
-      prompt,
-      cwd: options.cwd,
-      timeoutMs: options.timeoutMs,
-      ...(onAgentProgress
-        ? {
-            onProgress: (line: string) => {
-              onAgentProgress(agent.name, line)
-            },
-          }
-        : {}),
-    })
-    const call = (agent: PlanningAgent, prompt: string) =>
+    // One conversation per agent, for this run only: a second run on the same
+    // planner starts afresh.
+    const resume = options.resume ?? true
+    const sessions = new Map<PlanningAgent, AgentSession>(
+      resume ? this.agents.map((agent) => [agent, {}]) : [],
+    )
+    const request = (agent: PlanningAgent, prompt: string, resumePrompt?: string) => {
+      const session = sessions.get(agent)
+      return {
+        prompt,
+        ...(session ? { session, ...(resumePrompt === undefined ? {} : { resumePrompt }) } : {}),
+        cwd: options.cwd,
+        timeoutMs: options.timeoutMs,
+        ...(onAgentProgress
+          ? {
+              onProgress: (line: string) => {
+                onAgentProgress(agent.name, line)
+              },
+            }
+          : {}),
+      }
+    }
+    const call = (agent: PlanningAgent, prompt: string, resumePrompt?: string) =>
       timed(
-        () => agent.generate(request(agent, prompt)),
+        () => agent.generate(request(agent, prompt, resumePrompt)),
         (ms) => {
           agentMs[agent.name] = ms
         },
       )
-    const generate = async (agent: PlanningAgent, prompt: string): Promise<Draft> => ({
+    const generate = async (
+      agent: PlanningAgent,
+      prompt: string,
+      resumePrompt?: string,
+    ): Promise<Draft> => ({
       agent,
-      plan: await call(agent, prompt),
+      plan: await call(agent, prompt, resumePrompt),
     })
     const revise = (drafts: readonly Draft[], feedback?: string) =>
       Promise.all(
-        drafts.map((own) =>
-          generate(
+        drafts.map((own) => {
+          const input = {
+            task: options.task,
+            ownPlan: own.plan,
+            peerPlans: drafts
+              .filter((draft) => draft !== own)
+              .map((draft) => ({ label: draft.agent.label, plan: draft.plan })),
+            ...(feedback ? { feedback } : {}),
+          }
+          return generate(
             own.agent,
-            revisionPrompt({
-              task: options.task,
-              ownPlan: own.plan,
-              peerPlans: drafts
-                .filter((draft) => draft !== own)
-                .map((draft) => ({ label: draft.agent.label, plan: draft.plan })),
-              ...(feedback ? { feedback } : {}),
-            }),
-          ),
-        ),
+            revisionPrompt(input),
+            resume ? revisionPrompt({ ...input, resumed: true }) : undefined,
+          )
+        }),
       )
     const judge = (drafts: readonly Draft[]) =>
       timed(
@@ -170,13 +187,15 @@ export class Planner {
     const finalizer = finalizerOverride ?? this.agent(verdict.finalizer)
     stage(`Synthesizing the final plan with ${finalizer.label}…`)
 
+    const finalInput = {
+      task: options.task,
+      plans: revised.map(({ agent, plan }) => ({ label: agent.label, plan })),
+      verdict: JSON.stringify(verdict, null, 2),
+    }
     const finalPlan = await call(
       finalizer,
-      finalPlanPrompt({
-        task: options.task,
-        plans: revised.map(({ agent, plan }) => ({ label: agent.label, plan })),
-        verdict: JSON.stringify(verdict, null, 2),
-      }),
+      finalPlanPrompt(finalInput),
+      resume ? finalPlanPrompt({ ...finalInput, resumed: true }) : undefined,
     )
 
     await report('final', { [finalizer.name]: finalPlan }, verdict)

@@ -381,6 +381,58 @@ describe('Planner', () => {
     expect(codex.prompts).toHaveLength(1)
   })
 
+  describe('sessions', () => {
+    const run = (planner: Planner, resume?: boolean) =>
+      planner.plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+        ...(resume === undefined ? {} : { resume }),
+      })
+
+    it('gives each agent one session for every call in a run, and a new one each run', async () => {
+      const codex = new FakeAgent('codex', ['d', 'r', 'd', 'r'])
+      const claude = new FakeAgent('claude', ['d', 'r', 'final', 'd', 'r', 'final'])
+      const planner = new Planner([codex, claude], new FakeJev())
+      await run(planner)
+      await run(planner)
+
+      const sessionsOf = (agent: FakeAgent) => agent.requests.map(({ session }) => session)
+      const [first, , , second] = sessionsOf(claude)
+      expect(first).toBeDefined()
+      expect(sessionsOf(claude)).toEqual([first, first, first, second, second, second])
+      expect(second).not.toBe(first)
+      expect(sessionsOf(codex)[0]).not.toBe(first)
+      expect(sessionsOf(codex)[0]).toBe(sessionsOf(codex)[1])
+    })
+
+    it('gives a draft only the whole prompt, and later calls a shorter one to resume with', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+      await run(new Planner([codex, claude], new FakeJev()))
+
+      const [draft, revision, final] = claude.requests
+      expect(draft).not.toHaveProperty('resumePrompt')
+      expect(revision?.prompt).toContain('<own-plan>\nclaude draft\n</own-plan>')
+      expect(revision?.resumePrompt).not.toContain('<own-plan>')
+      expect(revision?.resumePrompt).not.toContain('<task>')
+      expect(revision?.resumePrompt).toContain('codex draft')
+      expect(final?.prompt).toContain('<task>\nAdd caching\n</task>')
+      expect(final?.resumePrompt).not.toContain('<task>')
+      expect(final?.resumePrompt).toContain('codex revised')
+    })
+
+    it('passes no session and no resume prompt with resume off', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+      await run(new Planner([codex, claude], new FakeJev()), false)
+      for (const request of [...codex.requests, ...claude.requests]) {
+        expect(request).not.toHaveProperty('session')
+        expect(request).not.toHaveProperty('resumePrompt')
+      }
+    })
+  })
+
   describe('timings', () => {
     afterEach(() => {
       vi.useRealTimers()

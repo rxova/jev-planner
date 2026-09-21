@@ -11,6 +11,7 @@ export { TaskValidationError } from './task.js'
 export type {
   AgentName,
   AgentRequest,
+  AgentSession,
   JevJudge,
   JevVerdict,
   JudgedPlan,

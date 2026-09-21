@@ -1,8 +1,28 @@
 /** A provider id from the registry: `codex`, `claude`, `deepseek`, … */
 export type AgentName = string
 
+/**
+ * One agent's conversation, carried from one stage of a run to the next. The
+ * planner creates one per agent per run and passes it on every call to that
+ * agent; the provider fills it in on the first call and continues from it on
+ * the next ones. An agent that ignores it starts every call afresh.
+ */
+export interface AgentSession {
+  /** The conversation to continue, once a call has started one: a CLI's session or thread id. */
+  id?: string
+}
+
 export interface AgentRequest {
+  /** The whole prompt, for an agent that starts afresh. */
   prompt: string
+  /**
+   * The same request for an agent continuing `session`, which already holds
+   * the task and its own earlier plans: `prompt` without them. `prompt` is used
+   * when this is absent or the conversation cannot be continued.
+   */
+  resumePrompt?: string
+  /** Continue this conversation, when the agent can; see `AgentSession`. */
+  session?: AgentSession
   cwd: string
   timeoutMs: number
   /** Called with a line about the agent's work as it happens: a message, a command, a file read. */
@@ -57,6 +77,12 @@ export interface PlanOptions {
    * task is still passed through unchecked, as before the check existed.
    */
   allowAnyTask?: boolean
+  /**
+   * Keep each agent's conversation from its draft to its later calls, so the
+   * cross-review and synthesis continue with what it already read. `true` by
+   * default; `false` starts every call afresh.
+   */
+  resume?: boolean
   onStage?: (message: string) => void
   /** Called with each agent's progress lines while it works, as `AgentRequest.onProgress` gets them. */
   onAgentProgress?: (agent: AgentName, line: string) => void

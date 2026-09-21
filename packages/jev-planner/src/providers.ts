@@ -30,14 +30,21 @@ async function claudeAuth(cwd: string): Promise<CheckResult> {
 /** One line of `codex exec --json`. */
 interface CodexEvent {
   type?: string
+  thread_id?: string
   item?: { type?: string; text?: string; command?: string; exit_code?: number | null }
   error?: { message?: string }
   message?: string
 }
 
 /** What Codex is doing, from one of its JSON events; its last message is the answer. */
-export function codexEvent(event: unknown): { progress?: string; result?: string } {
-  const { type, item, error, message } = event as CodexEvent
+export function codexEvent(event: unknown): {
+  progress?: string
+  result?: string
+  session?: string
+} {
+  const { type, item, error, message, thread_id: thread } = event as CodexEvent
+  // Codex names its own session, and says so first; `exec resume` takes it.
+  if (type === 'thread.started') return thread ? { session: thread } : {}
   if (type === 'turn.failed') return { progress: `failed: ${error?.message ?? 'unknown error'}` }
   if (type === 'error') return { progress: `error: ${message ?? 'unknown error'}` }
   if (!item?.type) return {}
@@ -86,6 +93,61 @@ export function claudeEvent(event: unknown): { progress?: string; result?: strin
   return lines.length > 0 ? { progress: lines.join('\n') } : {}
 }
 
+interface Overrides {
+  model?: string
+  effort?: string
+}
+
+function codexOverrides({ model, effort }: Overrides): string[] {
+  return [
+    ...(model ? ['--model', model] : []),
+    // A config override, so it wins over model_reasoning_effort in ~/.codex/config.toml.
+    ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []),
+  ]
+}
+
+/** `codex exec`, read-only, with `session` saying whether its session is kept. */
+function codexArgs(session: string[], overrides: Overrides): string[] {
+  return [
+    'exec',
+    '--json',
+    ...session,
+    '--sandbox',
+    'read-only',
+    '--skip-git-repo-check',
+    '--color',
+    'never',
+    ...codexOverrides(overrides),
+    '-',
+  ]
+}
+
+/**
+ * `claude --print` in plan mode with three read-only tools, whether it starts,
+ * continues or keeps no session: `session` says which.
+ */
+function claudeArgs(session: string[], { model, effort }: Overrides): string[] {
+  return [
+    '--print',
+    '--permission-mode',
+    'plan',
+    '--permission-prompts',
+    'none',
+    ...session,
+    '--output-format',
+    'stream-json',
+    // Required by stream-json with --print.
+    '--verbose',
+    '--tools',
+    'Read,Glob,Grep',
+    // `--tools` does not reach MCP servers: without this, every server in the
+    // user's configuration starts with each call and its tools are callable.
+    '--strict-mcp-config',
+    ...(model ? ['--model', model] : []),
+    ...(effort ? ['--effort', effort] : []),
+  ]
+}
+
 /**
  * Every AI jev-planner can plan with. To add one, add an entry here — that is
  * the whole change: the CLI, `doctor`, `--help`, the prompts and Jev all read
@@ -97,20 +159,23 @@ export const PROVIDERS: readonly Provider[] = [
     id: 'codex',
     label: 'Codex',
     command: 'codex',
-    args: ({ model, effort }) => [
-      'exec',
-      '--json',
-      '--ephemeral',
-      '--sandbox',
-      'read-only',
-      '--skip-git-repo-check',
-      '--color',
-      'never',
-      ...(model ? ['--model', model] : []),
-      // A config override, so it wins over model_reasoning_effort in ~/.codex/config.toml.
-      ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []),
-      '-',
-    ],
+    args: (overrides) => codexArgs(['--ephemeral'], overrides),
+    sessions: {
+      start: (overrides) => codexArgs([], overrides),
+      // `exec resume` has no `--sandbox` and no `--color`: the sandbox is set as
+      // config instead, so a resumed session is exactly as read-only.
+      resume: (overrides, id) => [
+        'exec',
+        'resume',
+        '--json',
+        '--skip-git-repo-check',
+        '-c',
+        'sandbox_mode="read-only"',
+        ...codexOverrides(overrides),
+        id,
+        '-',
+      ],
+    },
     effort: true,
     events: codexEvent,
     auth: ['login', 'status'],
@@ -119,25 +184,11 @@ export const PROVIDERS: readonly Provider[] = [
     id: 'claude',
     label: 'Claude',
     command: 'claude',
-    args: ({ model, effort }) => [
-      '--print',
-      '--permission-mode',
-      'plan',
-      '--permission-prompts',
-      'none',
-      '--no-session-persistence',
-      '--output-format',
-      'stream-json',
-      // Required by stream-json with --print.
-      '--verbose',
-      '--tools',
-      'Read,Glob,Grep',
-      // `--tools` does not reach MCP servers: without this, every server in the
-      // user's configuration starts with each call and its tools are callable.
-      '--strict-mcp-config',
-      ...(model ? ['--model', model] : []),
-      ...(effort ? ['--effort', effort] : []),
-    ],
+    args: (overrides) => claudeArgs(['--no-session-persistence'], overrides),
+    sessions: {
+      start: (overrides, id) => claudeArgs(['--session-id', id], overrides),
+      resume: (overrides, id) => claudeArgs(['--resume', id], overrides),
+    },
     effort: true,
     events: claudeEvent,
     auth: claudeAuth,
