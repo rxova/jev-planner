@@ -1,140 +1,133 @@
 # Contributing
 
-Thanks for taking the time. Bug reports, documentation fixes and small
-improvements are all welcome.
+Bug reports, documentation fixes, new agents, and small improvements are welcome.
 
 ## Before you start
 
-- **Bugs**: open an issue with a reduced reproduction — the smallest snippet
-  that shows the wrong result, plus what you expected. For a serialization
-  problem, include the object `serializeError` produced and the `classes` you
-  passed to `deserializeError`.
-- **New exports or changed behaviour**: open an issue first. The public surface
-  is deliberately small, and every export has to be documented in four places
-  (see [Changing the public API](#changing-the-public-api)), so it is worth
-  agreeing on the shape before the work.
-- **Small fixes**: typos, broken links and obvious mistakes can go straight to a
-  pull request.
+- **Bug:** open an issue with the smallest reproduction that shows the problem, what happened, and
+  what you expected.
+- **New behavior or public API:** open an issue first. The public surface is deliberately small, and
+  agreeing on the shape saves everyone a rewrite.
+- **Small fix:** typo, broken link, or obvious mistake can go straight to a pull request.
+- **Security problem:** do not open a public issue. Follow [SECURITY.md](SECURITY.md).
 
-Security issues do not go in an issue — see [SECURITY.md](SECURITY.md).
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Development setup
 
-A pnpm workspace driven by Turborepo. The toolchain needs Node.js 22.13 or newer
-(pnpm 11 requires it); the published package supports Node.js 20.19 and up,
-which CI verifies by packing the tarball and running it under Node 20.
+This is a pnpm + Turborepo workspace. Development needs Node.js 22.13 or newer. The published
+`jev-planner` package supports Node.js 20.19 and newer; the pack smoke test proves that separately.
 
-```bash
+```sh
 corepack enable
 pnpm install
 ```
 
-```bash
-pnpm test                                    # unit tests, coverage enforced per file
-pnpm --filter ts-extended-errors test # the library alone
+Useful tools:
+
+```sh
+pnpm test                         # all unit tests; library coverage enforced per file
+pnpm --filter jev-planner test    # library only
 pnpm typecheck
 pnpm lint
 pnpm run format:check
-pnpm build                                   # the library's dist
+pnpm build                        # workspace packages, dual ESM + CJS
 ```
 
-`pnpm run verify` runs every check in one ordered list and is what the pre-push
-hook calls. Run it before asking for review; CI runs the same checks as separate
-jobs, so a green verify means a green pipeline.
+To run a single test file:
 
-A single test file:
-
-```bash
-pnpm --filter ts-extended-errors exec vitest run src/__tests__/serialize.test.ts
+```sh
+pnpm --filter jev-planner exec vitest run src/__tests__/providers.test.ts
 ```
 
-## The docs site
+Before asking for review, run the full verification gate:
 
-`apps/docs` is an Astro + Starlight site — the landing page and the
-documentation — deployed to GitHub Pages at
-[jev-planner.com](https://jev-planner.com/) by `docs.yml` on every push to `main`.
-
-```bash
-pnpm --filter @repo/docs dev    # localhost, served at the root
-pnpm --filter @repo/docs build     # build, validate links, check the .md twins and the budgets
-pnpm --filter @repo/docs test      # the markdown normalizer, the llms.txt builders, the build checks
-pnpm --filter @repo/docs test:e2e  # Playwright + axe against the built dist (build first)
-pnpm --filter @repo/docs og        # regenerate public/og.png, the social card
+```sh
+pnpm run verify
 ```
 
-`scripts/check-site-build.mjs` also runs as part of the build: it holds the landing page to its
-size budget and fails on any link that skips the site's base. To check a sub-path deploy, build
-and test with `DOCS_BASE_URL=/jev-planner/`.
+`verify` runs the pre-push checks in CI order. It intentionally leaves the registry audit and
+package smoke test to CI.
 
-Every page is also served as raw markdown at `<route>.md`, and `llms.txt` /
-`llms-full.txt` are generated from the same page enumeration. `scripts/check-md-routes.mjs`
-runs as part of the build and fails it if a page grows markup the normalizer does
-not handle, if a `.md` link lands nowhere, or if `llms.txt` outgrows its budget.
+## Documentation site
+
+`apps/docs` is Astro + Starlight. It powers [jev-planner.com](https://jev-planner.com/) and deploys
+to GitHub Pages from `main`.
+
+```sh
+pnpm --filter @repo/docs dev       # local site at the root
+pnpm --filter @repo/docs build     # site + links + .md twins + size budgets
+pnpm --filter @repo/docs test      # docs unit tests
+pnpm --filter @repo/docs test:e2e  # Playwright + axe; build first
+pnpm --filter @repo/docs og        # regenerate social card
+```
+
+Every docs page also ships as raw Markdown at `<route>.md`. The same page list builds `llms.txt`
+and `llms-full.txt`. Do not hand-edit emitted files in `dist/`.
+
+The root README is deliberately compact and direct. Package reference and site docs provide the
+detail. When product facts change, update every affected audience in the same pull request.
 
 ## Tests
 
-- Source in `src/`, tests in `src/**/__tests__/`.
-- Coverage is enforced at 95% per file, from `packages/config`. Thresholds may be
-  raised, never lowered.
-- Never skip, delete or weaken a test to make a change pass, and never make one
-  pass by hardcoding the answer it was checking.
+- Source lives in `src/`; tests live in `src/**/__tests__/`.
+- Coverage is at least 95% per file. Raise thresholds; never lower them.
+- Never skip, delete, or weaken a test to make a change pass.
+- Never hardcode an expected answer or switch off a check.
+- ESLint runs `strictTypeChecked`. Fix finding. If a disable is truly necessary, scope it to one line
+  and explain why.
+
+## Adding an AI
+
+Providers live in one registry: `PROVIDERS` in `packages/jev-planner/src/providers.ts`. CLI flags,
+help, doctor checks, prompts, and Jev choices all grow from that list.
+
+- OpenAI-compatible chat API: add one `openAICompatibleProvider(...)` call.
+- Read-only, non-interactive agent CLI: add one `cliProvider(...)` call.
+- CLI with JSON event output: add `events`, so `--verbose` can show its work and extract its answer.
+
+Also add the provider to the tables in the root and package READMEs. Test unique IDs, secrets,
+doctor behavior, arguments, event parsing, and the unhappy path.
+
+## Changing the public API
+
+A public API change ships together with:
+
+1. Code and tests.
+2. TSDoc.
+3. The matching section in `packages/jev-planner/README.md`.
+4. The matching page under `apps/docs/src/content/docs/`.
+5. The API table, examples, or cautions in `packages/jev-planner/llms.txt`.
+6. A changeset.
+
+`pnpm run check:llms` compares package exports with the `llms.txt` API table in both directions.
+Rename one without the other and the check fails.
 
 ## Commits
 
-[Conventional Commits](https://www.conventionalcommits.org), subject line only.
-Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
-`rename`, `revert`, `style`, `test`. There is no length limit.
+Use [Conventional Commits](https://www.conventionalcommits.org), subject line only.
 
-Commitlint checks the branch commits, the pushed commit, and the pull request
-title — pull requests are squash-merged, so the title becomes the commit on
-`main` and has to be valid on its own.
+Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `rename`, `revert`,
+`style`, `test`.
 
-Never `--no-verify`.
+Pull requests are squash-merged, so PR title becomes commit on `main`. Make title valid. Never use
+`--no-verify`.
 
 ## Changesets
 
 Any pull request that changes the published package needs a changeset:
 
-```bash
+```sh
 pnpm changeset
 ```
 
-CI checks for one. A pull request that touches the package but publishes nothing
-— a dev dependency bump, say — is labelled `skip-changeset` instead. Before 1.0,
-a breaking change is a minor.
-
-## Adding a new AI
-
-One entry in `PROVIDERS`, in `packages/jev-planner/src/providers.ts`. The CLI flags, `--help`,
-`doctor`, the prompts and Jev's choices are all built from that list, so nothing else changes:
-
-- An OpenAI-compatible chat API: one `openAICompatibleProvider({ id, label, baseUrl, apiKeyEnv, model })`.
-- An agent CLI that answers once, non-interactively and read-only, with the prompt on stdin: one
-  `cliProvider({ id, label, command, args, auth? })`. If it can print its work as JSON events, one per
-  stdout line, add `events` to turn each event into a progress line and pick out the answer, so
-  `--verbose` can show it working.
-
-Add the agent to the table under "Agents" in the package README too. `providers.test.ts` checks the
-ids are unique and every API key is declared as a secret; a new adapter kind needs its own tests.
-
-## Changing the public API
-
-An export is described in four places, and they are checked against each other.
-A change to one ships with the rest, in the same pull request:
-
-1. The code and its tests.
-2. The TSDoc on the export.
-3. The section for it in `packages/ts-extended-errors/README.md`, and the page
-   for it under `apps/docs/src/content/docs/`.
-4. The `## API` table in `packages/ts-extended-errors/llms.txt`.
-
-`pnpm run check:llms` compares that table against `src/index.ts` in both
-directions, so a renamed export fails until the table is updated.
+Before 1.0, a breaking change is a minor. A pull request that touches the package but publishes
+nothing—like a dev dependency bump—gets the `skip-changeset` label instead.
 
 ## Releases
 
-`release.yml` opens a `chore: version packages` pull request from the pending
-changesets. Merging it publishes `ts-extended-errors` to npm through
-trusted publishing, with provenance and no stored token, and tags the release. It runs only while
-the repository variable `RELEASE_ENABLED` is `true`, and nothing is published
-from a local machine.
+`release.yml` opens a `chore: version packages` pull request from pending changesets. Merging that
+pull request publishes `jev-planner` through npm trusted publishing, with provenance, and tags the
+release. It runs only while repository variable `RELEASE_ENABLED` is `true`.
+
+Nothing is published from a local machine.
