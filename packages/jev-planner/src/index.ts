@@ -5,6 +5,7 @@ export { TypeSafeJevJudge } from './jev.js'
 export { Planner } from './orchestrator.js'
 export { ProcessError } from './process.js'
 export type { ProcessResult } from './process.js'
+export { TaskValidationError } from './task.js'
 export type {
   AgentName,
   AgentRequest,

@@ -28,4 +28,15 @@ describe('planning prompts', () => {
     expect(prompt).toContain('no winner announcement')
     expect(prompt).toContain('<jev-verdict>\n{}\n</jev-verdict>')
   })
+
+  it('tells every planner to ask rather than invent scope for a vague task', () => {
+    const sentence =
+      'If the task is a placeholder or too vague to act on, say so and list the clarifying questions instead of inventing scope.'
+    const prompts = [
+      initialPlanPrompt('task', 'Codex'),
+      revisionPrompt({ task: 'task', ownPlan: 'a', peerPlan: 'b', peer: 'Codex' }),
+      finalPlanPrompt({ task: 'task', codexPlan: 'a', claudePlan: 'b', verdict: '{}' }),
+    ]
+    for (const prompt of prompts) expect(prompt).toContain(sentence)
+  })
 })

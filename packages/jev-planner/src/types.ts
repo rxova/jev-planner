@@ -42,6 +42,11 @@ export interface PlanOptions {
   maxReviewRounds?: 1 | 2
   jevModel?: string
   finalizer?: AgentName
+  /**
+   * Skip the placeholder check `plan` runs before any agent call. An empty
+   * task is still passed through unchecked, as before the check existed.
+   */
+  allowAnyTask?: boolean
   onStage?: (message: string) => void
 }
 

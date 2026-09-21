@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Planner } from '../orchestrator.js'
+import { TaskValidationError } from '../task.js'
 import type { AgentRequest, JevJudge, JevVerdict, PlanningAgent } from '../types.js'
 
 const verdict: JevVerdict = {
@@ -156,5 +157,38 @@ describe('Planner', () => {
 
     await expect(run(1)).resolves.toEqual(['jev-custom'])
     await expect(run(2)).resolves.toEqual(['jev-custom', 'jev-custom'])
+  })
+
+  it('rejects a placeholder task before any agent or Jev call', async () => {
+    const codex = new FakeAgent('codex', ['codex draft'])
+    const claude = new FakeAgent('claude', ['claude draft'])
+    const jev = new FakeJev()
+    const planner = new Planner(codex, claude, jev)
+
+    await expect(
+      planner.plan({
+        task: 'Describe the coding change you want to plan',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow(TaskValidationError)
+    expect(codex.prompts).toEqual([])
+    expect(claude.prompts).toEqual([])
+    expect(jev.input).toBeUndefined()
+  })
+
+  it('plans a placeholder task when allowAnyTask is set', async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+    const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+    const planner = new Planner(codex, claude, new FakeJev())
+
+    const result = await planner.plan({
+      task: 'TODO',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+      allowAnyTask: true,
+    })
+    expect(result.plan).toBe('final plan')
+    expect(codex.prompts[0]).toContain('<task>\nTODO\n</task>')
   })
 })

@@ -40,29 +40,34 @@ const { plan, verdict, finalizer } = await planner.plan({
 
 ## API
 
-| Export             | Kind     | What it does                                                                      |
-| ------------------ | -------- | --------------------------------------------------------------------------------- |
-| `Planner`          | class    | `new Planner(codex, claude, jev).plan(options)`: drafts, cross-reviews, finalizes |
-| `CodexAgent`       | class    | A `PlanningAgent` that runs `codex exec` in a read-only sandbox                   |
-| `ClaudeAgent`      | class    | A `PlanningAgent` that runs `claude -p` in plan mode                              |
-| `TypeSafeJevJudge` | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`               |
-| `runDoctor`        | function | `runDoctor(cwd)` checks the CLIs, the API key and the directory                   |
-| `ProcessError`     | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                  |
-| `ProcessResult`    | type     | `{ stdout, stderr }` of a finished agent process                                  |
-| `CheckResult`      | type     | `{ name, ok, detail }`, one `runDoctor` check                                     |
-| `AgentName`        | type     | `'codex' \| 'claude'`                                                             |
-| `AgentRequest`     | type     | `{ prompt, cwd, timeoutMs }`, what a `PlanningAgent` is given                     |
-| `PlanningAgent`    | type     | `{ name, generate(request) }`, the agent interface `Planner` drives               |
-| `JevJudge`         | type     | `{ judge({ task, codexPlan, claudePlan, model? }) }`, returns a `JevVerdict`      |
-| `JevVerdict`       | type     | Scores and confidences for both plans, and the chosen finalizer                   |
-| `PlanOptions`      | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, onStage? }`     |
-| `PlanResult`       | type     | `{ plan, verdict, finalizer, drafts: { codex, claude } }`                         |
+| Export                | Kind     | What it does                                                                                 |
+| --------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `Planner`             | class    | `new Planner(codex, claude, jev).plan(options)`: drafts, cross-reviews, finalizes            |
+| `CodexAgent`          | class    | A `PlanningAgent` that runs `codex exec` in a read-only sandbox                              |
+| `ClaudeAgent`         | class    | A `PlanningAgent` that runs `claude -p` in plan mode                                         |
+| `TypeSafeJevJudge`    | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                          |
+| `runDoctor`           | function | `runDoctor(cwd)` checks the CLIs, the API key and the directory                              |
+| `ProcessError`        | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                             |
+| `TaskValidationError` | class    | Thrown by `plan` before any call when the task is empty or a placeholder                     |
+| `ProcessResult`       | type     | `{ stdout, stderr }` of a finished agent process                                             |
+| `CheckResult`         | type     | `{ name, ok, detail }`, one `runDoctor` check                                                |
+| `AgentName`           | type     | `'codex' \| 'claude'`                                                                        |
+| `AgentRequest`        | type     | `{ prompt, cwd, timeoutMs }`, what a `PlanningAgent` is given                                |
+| `PlanningAgent`       | type     | `{ name, generate(request) }`, the agent interface `Planner` drives                          |
+| `JevJudge`            | type     | `{ judge({ task, codexPlan, claudePlan, model? }) }`, returns a `JevVerdict`                 |
+| `JevVerdict`          | type     | Scores and confidences for both plans, and the chosen finalizer                              |
+| `PlanOptions`         | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, allowAnyTask?, onStage? }` |
+| `PlanResult`          | type     | `{ plan, verdict, finalizer, drafts: { codex, claude } }`                                    |
 
 ## Mistakes to avoid
 
 - **Treating a run as free.** One plan is 5 or 7 agent calls and 1 or 2 Jev
   calls, each billed to the account it runs under. Run `jev-planner doctor`
   first rather than a real task to check the setup.
+- **Sending a template as the task.** A placeholder — `TODO`, `<coding task>`,
+  `{{task}}`, text with no letters — is rejected with `TaskValidationError`
+  before any billed call. Pass `--allow-any-task` (`allowAnyTask: true` in the
+  API) only when that text really is the task.
 - **Giving the task two ways.** The task comes from the arguments, from `-f`,
   or from stdin — passing both arguments and `-f` is an error.
 - **Expecting the agents to edit code.** Both run read-only; the output is a

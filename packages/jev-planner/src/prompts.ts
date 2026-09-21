@@ -3,6 +3,7 @@ You are designing an implementation plan, not implementing code. Work read-only.
 Inspect the repository before deciding. Make the plan specific to files and symbols that exist.
 Call out assumptions and unresolved questions. Prefer a small, verifiable sequence of changes.
 Include architecture, edge cases, tests, validation, and rollout/compatibility concerns.
+If the task is a placeholder or too vague to act on, say so and list the clarifying questions instead of inventing scope.
 Keep the response under 1,500 words. Return Markdown only.`
 
 export function initialPlanPrompt(task: string, peer: 'Codex' | 'Claude'): string {
