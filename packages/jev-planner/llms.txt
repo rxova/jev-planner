@@ -27,7 +27,7 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add a CSV export"
 ```
 
 The plan goes to stdout, or to the file given with `-o`; progress goes to
-stderr. `--json` prints `{ plan, verdict, finalizer }` instead.
+stderr. `--json` prints `{ plan, verdict, finalizer, timings }` instead.
 Every round's plans are also written as the run goes, to `round1/`,
 `round2/`, …, `final/` in a new `.jev-planner/<UTC start time>/` folder in
 the repository (git-ignored by its own `.gitignore`). `--rounds-dir <path>`
