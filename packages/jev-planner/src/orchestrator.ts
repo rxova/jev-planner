@@ -1,6 +1,14 @@
 import { finalPlanPrompt, initialPlanPrompt, listLabels, revisionPrompt } from './prompts.js'
 import { validateTask } from './task.js'
-import type { AgentName, JevJudge, PlanOptions, PlanResult, PlanningAgent } from './types.js'
+import type {
+  AgentName,
+  JevJudge,
+  JevVerdict,
+  PlanOptions,
+  PlanResult,
+  PlanRound,
+  PlanningAgent,
+} from './types.js'
 
 /** One agent's current plan. */
 interface Draft {
@@ -9,6 +17,8 @@ interface Draft {
 }
 
 const labelsOf = (agents: readonly PlanningAgent[]) => agents.map(({ label }) => label)
+const byName = (drafts: readonly Draft[]) =>
+  Object.fromEntries(drafts.map(({ agent, plan }) => [agent.name, plan]))
 
 export class Planner {
   private readonly agents: readonly PlanningAgent[]
@@ -33,6 +43,20 @@ export class Planner {
       options.finalizer === undefined ? undefined : this.agent(options.finalizer)
 
     const stage = options.onStage ?? (() => undefined)
+    let round = 0
+    const report = async (
+      stageName: PlanRound['stage'],
+      plans: Record<AgentName, string>,
+      verdict?: JevVerdict,
+    ) => {
+      round += 1
+      await options.onRound?.({
+        round,
+        stage: stageName,
+        plans,
+        ...(verdict ? { verdict } : {}),
+      })
+    }
     const request = (prompt: string) => ({
       prompt,
       cwd: options.cwd,
@@ -75,17 +99,21 @@ export class Planner {
       ),
     )
 
+    await report('draft', byName(drafts))
+
     stage(`Cross-reviewing the ${String(this.agents.length)} drafts…`)
     let revised = await revise(drafts)
 
     stage('Asking Jev for typed quality and routing decisions…')
     let verdict = await judge(revised)
+    await report('review', byName(revised), verdict)
 
     if (verdict.needsAnotherPassProbability >= 0.65 && (options.maxReviewRounds ?? 2) > 1) {
       stage('Jev requested another cross-review pass…')
       revised = await revise(revised, JSON.stringify(verdict, null, 2))
       stage('Re-evaluating the revised plans with Jev…')
       verdict = await judge(revised)
+      await report('review', byName(revised), verdict)
     }
 
     const finalizer = finalizerOverride ?? this.agent(verdict.finalizer)
@@ -101,11 +129,13 @@ export class Planner {
       ),
     )
 
+    await report('final', { [finalizer.name]: finalPlan }, verdict)
+
     return {
       plan: finalPlan,
       verdict,
       finalizer: finalizer.name,
-      drafts: Object.fromEntries(revised.map(({ agent, plan }) => [agent.name, plan])),
+      drafts: byName(revised),
     }
   }
 

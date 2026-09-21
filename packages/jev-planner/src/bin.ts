@@ -25,11 +25,12 @@ const deps: CliDeps = {
   env: process.env,
   cwd: () => process.cwd(),
   readStdin: readPipedStdin,
-  createPlanner: ({ agents, models }) =>
+  createPlanner: ({ agents, models, efforts }) =>
     new Planner(
       agents.map((provider) =>
         provider.create({
           ...(models[provider.id] === undefined ? {} : { model: models[provider.id] }),
+          ...(efforts[provider.id] === undefined ? {} : { effort: efforts[provider.id] }),
           omitEnv,
           env: process.env,
         }),

@@ -17,4 +17,5 @@ export type {
   PlanningAgent,
   PlanOptions,
   PlanResult,
+  PlanRound,
 } from './types.js'

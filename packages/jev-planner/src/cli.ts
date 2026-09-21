@@ -1,19 +1,19 @@
-import { readFile, stat, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import packageJson from '../package.json' with { type: 'json' }
 import type { CheckResult } from './doctor.js'
 import type { Provider } from './provider.js'
 import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
 import { requireNonEmptyTask, validateTask } from './task.js'
-import type { PlanOptions, PlanResult } from './types.js'
+import type { PlanOptions, PlanResult, PlanRound } from './types.js'
 
 export const VERSION: string = packageJson.version
 
 function agentLine(provider: Provider): string {
   const access =
     provider.kind === 'cli'
-      ? 'agent CLI, reads the repository'
+      ? `agent CLI, reads the repository${provider.effort ? '; takes --effort' : ''}`
       : `chat API, gets a repository snapshot; needs ${provider.secretEnv.join(', ')}`
   return `  ${provider.id.padEnd(26)}${provider.label}: ${access}`
 }
@@ -30,12 +30,14 @@ Options:
   -o, --output <path>         Write the final plan to a file instead of stdout
   -a, --agents <ids>          Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')})
   -m, --model <id>=<model>    Override one agent's model; repeatable
+  -e, --effort <id>=<level>   Override one agent's reasoning effort; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
       --finalizer <id>        auto, or one of the agents (default: auto/Jev decides)
       --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --json                  Emit plan metadata as JSON
       --verbose               Print Jev's typed verdict to stderr
+      --rounds-dir <path>     Write every round's plans to round1/, round2/, …, final/
       --allow-any-task        Plan the task even if it looks like a placeholder
   -h, --help                  Show help
   -v, --version               Show version
@@ -56,6 +58,8 @@ export interface PlannerSetup {
   agents: readonly Provider[]
   /** `--model` overrides, by provider id. */
   models: Readonly<Record<string, string>>
+  /** `--effort` overrides, by provider id. */
+  efforts: Readonly<Record<string, string>>
 }
 
 /** Everything `main` touches outside its arguments, so tests can replace it. */
@@ -95,25 +99,29 @@ function parseAgents(value: string | undefined): Provider[] {
   return agents
 }
 
-function parseModels(
+/** Repeated `<id>=<value>` flags, by agent id; each id must be one of the run's agents. */
+function parseOverrides(
+  flag: string,
   values: readonly string[],
   agents: readonly Provider[],
+  accepts: (agent: Provider) => boolean = () => true,
 ): Record<string, string> {
-  const models: Record<string, string> = {}
+  const overrides: Record<string, string> = {}
+  const placeholder = flag.slice(2)
   for (const value of values) {
     const separator = value.indexOf('=')
     const id = value.slice(0, separator).trim().toLowerCase()
-    const model = value.slice(separator + 1).trim()
-    if (separator < 0 || !id || !model) {
-      throw new Error(`Invalid --model value: ${value}. Expected <agent>=<model>.`)
+    const setting = value.slice(separator + 1).trim()
+    if (separator < 0 || !id || !setting) {
+      throw new Error(`Invalid ${flag} value: ${value}. Expected <agent>=<${placeholder}>.`)
     }
-    provider(id, '--model')
-    if (!agents.some((agent) => agent.id === id)) {
-      throw new Error(`--model sets ${id}, which is not one of the --agents`)
-    }
-    models[id] = model
+    const agent = provider(id, flag)
+    if (!agents.includes(agent))
+      throw new Error(`${flag} sets ${id}, which is not one of the --agents`)
+    if (!accepts(agent)) throw new Error(`${agent.label} does not take ${flag}`)
+    overrides[id] = setting
   }
-  return models
+  return overrides
 }
 
 function parseFinalizer(
@@ -126,6 +134,34 @@ function parseFinalizer(
   throw new Error(
     `Invalid --finalizer value: ${value}. Expected auto or one of ${agents.map((a) => a.id).join(', ')}.`,
   )
+}
+
+/** Creates `dir`, which must be new or empty so rounds from different runs never mix. */
+async function prepareRoundsDir(dir: string): Promise<void> {
+  const entries = await readdir(dir).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  })
+  if (entries.length > 0) throw new Error(`--rounds-dir must be new or empty: ${dir}`)
+  await mkdir(dir, { recursive: true })
+}
+
+/**
+ * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
+ * `jev-verdict.json` beside a judged round's plans, and `final/plan.md` last.
+ */
+async function writeRound(dir: string, round: PlanRound): Promise<void> {
+  const folder = join(dir, round.stage === 'final' ? 'final' : `round${String(round.round)}`)
+  await mkdir(folder, { recursive: true })
+  const files: [string, string][] =
+    round.stage === 'final'
+      ? Object.entries(round.plans).map(([agent, plan]) => [
+          'plan.md',
+          `<!-- merged by ${agent} -->\n${plan.trim()}\n`,
+        ])
+      : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
+  if (round.verdict) files.push(['jev-verdict.json', `${JSON.stringify(round.verdict, null, 2)}\n`])
+  await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
 }
 
 function parseTimeout(value: string | undefined): number {
@@ -153,12 +189,14 @@ function parse(argv: readonly string[]) {
       output: { type: 'string', short: 'o' },
       agents: { type: 'string', short: 'a' },
       model: { type: 'string', short: 'm', multiple: true, default: [] },
+      effort: { type: 'string', short: 'e', multiple: true, default: [] },
       'jev-model': { type: 'string' },
       finalizer: { type: 'string' },
       'review-rounds': { type: 'string' },
       timeout: { type: 'string' },
       json: { type: 'boolean', default: false },
       verbose: { type: 'boolean', default: false },
+      'rounds-dir': { type: 'string' },
       'allow-any-task': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
@@ -211,10 +249,14 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     )
   }
 
-  const models = parseModels(values.model, agents)
+  const models = parseOverrides('--model', values.model, agents)
+  const efforts = parseOverrides('--effort', values.effort, agents, (agent) => agent.effort)
   const finalizer = parseFinalizer(values.finalizer, agents)
   const jevModel = values['jev-model']
-  const planner = deps.createPlanner({ agents, models })
+  const roundsDir =
+    values['rounds-dir'] === undefined ? undefined : resolve(cwd, values['rounds-dir'])
+  if (roundsDir !== undefined) await prepareRoundsDir(roundsDir)
+  const planner = deps.createPlanner({ agents, models, efforts })
   const result = await planner.plan({
     task,
     cwd,
@@ -226,6 +268,9 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
     },
+    ...(roundsDir === undefined
+      ? {}
+      : { onRound: (round: PlanRound) => writeRound(roundsDir, round) }),
   })
 
   if (values.verbose) {

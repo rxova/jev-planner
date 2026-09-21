@@ -19,13 +19,24 @@ beforeEach(() => {
 describe('cliProvider', () => {
   const config = { id: 'tool', label: 'Tool', command: 'tool', args: () => ['run'] }
 
-  it('is a CLI provider with no secrets of its own', () => {
+  it('is a CLI provider with no secrets of its own, and no effort unless it says so', () => {
     expect(cliProvider(config)).toMatchObject({
       id: 'tool',
       label: 'Tool',
       kind: 'cli',
       secretEnv: [],
+      effort: false,
     })
+    expect(cliProvider({ ...config, effort: true }).effort).toBe(true)
+  })
+
+  it('hands args only the overrides that were given', async () => {
+    run.mockResolvedValue({ stdout: 'plan', stderr: '', exitCode: 0 })
+    const args = vi.fn(() => ['run'])
+    const tool = cliProvider({ ...config, args })
+    await tool.create({ omitEnv: [], env: {} }).generate(request)
+    await tool.create({ omitEnv: [], env: {}, model: 'm', effort: 'low' }).generate(request)
+    expect(args.mock.calls).toEqual([[{}], [{ model: 'm', effort: 'low' }]])
   })
 
   it('checks only the CLI when it has no auth check', async () => {
@@ -60,7 +71,12 @@ describe('openAICompatibleProvider', () => {
   }
 
   it('declares its key as a secret', () => {
-    expect(provider).toMatchObject({ id: 'acme', kind: 'api', secretEnv: ['ACME_API_KEY'] })
+    expect(provider).toMatchObject({
+      id: 'acme',
+      kind: 'api',
+      secretEnv: ['ACME_API_KEY'],
+      effort: false,
+    })
   })
 
   it('posts the snapshot and prompt to /chat/completions with the key', async () => {

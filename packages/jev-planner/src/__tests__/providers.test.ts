@@ -70,6 +70,19 @@ describe('codex', () => {
     expect(run.mock.calls[0]?.[1].slice(-3)).toEqual(['--model', 'gpt-x', '-'])
   })
 
+  it('overrides the configured reasoning effort', async () => {
+    const codex = provider('codex')
+    expect(codex.effort).toBe(true)
+    await codex.create({ ...setup, model: 'gpt-5.6-terra', effort: 'low' }).generate(request)
+    expect(run.mock.calls[0]?.[1].slice(-5)).toEqual([
+      '--model',
+      'gpt-5.6-terra',
+      '-c',
+      'model_reasoning_effort="low"',
+      '-',
+    ])
+  })
+
   it('rejects an empty response', async () => {
     run.mockResolvedValue({ stdout: ' \n', stderr: '', exitCode: 0 })
     await expect(provider('codex').create(setup).generate(request)).rejects.toThrow(
@@ -118,6 +131,13 @@ describe('claude', () => {
       .create({ ...setup, model: 'opus' })
       .generate(request)
     expect(run.mock.calls[0]?.[1].slice(-2)).toEqual(['--model', 'opus'])
+  })
+
+  it('passes an effort override', async () => {
+    const claude = provider('claude')
+    expect(claude.effort).toBe(true)
+    await claude.create({ ...setup, effort: 'low' }).generate(request)
+    expect(run.mock.calls[0]?.[1].slice(-2)).toEqual(['--effort', 'low'])
   })
 
   describe('auth check', () => {

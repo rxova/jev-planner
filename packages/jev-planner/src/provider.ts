@@ -10,6 +10,8 @@ type Env = Readonly<Record<string, string | undefined>>
 export interface AgentSetup {
   /** A model override from `--model <id>=<model>`; the provider's default otherwise. */
   model?: string
+  /** A reasoning effort from `--effort <id>=<level>`; only for a provider whose `effort` is true. */
+  effort?: string
   /** Every provider's secret variables, and Jev's: never passed to an agent subprocess. */
   omitEnv: readonly string[]
   env: Env
@@ -29,6 +31,8 @@ export interface Provider {
   readonly kind: 'cli' | 'api'
   /** Variables holding this provider's credentials, stripped from every agent subprocess. */
   readonly secretEnv: readonly string[]
+  /** Whether it takes a reasoning effort, from `--effort`. */
+  readonly effort: boolean
   create(setup: AgentSetup): PlanningAgent
   /** Local checks only: `jev-planner doctor` never makes a paid call. */
   doctor(cwd: string, env: Env): Promise<CheckResult[]>
@@ -46,9 +50,13 @@ export interface CliProviderConfig {
   command: string
   /**
    * Arguments for one read-only, non-interactive run that reads the prompt on
-   * stdin and prints the answer on stdout.
+   * stdin and prints the answer on stdout. `model` and `effort` are the
+   * overrides for this run; each is set only when given, and wins over the
+   * CLI's own configuration.
    */
-  args: (model: string | undefined) => string[]
+  args: (overrides: { model?: string; effort?: string }) => string[]
+  /** Whether `args` passes an effort on, so `--effort` is accepted for it. */
+  effort?: boolean
   /**
    * How `doctor` checks the login: arguments to `command` that exit 0 when
    * logged in, or a check of its own.
@@ -63,11 +71,16 @@ export function cliProvider(config: CliProviderConfig): Provider {
     label: config.label,
     kind: 'cli',
     secretEnv: [],
-    create: ({ model, omitEnv }) => ({
+    effort: config.effort ?? false,
+    create: ({ model, effort, omitEnv }) => ({
       name: config.id,
       label: config.label,
       generate: async (request: AgentRequest) => {
-        const { stdout } = await runProcess(config.command, config.args(model), {
+        const overrides = {
+          ...(model === undefined ? {} : { model }),
+          ...(effort === undefined ? {} : { effort }),
+        }
+        const { stdout } = await runProcess(config.command, config.args(overrides), {
           cwd: request.cwd,
           input: request.prompt,
           timeoutMs: request.timeoutMs,
@@ -120,6 +133,8 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
     label: config.label,
     kind: 'api',
     secretEnv: [config.apiKeyEnv],
+    // Each API spells reasoning effort its own way, if at all.
+    effort: false,
     create: ({ model = config.model, env, fetch: send = fetch }) => {
       // Built once per run and per directory: every call in a run sees the same snapshot.
       const snapshots = new Map<string, Promise<string>>()
