@@ -7,6 +7,7 @@ import starlightLinksValidator from 'starlight-links-validator'
 import sitemap from '@astrojs/sitemap'
 
 import { rehypeMdLinks } from './src/lib/rehype-md-links.mjs'
+import { assertReleaseVersion, manifestVersion } from './src/lib/version-marker.mjs'
 
 /**
  * The defaults are production: GitHub Pages serves this repository's site at
@@ -27,6 +28,10 @@ const base = process.env.DOCS_BASE_URL ?? '/'
  * found the tag on. Rendered by scripts/make-og.mjs into public/.
  */
 const ogImage = new URL(`${base.replace(/\/?$/, '/')}og.png`, site).href
+
+// A release deploy (release.yml → docs.yml) names the version it publishes;
+// fail here, before anything renders, if the checkout is some other version.
+assertReleaseVersion(process.env.DOCS_RELEASE_VERSION, manifestVersion())
 
 export default defineConfig({
   site,
@@ -55,7 +60,9 @@ export default defineConfig({
       // The canonical HTML pages only. Every one of them also has a `.md` twin,
       // and llms.txt is built from the same enumeration, so listing those here
       // would hand a search engine three URLs per page and ask it to pick.
-      filter: (page) => !page.endsWith('.md') && !/\/llms(?:-full)?\.txt$/.test(page),
+      // version.json is for the deploy check, not for readers.
+      filter: (page) =>
+        !page.endsWith('.md') && !page.endsWith('.json') && !/\/llms(?:-full)?\.txt$/.test(page),
     }),
     starlight({
       title: 'jev-planner',

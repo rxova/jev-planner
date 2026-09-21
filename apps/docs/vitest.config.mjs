@@ -11,7 +11,8 @@ import { defineConfig } from 'vitest/config'
  * as complete, and the reader who would notice is a model that cannot ask.
  *
  * brand-tokens is here for the same reason: a token it misreads still renders
- * a social card, just not a brand one.
+ * a social card, just not a brand one. version-marker too: a wrong marker still
+ * deploys, and only the post-release check would notice, ten minutes later.
  */
 export default defineConfig({
   test: {

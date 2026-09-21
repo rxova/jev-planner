@@ -4,6 +4,10 @@
   "tasks": {
     "build": {
       "outputs": ["dist/**"],
+      // version.json carries the jev-planner version, which lives outside this
+      // package: without this, the release's version bump would replay the
+      // previous build and deploy a marker that names the old release.
+      "inputs": ["$TURBO_EXTENDS$", "$TURBO_ROOT$/packages/jev-planner/package.json"],
       // These decide the mount and therefore every emitted URL, so they belong
       // in the cache key: without them a local sub-path build could replay for
       // the production build in CI, and nothing would notice until
@@ -11,7 +15,10 @@
       //
       // Declared here rather than on the root task so that setting them does not
       // also invalidate the package build, which never reads them.
-      "env": ["DOCS_URL", "DOCS_BASE_URL"],
+      //
+      // DOCS_COMMIT is written into version.json, and DOCS_RELEASE_VERSION can
+      // fail the build, so both are part of what a cached build means too.
+      "env": ["DOCS_URL", "DOCS_BASE_URL", "DOCS_COMMIT", "DOCS_RELEASE_VERSION"],
       "outputLogs": "new-only"
     },
     // No `^build` and no coverage: every module under test is plain JavaScript
