@@ -104,7 +104,9 @@ One entry in `PROVIDERS`, in `packages/jev-planner/src/providers.ts`. The CLI fl
 
 - An OpenAI-compatible chat API: one `openAICompatibleProvider({ id, label, baseUrl, apiKeyEnv, model })`.
 - An agent CLI that answers once, non-interactively and read-only, with the prompt on stdin: one
-  `cliProvider({ id, label, command, args, auth? })`.
+  `cliProvider({ id, label, command, args, auth? })`. If it can print its work as JSON events, one per
+  stdout line, add `events` to turn each event into a progress line and pick out the answer, so
+  `--verbose` can show it working.
 
 Add the agent to the table under "Agents" in the package README too. `providers.test.ts` checks the
 ids are unique and every API key is declared as a secret; a new adapter kind needs its own tests.

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runProcess } from '../process.js'
 import type { Provider } from '../provider.js'
-import { DEFAULT_AGENTS, PROVIDERS } from '../providers.js'
+import { claudeEvent, codexEvent, DEFAULT_AGENTS, PROVIDERS } from '../providers.js'
 
 vi.mock('../process.js', () => ({ runProcess: vi.fn() }))
 
@@ -21,9 +21,24 @@ function rejectWith(reason: unknown): Promise<never> {
   return Promise.reject(reason)
 }
 
+/** Makes the next agent process print these lines, as runProcess reports them. */
+function prints(stdout: readonly unknown[], stderr: readonly string[] = []) {
+  run.mockImplementation((_command, _args, options) => {
+    const lines = stdout.map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
+    for (const line of lines) options.onLine?.(line, 'stdout')
+    for (const line of stderr) options.onLine?.(line, 'stderr')
+    return Promise.resolve({ stdout: lines.join('\n'), stderr: stderr.join('\n'), exitCode: 0 })
+  })
+}
+
+const codexAnswer = (text: string) => ({
+  type: 'item.completed',
+  item: { type: 'agent_message', text },
+})
+const claudeAnswer = (result: string) => ({ type: 'result', result, is_error: false })
+
 beforeEach(() => {
   run.mockReset()
-  run.mockResolvedValue({ stdout: '  the plan \n', stderr: '', exitCode: 0 })
 })
 
 describe('PROVIDERS', () => {
@@ -43,6 +58,10 @@ describe('PROVIDERS', () => {
 })
 
 describe('codex', () => {
+  beforeEach(() => {
+    prints([codexAnswer('  the plan \n')])
+  })
+
   it('runs codex read-only and ephemeral, prompt on stdin, without the secrets', async () => {
     const agent = provider('codex').create(setup)
     expect(agent).toMatchObject({ name: 'codex', label: 'Codex' })
@@ -51,6 +70,7 @@ describe('codex', () => {
       'codex',
       [
         'exec',
+        '--json',
         '--ephemeral',
         '--sandbox',
         'read-only',
@@ -59,7 +79,13 @@ describe('codex', () => {
         'never',
         '-',
       ],
-      { cwd: '/repo', input: 'plan it', timeoutMs: 1_000, omitEnv: setup.omitEnv },
+      {
+        cwd: '/repo',
+        input: 'plan it',
+        timeoutMs: 1_000,
+        omitEnv: setup.omitEnv,
+        onLine: expect.any(Function),
+      },
     )
   })
 
@@ -83,8 +109,31 @@ describe('codex', () => {
     ])
   })
 
+  it('answers with its last message, and reports its work as it goes', async () => {
+    prints(
+      [
+        { type: 'thread.started' },
+        codexAnswer('I will read the docs app first.'),
+        { type: 'item.started', item: { type: 'command_execution', command: 'ls apps/docs' } },
+        codexAnswer('# Plan\n\nStep one'),
+      ],
+      ['a warning'],
+    )
+    const progress: string[] = []
+    const plan = await provider('codex')
+      .create(setup)
+      .generate({ ...request, onProgress: (line) => progress.push(line) })
+    expect(plan).toBe('# Plan\n\nStep one')
+    expect(progress).toEqual([
+      'I will read the docs app first.',
+      '$ ls apps/docs',
+      '# Plan',
+      'a warning',
+    ])
+  })
+
   it('rejects an empty response', async () => {
-    run.mockResolvedValue({ stdout: ' \n', stderr: '', exitCode: 0 })
+    prints([{ type: 'turn.completed' }])
     await expect(provider('codex').create(setup).generate(request)).rejects.toThrow(
       'Codex returned an empty response',
     )
@@ -108,6 +157,10 @@ describe('codex', () => {
 })
 
 describe('claude', () => {
+  beforeEach(() => {
+    prints([claudeAnswer('  the plan \n')])
+  })
+
   it('runs claude in plan mode with read-only tools, without the secrets', async () => {
     const agent = provider('claude').create(setup)
     expect(agent).toMatchObject({ name: 'claude', label: 'Claude' })
@@ -117,13 +170,34 @@ describe('claude', () => {
     expect(args).toContain('--print')
     expect(args.join(' ')).toContain('--permission-mode plan')
     expect(args.join(' ')).toContain('--tools Read,Glob,Grep')
+    expect(args.join(' ')).toContain('--output-format stream-json --verbose')
     expect(args).not.toContain('--model')
     expect(options).toEqual({
       cwd: '/repo',
       input: 'plan it',
       timeoutMs: 1_000,
       omitEnv: setup.omitEnv,
+      onLine: expect.any(Function),
     })
+  })
+
+  it('answers with the result event, and shows a line that is not JSON as it is', async () => {
+    prints([
+      { type: 'system', subtype: 'init' },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'a.ts' } }] },
+      },
+      'not json',
+      claudeAnswer('the plan'),
+    ])
+    const progress: string[] = []
+    await expect(
+      provider('claude')
+        .create(setup)
+        .generate({ ...request, onProgress: (line) => progress.push(line) }),
+    ).resolves.toBe('the plan')
+    expect(progress).toEqual(['Read a.ts', 'not json'])
   })
 
   it('passes a model override', async () => {
@@ -176,6 +250,72 @@ describe('claude', () => {
     it('reports a non-Error failure', async () => {
       const checks = await authWith(() => rejectWith(42))
       expect(checks[1]).toEqual({ name: 'Claude auth', ok: false, detail: '42' })
+    })
+  })
+})
+
+describe('codexEvent', () => {
+  it('describes messages, reasoning, commands and other items', () => {
+    const done = (item: object) => codexEvent({ type: 'item.completed', item })
+    expect(done({ type: 'agent_message', text: 'Plan\nmore' })).toEqual({
+      progress: 'Plan',
+      result: 'Plan\nmore',
+    })
+    expect(done({ type: 'agent_message' })).toEqual({ progress: '', result: '' })
+    expect(done({ type: 'reasoning', text: 'Thinking about caching' })).toEqual({
+      progress: 'Thinking about caching',
+    })
+    expect(done({ type: 'reasoning' })).toEqual({ progress: '' })
+    expect(done({ type: 'command_execution', exit_code: 0 })).toEqual({})
+    expect(done({ type: 'command_execution', exit_code: 2 })).toEqual({ progress: 'exited 2' })
+    expect(done({ type: 'web_search' })).toEqual({ progress: 'web search' })
+    expect(codexEvent({ type: 'item.started', item: { type: 'command_execution' } })).toEqual({
+      progress: '$ ',
+    })
+    expect(codexEvent({ type: 'item.started', item: { type: 'reasoning' } })).toEqual({})
+    expect(codexEvent({ type: 'item.updated', item: { type: 'todo_list' } })).toEqual({})
+    expect(codexEvent({ type: 'turn.started' })).toEqual({})
+  })
+
+  it('reports failures', () => {
+    expect(codexEvent({ type: 'turn.failed', error: { message: 'quota' } })).toEqual({
+      progress: 'failed: quota',
+    })
+    expect(codexEvent({ type: 'turn.failed' })).toEqual({ progress: 'failed: unknown error' })
+    expect(codexEvent({ type: 'error', message: 'reconnecting' })).toEqual({
+      progress: 'error: reconnecting',
+    })
+    expect(codexEvent({ type: 'error' })).toEqual({ progress: 'error: unknown error' })
+  })
+})
+
+describe('claudeEvent', () => {
+  const says = (...content: object[]) => claudeEvent({ type: 'assistant', message: { content } })
+
+  it('describes text and tool calls, and skips the rest', () => {
+    expect(
+      says(
+        { type: 'text', text: 'Reading the docs app.\nThen the workflows.' },
+        { type: 'thinking', thinking: 'hidden' },
+        { type: 'tool_use', name: 'Grep', input: { limit: 3, pattern: 'deploy' } },
+        { type: 'tool_use', name: 'Glob', input: {} },
+        { type: 'tool_use' },
+        { type: 'text' },
+      ),
+    ).toEqual({ progress: 'Reading the docs app.\nGrep deploy\nGlob\ntool\n' })
+    expect(says({ type: 'thinking', thinking: 'hidden' })).toEqual({})
+    expect(claudeEvent({ type: 'assistant' })).toEqual({})
+    expect(claudeEvent({ type: 'system', subtype: 'init' })).toEqual({})
+  })
+
+  it('takes the answer from the result event, and reports an error result', () => {
+    expect(claudeEvent({ type: 'result', result: 'the plan' })).toEqual({ result: 'the plan' })
+    expect(claudeEvent({ type: 'result' })).toEqual({ result: '' })
+    expect(claudeEvent({ type: 'result', is_error: true, result: 'overloaded' })).toEqual({
+      progress: 'error: overloaded',
+    })
+    expect(claudeEvent({ type: 'result', is_error: true })).toEqual({
+      progress: 'error: unknown error',
     })
   })
 })

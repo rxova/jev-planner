@@ -5,6 +5,8 @@ export interface AgentRequest {
   prompt: string
   cwd: string
   timeoutMs: number
+  /** Called with a line about the agent's work as it happens: a message, a command, a file read. */
+  onProgress?: (line: string) => void
 }
 
 export interface PlanningAgent {
@@ -56,6 +58,8 @@ export interface PlanOptions {
    */
   allowAnyTask?: boolean
   onStage?: (message: string) => void
+  /** Called with each agent's progress lines while it works, as `AgentRequest.onProgress` gets them. */
+  onAgentProgress?: (agent: AgentName, line: string) => void
   /**
    * Called with every round's plans as soon as the round ends, and awaited:
    * a rejection stops the run. Rounds are numbered from 1 — the drafts, then

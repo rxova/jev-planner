@@ -109,7 +109,7 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--review-rounds 1` to disable Jev's optional second review pass.
-- `--verbose` to print Jev's typed verdict to stderr.
+- `--verbose` to watch the agents work, then print Jev's typed verdict to stderr (below).
 - `--rounds-dir <path>` to keep every round's plans, to see how they evolved (below).
 - `--allow-any-task` to plan text that looks like a placeholder.
 
@@ -144,6 +144,24 @@ jev-planner --rounds-dir rounds -o PLAN.md "Add caching to the search endpoint"
 ```
 
 From code, `onRound` in `Planner.plan`'s options receives the same rounds as `PlanRound` objects.
+
+## Watching the agents work
+
+A draft can take minutes. `--verbose` streams what each agent is doing to stderr as it happens, one
+line per step, prefixed with the agent:
+
+```text
+[jev-planner] Drafting independent plans with Codex and Claude…
+[claude] Grep deploy|pages
+[codex] I'll inspect the docs app and the workflows first.
+[codex] $ /bin/zsh -lc "ls apps/docs .github/workflows"
+[claude] Read apps/docs/astro.config.mjs
+```
+
+Codex and Claude run with JSON event output (`codex exec --json`, `claude --output-format
+stream-json`), so every message, command and file read is shown as the agent reaches it. A chat API
+agent answers in one response, so it shows only which model it is waiting on. From code, pass
+`onAgentProgress` in `Planner.plan`'s options.
 
 ## Cost and data flow
 

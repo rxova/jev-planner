@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 
@@ -35,6 +36,8 @@ export function runProcess(
     input?: string
     timeoutMs?: number
     omitEnv?: readonly string[]
+    /** Called with each non-blank line of either stream as it arrives, before the process ends. */
+    onLine?: (line: string, stream: 'stdout' | 'stderr') => void
   },
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
@@ -50,6 +53,19 @@ export function runProcess(
     const stderr: Buffer[] = []
     let outputBytes = 0
     let settled = false
+
+    // One decoder per stream, so a character split across two chunks is not garbled.
+    const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') }
+    const partial = { stdout: '', stderr: '' }
+    const emit = (stream: 'stdout' | 'stderr', chunk?: Buffer): void => {
+      const { onLine } = options
+      if (!onLine) return
+      const text = chunk ? decoders[stream].write(chunk) : decoders[stream].end()
+      const lines = `${partial[stream]}${text}`.split(/\r?\n/)
+      // Mid-stream, the last piece is an unfinished line; at the end, it is the last line.
+      partial[stream] = chunk ? (lines.pop() ?? '') : ''
+      for (const line of lines) if (line.trim()) onLine(line, stream)
+    }
 
     const finish = (callback: () => void): void => {
       if (settled) return
@@ -72,9 +88,11 @@ export function runProcess(
 
     child.stdout.on('data', (chunk: Buffer) => {
       collect(stdout, chunk)
+      emit('stdout', chunk)
     })
     child.stderr.on('data', (chunk: Buffer) => {
       collect(stderr, chunk)
+      emit('stderr', chunk)
     })
 
     child.on('error', (error) => {
@@ -84,6 +102,10 @@ export function runProcess(
     })
 
     child.on('close', (exitCode) => {
+      if (!settled) {
+        emit('stdout')
+        emit('stderr')
+      }
       finish(() => {
         const result = {
           stdout: Buffer.concat(stdout).toString('utf8'),

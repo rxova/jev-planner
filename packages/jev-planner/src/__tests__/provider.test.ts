@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runProcess } from '../process.js'
-import { API_AGENT_SYSTEM_PROMPT, cliProvider, openAICompatibleProvider } from '../provider.js'
+import {
+  API_AGENT_SYSTEM_PROMPT,
+  brief,
+  cliProvider,
+  openAICompatibleProvider,
+} from '../provider.js'
 import { repoSnapshot } from '../repo-context.js'
 
 vi.mock('../process.js', () => ({ runProcess: vi.fn() }))
@@ -14,6 +19,15 @@ beforeEach(() => {
   run.mockReset()
   snapshot.mockReset()
   snapshot.mockResolvedValue('<repository-snapshot/>')
+})
+
+describe('brief', () => {
+  it('keeps the first non-blank line, clipped', () => {
+    expect(brief('\n  first line  \nsecond')).toBe('first line')
+    expect(brief('abcdef', 4)).toBe('abc…')
+    expect(brief('abcd', 4)).toBe('abcd')
+    expect(brief('   ')).toBe('')
+  })
 })
 
 describe('cliProvider', () => {
@@ -37,6 +51,41 @@ describe('cliProvider', () => {
     await tool.create({ omitEnv: [], env: {} }).generate(request)
     await tool.create({ omitEnv: [], env: {}, model: 'm', effort: 'low' }).generate(request)
     expect(args.mock.calls).toEqual([[{}], [{ model: 'm', effort: 'low' }]])
+  })
+
+  it('reads events from stdout: progress as it comes, the last result as the answer', async () => {
+    run.mockImplementation((_command, _args, options) => {
+      for (const line of ['{"say":"step"}', '{"answer":"first"}', 'plain', '{"answer":"final"}']) {
+        options.onLine?.(line, 'stdout')
+      }
+      options.onLine?.('warning', 'stderr')
+      return Promise.resolve({ stdout: 'raw events', stderr: 'warning', exitCode: 0 })
+    })
+    const events = (event: unknown) => {
+      const { say, answer } = event as { say?: string; answer?: string }
+      return { ...(say ? { progress: say } : {}), ...(answer ? { result: answer } : {}) }
+    }
+    const progress: string[] = []
+    const plan = await cliProvider({ ...config, events })
+      .create({ omitEnv: [], env: {} })
+      .generate({ ...request, onProgress: (line) => progress.push(line) })
+    expect(plan).toBe('final')
+    expect(progress).toEqual(['step', 'plain', 'warning'])
+  })
+
+  it('without events, answers with stdout and reports only stderr lines', async () => {
+    run.mockImplementation((_command, _args, options) => {
+      options.onLine?.('the plan', 'stdout')
+      options.onLine?.('thinking', 'stderr')
+      return Promise.resolve({ stdout: 'the plan', stderr: 'thinking', exitCode: 0 })
+    })
+    const progress: string[] = []
+    const agent = cliProvider(config).create({ omitEnv: [], env: {} })
+    await expect(
+      agent.generate({ ...request, onProgress: (line) => progress.push(line) }),
+    ).resolves.toBe('the plan')
+    await expect(agent.generate(request)).resolves.toBe('the plan')
+    expect(progress).toEqual(['thinking'])
   })
 
   it('checks only the CLI when it has no auth check', async () => {
@@ -101,6 +150,15 @@ describe('openAICompatibleProvider', () => {
       ],
     })
     expect(snapshot).toHaveBeenCalledWith('/repo')
+  })
+
+  it('says which model it is waiting on', async () => {
+    const progress: string[] = []
+    await agentWith(vi.fn<typeof fetch>().mockResolvedValue(completion('ok'))).generate({
+      ...request,
+      onProgress: (line) => progress.push(line),
+    })
+    expect(progress).toEqual(['Waiting for acme-default to answer…'])
   })
 
   it('uses a model override, and snapshots each directory once per agent', async () => {

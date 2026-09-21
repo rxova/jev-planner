@@ -20,6 +20,24 @@ describe('runProcess', () => {
     expect(result).toEqual({ stdout: 'PLAN', stderr: 'note', exitCode: 0 })
   })
 
+  it('reports each line of both streams as it arrives', async () => {
+    const lines: string[] = []
+    // "é" is split across two writes, and the last line has no newline.
+    const source = [
+      "process.stdout.write('first li')",
+      "setTimeout(() => process.stdout.write('ne\\r\\n\\n  \\ncaf\\xc3', 'latin1'), 20)",
+      'setTimeout(() => process.stdout.write(Buffer.from([0xa9, 0x0a])), 40)',
+      "setTimeout(() => { process.stderr.write('working\\n'); process.stdout.write('last') }, 60)",
+    ].join('; ')
+    const result = await runProcess(node, script(source), {
+      cwd,
+      timeoutMs: 5_000,
+      onLine: (line, stream) => lines.push(`${stream}: ${line}`),
+    })
+    expect(lines).toEqual(['stdout: first line', 'stdout: café', 'stderr: working', 'stdout: last'])
+    expect(result.stdout).toBe('first line\r\n\n  \ncafé\nlast')
+  })
+
   it('can omit secrets from a child environment', async () => {
     const previous = process.env.JEV_PLAN_TEST_SECRET
     process.env.JEV_PLAN_TEST_SECRET = 'do-not-inherit'

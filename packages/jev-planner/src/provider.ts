@@ -38,6 +38,12 @@ export interface Provider {
   doctor(cwd: string, env: Env): Promise<CheckResult[]>
 }
 
+/** One line of progress from a longer text: its first non-blank line, clipped. */
+export function brief(text: string, max = 160): string {
+  const line = text.trim().split('\n', 1)[0]?.trim() ?? ''
+  return line.length <= max ? line : `${line.slice(0, max - 1)}…`
+}
+
 function requireOutput(label: string, output: string): string {
   const result = output.trim()
   if (!result) throw new Error(`${label} returned an empty response`)
@@ -57,6 +63,14 @@ export interface CliProviderConfig {
   args: (overrides: { model?: string; effort?: string }) => string[]
   /** Whether `args` passes an effort on, so `--effort` is accepted for it. */
   effort?: boolean
+  /**
+   * For a CLI whose `args` make it print its work as one JSON event per stdout
+   * line: what one event means. `progress` is shown while the agent works, and
+   * the last `result` any event gives is the answer. A line that is not JSON is
+   * shown as it is. Without `events`, stdout is the answer; either way, each
+   * stderr line is progress.
+   */
+  events?: (event: unknown) => { progress?: string; result?: string }
   /**
    * How `doctor` checks the login: arguments to `command` that exit 0 when
    * logged in, or a check of its own.
@@ -80,13 +94,31 @@ export function cliProvider(config: CliProviderConfig): Provider {
           ...(model === undefined ? {} : { model }),
           ...(effort === undefined ? {} : { effort }),
         }
+        const { events } = config
+        let answer = ''
+        const read = (line: string, stream: 'stdout' | 'stderr') => {
+          if (stream === 'stderr') return { progress: line }
+          if (!events) return {}
+          let event: unknown
+          try {
+            event = JSON.parse(line)
+          } catch {
+            return { progress: line }
+          }
+          return events(event)
+        }
         const { stdout } = await runProcess(config.command, config.args(overrides), {
           cwd: request.cwd,
           input: request.prompt,
           timeoutMs: request.timeoutMs,
           omitEnv,
+          onLine: (line, stream) => {
+            const { progress, result } = read(line, stream)
+            if (progress) request.onProgress?.(progress)
+            if (result !== undefined) answer = result
+          },
         })
-        return requireOutput(config.label, stdout)
+        return requireOutput(config.label, events ? answer : stdout)
       },
     }),
     doctor: (cwd) => {
@@ -151,6 +183,7 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
             snapshots.set(request.cwd, snapshot)
           }
 
+          request.onProgress?.(`Waiting for ${model} to answer…`)
           let response: Response
           try {
             response = await send(endpoint, {

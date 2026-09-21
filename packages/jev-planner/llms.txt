@@ -50,32 +50,32 @@ const { plan, verdict, finalizer } = await planner.plan({
 
 ## API
 
-| Export                     | Kind     | What it does                                                                                           |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
-| `Planner`                  | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize             |
-| `TypeSafeJevJudge`         | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                                    |
-| `PROVIDERS`                | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                |
-| `DEFAULT_AGENTS`           | const    | The ids used without `--agents`: `['codex', 'claude']`                                                 |
-| `cliProvider`              | function | Builds a `Provider` for an agent CLI run read-only in the repository                                   |
-| `openAICompatibleProvider` | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                            |
-| `runDoctor`                | function | `runDoctor(cwd, providers, env?)` runs each provider's checks and the Jev key check                    |
-| `ProcessError`             | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                       |
-| `TaskValidationError`      | class    | Thrown by `plan` before any call when the task is empty or a placeholder                               |
-| `Provider`                 | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                      |
-| `AgentSetup`               | type     | `{ model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given                           |
-| `CliProviderConfig`        | type     | `{ id, label, command, args({ model?, effort? }), effort?, auth? }`, `cliProvider`'s input             |
-| `OpenAICompatibleConfig`   | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                         |
-| `ProcessResult`            | type     | `{ stdout, stderr }` of a finished agent process                                                       |
-| `CheckResult`              | type     | `{ name, ok, detail }`, one `runDoctor` check                                                          |
-| `AgentName`                | type     | `string`: a provider id                                                                                |
-| `AgentRequest`             | type     | `{ prompt, cwd, timeoutMs }`, what a `PlanningAgent` is given                                          |
-| `PlanningAgent`            | type     | `{ name, label, generate(request) }`, the agent interface `Planner` drives                             |
-| `JudgedPlan`               | type     | `{ agent, label, plan }`, one revised plan as Jev sees it                                              |
-| `JevJudge`                 | type     | `{ judge({ task, plans, model? }) }`, returns a `JevVerdict`                                           |
-| `JevVerdict`               | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer                        |
-| `PlanOptions`              | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, allowAnyTask?, onStage?, onRound? }` |
-| `PlanResult`               | type     | `{ plan, verdict, finalizer, drafts }`; `drafts` maps agent name to revised plan                       |
-| `PlanRound`                | type     | `{ round, stage, plans, verdict? }`, one round's plans as `onRound` receives them                      |
+| Export                     | Kind     | What it does                                                                                                             |
+| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Planner`                  | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize                               |
+| `TypeSafeJevJudge`         | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                                                      |
+| `PROVIDERS`                | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                                  |
+| `DEFAULT_AGENTS`           | const    | The ids used without `--agents`: `['codex', 'claude']`                                                                   |
+| `cliProvider`              | function | Builds a `Provider` for an agent CLI run read-only in the repository                                                     |
+| `openAICompatibleProvider` | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                                              |
+| `runDoctor`                | function | `runDoctor(cwd, providers, env?)` runs each provider's checks and the Jev key check                                      |
+| `ProcessError`             | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                                         |
+| `TaskValidationError`      | class    | Thrown by `plan` before any call when the task is empty or a placeholder                                                 |
+| `Provider`                 | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                                        |
+| `AgentSetup`               | type     | `{ model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given                                             |
+| `CliProviderConfig`        | type     | `{ id, label, command, args({ model?, effort? }), effort?, events?, auth? }`, `cliProvider`'s input                      |
+| `OpenAICompatibleConfig`   | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                                           |
+| `ProcessResult`            | type     | `{ stdout, stderr }` of a finished agent process                                                                         |
+| `CheckResult`              | type     | `{ name, ok, detail }`, one `runDoctor` check                                                                            |
+| `AgentName`                | type     | `string`: a provider id                                                                                                  |
+| `AgentRequest`             | type     | `{ prompt, cwd, timeoutMs, onProgress? }`, what a `PlanningAgent` is given                                               |
+| `PlanningAgent`            | type     | `{ name, label, generate(request) }`, the agent interface `Planner` drives                                               |
+| `JudgedPlan`               | type     | `{ agent, label, plan }`, one revised plan as Jev sees it                                                                |
+| `JevJudge`                 | type     | `{ judge({ task, plans, model? }) }`, returns a `JevVerdict`                                                             |
+| `JevVerdict`               | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer                                          |
+| `PlanOptions`              | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, allowAnyTask?, onStage?, onAgentProgress?, onRound? }` |
+| `PlanResult`               | type     | `{ plan, verdict, finalizer, drafts }`; `drafts` maps agent name to revised plan                                         |
+| `PlanRound`                | type     | `{ round, stage, plans, verdict? }`, one round's plans as `onRound` receives them                                        |
 
 ## Mistakes to avoid
 
