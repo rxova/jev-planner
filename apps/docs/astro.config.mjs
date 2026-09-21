@@ -85,7 +85,8 @@ export default defineConfig({
           },
         },
       ],
-      customCss: ['./src/styles/theme.css'],
+      // The brand's Starlight mapping first; theme.css adjusts it.
+      customCss: ['@rxova/brand/starlight.css', './src/styles/theme.css'],
       // Wrap long lines instead of scrolling them. A scrolling code block is a
       // region keyboard users cannot reach (axe: scrollable-region-focusable),
       // and on a phone most commands on these pages are wider than the screen.

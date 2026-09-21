@@ -31,7 +31,7 @@ const base = import.meta.env.BASE_URL
     margin-bottom: 1.5rem;
     font-size: var(--sl-text-2xl);
     text-align: center;
-    color: var(--sl-color-white);
+    color: var(--rx-fg);
   }
   ul {
     display: grid;
@@ -44,21 +44,24 @@ const base = import.meta.env.BASE_URL
   li {
     position: relative;
     padding: 1.25rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.75rem;
-    background: var(--sl-color-gray-6);
-    transition: border-color 0.15s;
+    border: 1px solid var(--rx-rule);
+    border-radius: var(--rx-radius);
+    background: var(--rx-card);
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
   }
   li:hover,
   li:focus-within {
-    border-color: var(--sl-color-accent);
+    border-color: var(--rx-primary);
+    box-shadow: var(--rx-shadow-soft);
   }
   h3 {
     margin: 0 0 0.5rem;
     font-size: var(--sl-text-lg);
   }
   a {
-    color: var(--sl-color-white);
+    color: var(--rx-fg);
     text-decoration: none;
   }
   /* The whole card is the link's hit area; the link text stays the title. */
@@ -70,7 +73,7 @@ const base = import.meta.env.BASE_URL
   }
   p {
     margin: 0;
-    color: var(--sl-color-gray-2);
+    color: var(--rx-muted);
     font-size: var(--sl-text-sm);
     line-height: 1.6;
   }
