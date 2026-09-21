@@ -20,8 +20,9 @@ Pick the agents with `--agents`, two or more, comma-separated:
 ## Agent CLIs and chat APIs
 
 - **Agent CLIs** inspect the repository themselves, read-only: Codex runs in its read-only sandbox,
-  Claude Code in plan mode with only `Read`, `Glob` and `Grep`. They use the CLIs' existing logins,
-  so their calls consume your Codex and Claude subscription allowances, not API keys.
+  Claude Code in plan mode with only `Read`, `Glob` and `Grep` and none of your MCP servers. They use
+  the CLIs' existing logins, so their calls consume your Codex and Claude subscription allowances,
+  not API keys.
 - **Chat APIs** cannot open files. Each of their calls is sent with a snapshot of the repository:
   the list of files git tracks, and the contents of the tracked top-level docs and manifests
   (`AGENTS.md`, `CLAUDE.md`, `README.md`, `CONTRIBUTING.md`, `package.json`, …), within fixed size

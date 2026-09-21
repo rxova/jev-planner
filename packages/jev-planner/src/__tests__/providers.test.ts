@@ -170,6 +170,8 @@ describe('claude', () => {
     expect(args).toContain('--print')
     expect(args.join(' ')).toContain('--permission-mode plan')
     expect(args.join(' ')).toContain('--tools Read,Glob,Grep')
+    // Otherwise the user's MCP servers start too, and their tools are callable.
+    expect(args).toContain('--strict-mcp-config')
     expect(args.join(' ')).toContain('--output-format stream-json --verbose')
     expect(args).not.toContain('--model')
     expect(options).toEqual({
