@@ -14,9 +14,11 @@ const { command } = Astro.props
 ---
 
 <div class="copy-command not-content" data-copy-command>
-  <code>{command}</code>
-  <button type="button">Copy</button>
-  <span class="status" role="status" aria-live="polite"></span>
+  <div class="box">
+    <code>{command}</code>
+    <button type="button">Copy</button>
+  </div>
+  <p class="status" role="status" aria-live="polite"></p>
 </div>
 
 <script>
@@ -55,12 +57,14 @@ const { command } = Astro.props
 
 <style>
   .copy-command {
+    max-width: 36rem;
+    margin-inline: auto;
+  }
+  .box {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem 0.75rem;
-    max-width: 36rem;
-    margin-inline: auto;
     padding: 0.5rem 0.5rem 0.5rem 1rem;
     border: 1px solid var(--sl-color-gray-5);
     border-radius: 0.75rem;
@@ -94,9 +98,11 @@ const { command } = Astro.props
     background: var(--sl-color-accent);
     color: var(--sl-color-black);
   }
+  /* Outside the box, with its line reserved, so the message appearing moves nothing. */
   .status {
-    flex-basis: 100%;
-    min-height: 1.25rem;
+    min-height: 1.5em;
+    margin: 0.5rem 0 0;
+    text-align: center;
     font-size: var(--sl-text-sm);
     color: var(--sl-color-gray-2);
   }

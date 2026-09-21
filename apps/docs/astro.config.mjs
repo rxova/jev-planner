@@ -79,6 +79,10 @@ export default defineConfig({
         },
       ],
       customCss: ['./src/styles/theme.css'],
+      // Wrap long lines instead of scrolling them. A scrolling code block is a
+      // region keyboard users cannot reach (axe: scrollable-region-focusable),
+      // and on a phone most commands on these pages are wider than the screen.
+      expressiveCode: { defaultProps: { wrap: true } },
       sidebar: [
         { label: 'Learn', items: [{ autogenerate: { directory: 'learn' } }] },
         { label: 'Guides', items: [{ autogenerate: { directory: 'guides' } }] },
