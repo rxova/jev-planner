@@ -1,11 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" role="img" aria-labelledby="title">
   <title id="title">jev-planner</title>
-  <g fill="none" stroke="#f97316" stroke-linecap="round" stroke-linejoin="round">
+  <defs>
+    <!-- The rxova gradient: accent a, b and c from @rxova/brand tokens.css. -->
+    <linearGradient id="accent" gradientUnits="userSpaceOnUse" x1="4" y1="0" x2="55" y2="0">
+      <stop offset="0" stop-color="#0a84ff"/>
+      <stop offset="0.5" stop-color="#6b3df0"/>
+      <stop offset="1" stop-color="#e6199b"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#accent)" stroke-linecap="round" stroke-linejoin="round">
     <path d="M18 8h23l12 12v33a5 5 0 0 1-5 5H18a5 5 0 0 1-5-5V13a5 5 0 0 1 5-5Z" stroke-width="4"/>
     <path d="M40 8v13h13" stroke-width="4"/>
     <path d="M5 29h27c5 0 7-6 3-9" stroke-width="4"/>
     <path d="M8 38h31c6 0 8 8 3 11" stroke-width="4"/>
     <path d="M4 47h24" stroke-width="4"/>
   </g>
-  <text x="70" y="43" fill="#f8fafc" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="31" font-weight="700" letter-spacing="-1">jev-planner</text>
+  <text x="70" y="43" fill="#f2efe8" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="31" font-weight="700" letter-spacing="-1">jev-planner</text>
 </svg>

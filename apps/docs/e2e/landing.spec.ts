@@ -38,7 +38,25 @@ test('uses the logo for the home link', async ({ page }) => {
 
   const home = page.getByRole('link', { name: 'jev-planner', exact: true })
   await expect(home).toBeVisible()
-  await expect(home.locator('img:visible')).toHaveCount(1)
+  const logo = home.locator('img:visible')
+  await expect(logo).toHaveCount(1)
+  // A broken image is still visible; one that decoded has a width.
+  expect(await logo.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
+})
+
+test('serves a favicon that renders', async ({ page }) => {
+  await page.goto(LANDING)
+  const href = await page.locator('link[rel~="icon"]').first().getAttribute('href')
+  expect(href).toBeTruthy()
+  const width = await page.evaluate((src) => {
+    const img = new Image()
+    img.src = src
+    return img.decode().then(
+      () => img.naturalWidth,
+      () => 0,
+    )
+  }, href ?? '')
+  expect(width).toBeGreaterThan(0)
 })
 
 test('wears the rxova brand', async ({ page }) => {
