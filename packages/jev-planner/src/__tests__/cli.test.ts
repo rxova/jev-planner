@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -54,6 +54,10 @@ interface Harness {
 
 let dir: string
 
+/** The harness clock, so the default run folder has a known name. */
+const NOW = new Date('2026-09-21T23:05:12.345Z')
+const RUN = '20260921-230512'
+
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'jev-planner-cli-'))
 })
@@ -84,6 +88,7 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
       }
     },
     doctor: () => Promise.resolve([]),
+    now: () => NOW,
     ...overrides,
   }
   return {
@@ -131,7 +136,9 @@ describe('main', () => {
     expect(h.planned()).not.toHaveProperty('allowAnyTask')
     expect(h.setup()).toEqual({ agents: ['codex', 'claude'], models: {}, efforts: {} })
     expect(h.stdout()).toBe('# The plan\n')
-    expect(h.stderr()).toBe('[jev-planner] Drafting…\n')
+    expect(h.stderr()).toBe(
+      `[jev-planner] Writing rounds to ${join(dir, '.jev-planner', RUN)}\n[jev-planner] Drafting…\n`,
+    )
   })
 
   it('passes every option through to the planner', async () => {
@@ -287,10 +294,11 @@ describe('main', () => {
       await expect(read('final/jev-verdict.json')).resolves.toContain('"finalizer": "codex"')
     })
 
-    it('passes no round hook without the flag', async () => {
+    it('says where the rounds go', async () => {
       const h = harness()
-      await main(['task'], h.deps)
-      expect(h.planned()).not.toHaveProperty('onRound')
+      await main(['--rounds-dir', 'out', 'task'], h.deps)
+      expect(h.stderr()).toContain(`[jev-planner] Writing rounds to ${join(dir, 'out')}\n`)
+      await expect(readdir(dir)).resolves.toEqual(['out'])
     })
 
     it('reuses an empty folder, and refuses one with files in it', async () => {
@@ -311,6 +319,98 @@ describe('main', () => {
       await expect(main(['--rounds-dir', 'file', 'task'], h.deps)).resolves.toBe(1)
       expect(h.stderr()).toMatch(/^jev-planner: ENOTDIR/)
     })
+  })
+
+  describe('the default run folder', () => {
+    const rounds: PlanRound[] = [
+      { round: 1, stage: 'draft', plans: { codex: 'codex draft', claude: 'claude draft' } },
+      { round: 2, stage: 'final', plans: { codex: 'merged' }, verdict },
+    ]
+    const replaying = (): Partial<CliDeps> => ({
+      createPlanner: () => ({
+        plan: async (options) => {
+          for (const round of rounds) await options.onRound?.(round)
+          return result
+        },
+      }),
+    })
+    const home = () => join(dir, '.jev-planner')
+
+    it('writes the rounds to .jev-planner/<UTC start time>/ and keeps them out of git', async () => {
+      const h = harness(replaying())
+      await expect(main(['task'], h.deps)).resolves.toBe(0)
+      await expect(readFile(join(home(), RUN, 'round1', 'codex.md'), 'utf8')).resolves.toBe(
+        'codex draft\n',
+      )
+      await expect(readFile(join(home(), RUN, 'final', 'plan.md'), 'utf8')).resolves.toBe(
+        '<!-- merged by codex -->\nmerged\n',
+      )
+      await expect(readFile(join(home(), '.gitignore'), 'utf8')).resolves.toMatch(/^\*$/m)
+      expect(h.stderr()).toContain(`[jev-planner] Writing rounds to ${join(home(), RUN)}\n`)
+    })
+
+    it('never reuses a run folder, and leaves an existing .gitignore alone', async () => {
+      await main(['task'], harness().deps)
+      await writeFile(join(home(), '.gitignore'), 'mine\n')
+      await main(['task'], harness().deps)
+      await main(['task'], harness().deps)
+      await expect(readdir(home())).resolves.toEqual(
+        expect.arrayContaining([RUN, `${RUN}-2`, `${RUN}-3`]),
+      )
+      await expect(readFile(join(home(), '.gitignore'), 'utf8')).resolves.toBe('mine\n')
+    })
+
+    it('writes nothing with --no-rounds', async () => {
+      const h = harness()
+      await expect(main(['--no-rounds', 'task'], h.deps)).resolves.toBe(0)
+      expect(h.planned()).not.toHaveProperty('onRound')
+      await expect(readdir(dir)).resolves.toEqual([])
+      expect(h.stderr()).not.toContain('Writing rounds')
+    })
+
+    it('refuses --no-rounds with --rounds-dir, before planning', async () => {
+      const h = harness()
+      await expect(main(['--no-rounds', '--rounds-dir', 'out', 'task'], h.deps)).resolves.toBe(1)
+      expect(h.stderr()).toBe('jev-planner: Pass --rounds-dir or --no-rounds, not both\n')
+      expect(h.planned()).toBeUndefined()
+    })
+
+    it('creates nothing when the task is rejected', async () => {
+      await expect(main(['TODO'], harness().deps)).resolves.toBe(1)
+      await expect(readdir(dir)).resolves.toEqual([])
+    })
+
+    it('reports a .jev-planner it cannot write to', async () => {
+      await writeFile(home(), 'a file')
+      const h = harness()
+      await expect(main(['task'], h.deps)).resolves.toBe(1)
+      expect(h.stderr()).toMatch(/^jev-planner: EEXIST/)
+      expect(h.planned()).toBeUndefined()
+    })
+
+    // Permission bits do not stop root, and Windows ignores them.
+    const canLockOut = process.platform !== 'win32' && process.getuid?.() !== 0
+    it.runIf(canLockOut)(
+      'reports a read-only .jev-planner, with or without its .gitignore',
+      async () => {
+        await mkdir(home())
+        await chmod(home(), 0o555)
+        try {
+          const bare = harness()
+          await expect(main(['task'], bare.deps)).resolves.toBe(1)
+          expect(bare.stderr()).toMatch(/^jev-planner: EACCES.*\.gitignore/)
+
+          await chmod(home(), 0o755)
+          await writeFile(join(home(), '.gitignore'), '*\n')
+          await chmod(home(), 0o555)
+          const ignored = harness()
+          await expect(main(['task'], ignored.deps)).resolves.toBe(1)
+          expect(ignored.stderr()).toMatch(new RegExp(`^jev-planner: EACCES.*${RUN}`))
+        } finally {
+          await chmod(home(), 0o755)
+        }
+      },
+    )
   })
 
   describe('doctor', () => {
@@ -450,7 +550,10 @@ describe('main', () => {
     it('reports a non-Error failure', async () => {
       const h = harness({ createPlanner: () => ({ plan: () => rejectWith('planner down') }) })
       await expect(main(['task'], h.deps)).resolves.toBe(1)
-      expect(h.stderr()).toBe('jev-planner: planner down\n')
+      expect(h.stderr()).toBe(
+        `[jev-planner] Writing rounds to ${join(dir, '.jev-planner', RUN)}\n` +
+          'jev-planner: planner down\n',
+      )
     })
   })
 })
