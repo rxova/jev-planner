@@ -7,7 +7,28 @@ name: Docs
 #
 # Unit tests and `astro check` for apps/docs run in ci.yml with everything
 # else; this workflow owns what only the site has — the production build and
-# its checks, the browser tests, and the deploy.
+# its checks, the browser tests, the deploy, and a check of the live site.
+#
+# When it deploys: a push to main or a manual run on main, except the
+# `chore: version packages` push while RELEASE_ENABLED is on — release.yml
+# calls this workflow for that commit once jev-planner is on npm, with the
+# version it published. Every deploy writes version.json, and `verify` polls
+# the live one until it names this commit, so a deploy is not green until
+# jev-planner.com serves it. Weekly, `live` checks the domain on its own.
+#
+# One-off checks CI cannot make (see apps/docs/scripts/check-live-site.mjs for
+# the ones it does):
+#   1. The registrar's NS records are the Route 53 zone's; no wildcard, no stray
+#      apex or www record, no proxy in front of Pages.
+#   2. Any CAA record allows letsencrypt.org.
+#   3. The _github-pages-challenge-rxova TXT record exists (the organisation's
+#      verified domain, which stops anyone else claiming it on Pages).
+#   4. Pages: source "GitHub Actions", domain jev-planner.com, certificate
+#      issued, "Enforce HTTPS" on.
+#   5. The github-pages environment allows main and has no required reviewers.
+#   6. The domain auto-renews, and RELEASE_ENABLED is true once publishing is.
+#   7. In a clean browser: apex and www over http and https, both themes, on a
+#      phone — the certificate, the redirects, the logo and one docs page.
 
 on:
   push:
@@ -21,6 +42,22 @@ on:
       - 'packages/jev-planner/README.md'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
+  # From release.yml, after a publish that includes jev-planner.
+  workflow_call:
+    inputs:
+      released-version:
+        description: The jev-planner version just published; the build fails on any other.
+        type: string
+        required: false
+        default: ''
+      ref:
+        description: The release commit to build.
+        type: string
+        required: false
+        default: ''
+  # DNS, Pages settings and redirects drift without a commit to notice them.
+  schedule:
+    - cron: '23 6 * * 1'
 
 permissions:
   contents: read
@@ -28,17 +65,53 @@ permissions:
 # One group for every run that can deploy, and never cancelled: cancelling a
 # deploy mid-flight can leave Pages on the older site if the run that replaced
 # it then fails. Pull requests get a group of their own and are cancelled when
-# superseded, since only their latest commit matters.
+# superseded, since only their latest commit matters. The weekly check deploys
+# nothing, so it does not queue behind a deploy.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('docs-{0}', github.ref) || 'pages' }}
+  group: >-
+    ${{ github.event_name == 'pull_request' && format('docs-{0}', github.ref) ||
+    github.event_name == 'schedule' && 'docs-live' || 'pages' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
+      sha: ${{ steps.decide.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          # The parent, to tell a version bump from any other push.
+          fetch-depth: 2
+
+      - name: Decide whether this run deploys
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          RELEASED: ${{ inputs.released-version }}
+          RELEASE_ENABLED: ${{ vars.RELEASE_ENABLED }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          manifest=packages/jev-planner/package.json
+          now=$(jq -r .version "$manifest")
+          before=$(git show "HEAD^:$manifest" | jq -r .version || true)
+          if [ -n "$RELEASED" ]; then
+            deploy=true reason="release.yml published jev-planner $RELEASED"
+          elif [ "$EVENT" = pull_request ] || [ "$REF" != refs/heads/main ]; then
+            deploy=false reason="not main"
+          elif [ "$EVENT" = push ] && [ "$RELEASE_ENABLED" = true ] && [ "$now" != "$before" ]; then
+            deploy=false reason="the $before → $now bump; release.yml deploys it once it is on npm"
+          else
+            deploy=true reason="$EVENT on main"
+          fi
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          echo "Deploy: $deploy ($reason)"
+
       - uses: ./.github/actions/setup-pnpm
       - uses: ./.github/actions/turbo-cache
       - run: pnpm install --frozen-lockfile
@@ -46,11 +119,14 @@ jobs:
       # The build also runs starlight-links-validator, check-md-routes (every
       # page has its `.md` twin, llms.txt within budget) and check-site-build
       # (weight budgets, og.png, canonical and og URLs under the site, no link
-      # that skips the base).
+      # that skips the base, version.json). DOCS_RELEASE_VERSION, when set,
+      # fails the build unless the checkout is that version.
       - name: Build the site
         env:
           DOCS_URL: https://jev-planner.com
           DOCS_BASE_URL: /
+          DOCS_COMMIT: ${{ steps.decide.outputs.sha }}
+          DOCS_RELEASE_VERSION: ${{ inputs.released-version }}
         run: pnpm exec turbo run build --filter=@repo/docs
 
       # Keyed on the resolved Playwright version, which pins the browser build.
@@ -86,10 +162,10 @@ jobs:
           retention-days: 7
 
       - name: Configure Pages
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: steps.decide.outputs.deploy == 'true'
         uses: actions/configure-pages@v6
       - name: Upload the site
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: steps.decide.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: apps/docs/dist
@@ -106,19 +182,101 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      deployed: ${{ steps.fresh.outputs.fresh }}
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Runs queue in the `pages` group, so this one may start after a newer
+      # commit reached main — and that commit's own run deploys it. Deploying
+      # this one now would put the older site back, which is how a re-run of an
+      # old release would roll the docs back.
+      - name: Check this is still the newest commit on main
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.build.outputs.sha }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$head" = "$SHA" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main is at $head, not $SHA; its own run deploys it"
+          fi
       - name: Deploy to GitHub Pages
         id: deployment
+        if: steps.fresh.outputs.fresh == 'true'
         uses: actions/deploy-pages@v5
+
+  # From the outside: DNS, the Pages settings, the redirects, and version.json.
+  # After a deploy it must name this commit; after one skipped for a newer
+  # commit, this version or newer. Runs when the deploy failed too, so the
+  # report says what is live.
+  verify:
+    needs: [build, deploy]
+    if: always() && needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          sparse-checkout: |
+            .nvmrc
+            apps/docs/scripts
+            apps/docs/src/lib
+            packages/jev-planner/package.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Check the live site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.build.outputs.sha }}
+          # Only a deliberate skip relaxes the check; a failed deploy does not.
+          AT_LEAST: >-
+            ${{ needs.deploy.result == 'success' && needs.deploy.outputs.deployed == 'false'
+            && '--at-least' || '' }}
+        run: |
+          echo "Expecting jev-planner $(jq -r .version packages/jev-planner/package.json) at $SHA ${AT_LEAST}"
+          node apps/docs/scripts/check-live-site.mjs --commit "$SHA" $AT_LEAST
+
+  live:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .nvmrc
+            apps/docs/scripts
+            apps/docs/src/lib
+            packages/jev-planner/package.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Check DNS, the Pages settings and the redirects
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node apps/docs/scripts/check-live-site.mjs --config-only
 
   # Advisory: Lighthouse scores move with runner load, so a score is a signal to
   # look at, not a gate. apps/docs/lighthouserc.json asserts at `warn` only; the
