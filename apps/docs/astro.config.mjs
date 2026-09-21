@@ -59,6 +59,13 @@ export default defineConfig({
     }),
     starlight({
       title: 'jev-planner',
+      logo: {
+        dark: './src/assets/logo-dark.svg',
+        light: './src/assets/logo-light.svg',
+        // The visually hidden title below supplies the link's accessible name.
+        alt: '',
+        replacesTitle: true,
+      },
       description:
         'Repository-aware implementation plans from two or more AIs — Codex and Claude by ' +
         'default — cross-reviewed and arbitrated by TypeSafe Jev.',

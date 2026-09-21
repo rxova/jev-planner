@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/rxova/jev-planner/main/apps/docs/public/logo.svg" alt="jev-planner" width="320">
+</p>
+
 # jev-planner
 
 `jev-planner` creates repository-aware implementation plans by combining two or more AIs with
