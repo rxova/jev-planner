@@ -1,0 +1,103 @@
+---
+/**
+ * A shell command with a copy button — the only script the landing page adds.
+ *
+ * The command stays ordinary selectable text, so it can still be copied by hand
+ * when the Clipboard API is unavailable or refused. The status line is where the
+ * outcome is announced, for sighted and screen-reader users alike.
+ */
+interface Props {
+  command: string
+}
+
+const { command } = Astro.props
+---
+
+<div class="copy-command not-content" data-copy-command>
+  <code>{command}</code>
+  <button type="button">Copy</button>
+  <span class="status" role="status" aria-live="polite"></span>
+</div>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('[data-copy-command]')) {
+    const code = root.querySelector('code')
+    const button = root.querySelector('button')
+    const status = root.querySelector<HTMLElement>('.status')
+    if (!code || !button || !status) continue
+
+    const say = (message: string) => {
+      status.textContent = message
+    }
+
+    button.addEventListener('click', () => {
+      // `navigator.clipboard` is missing outright outside a secure context, so
+      // the call goes inside the promise, where that lands in the same fallback.
+      Promise.resolve()
+        .then(() => navigator.clipboard.writeText(code.textContent))
+        .then(
+        () => {
+          say('Copied to clipboard')
+        },
+        () => {
+          // Leave the command selected so one keystroke finishes the job.
+          const range = document.createRange()
+          range.selectNodeContents(code)
+          const selection = window.getSelection()
+          selection?.removeAllRanges()
+          selection?.addRange(range)
+          say('Could not copy — the command is selected, press Ctrl+C or ⌘C')
+        },
+      )
+    })
+  }
+</script>
+
+<style>
+  .copy-command {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    max-width: 36rem;
+    margin-inline: auto;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+    background: var(--sl-color-black);
+  }
+  code {
+    flex: 1 1 14rem;
+    font-family: var(--sl-font-mono);
+    font-size: var(--sl-text-base);
+    color: var(--sl-color-white);
+    overflow-wrap: anywhere;
+  }
+  code::before {
+    content: '$ ' / '';
+    color: var(--sl-color-gray-3);
+    user-select: none;
+  }
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 1rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 0.5rem;
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-text-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover {
+    background: var(--sl-color-accent);
+    color: var(--sl-color-black);
+  }
+  .status {
+    flex-basis: 100%;
+    min-height: 1.25rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+</style>

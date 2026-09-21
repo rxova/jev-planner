@@ -1,0 +1,48 @@
+---
+/**
+ * The landing page.
+ *
+ * A Starlight splash page rather than a standalone one, so it shares the docs'
+ * header, search, theme picker and saved theme, skip link and canonical tags —
+ * one theme system, not two. Its copy lives in components/landing/content.mjs,
+ * which the `.md` twin at index.md.ts renders too.
+ */
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+
+import CopyCommand from '../components/landing/CopyCommand.astro'
+import FeatureGrid from '../components/landing/FeatureGrid.astro'
+import TerminalDemo from '../components/landing/TerminalDemo.astro'
+import { GET_STARTED, GITHUB, INSTALL, TAGLINE, TITLE } from '../components/landing/content.mjs'
+import { withBase } from '../lib/base-url.mjs'
+
+const base = import.meta.env.BASE_URL
+
+// Starlight titles a page "<title> | jev-planner", so the page title is the
+// pitch and the hero carries the name — otherwise the tab reads the name twice.
+const pageTitle = 'Multi-agent implementation plans, arbitrated by Jev'
+---
+
+<StarlightPage
+  frontmatter={{
+    title: pageTitle,
+    description: TAGLINE,
+    template: 'splash',
+    hero: {
+      title: TITLE,
+      tagline: TAGLINE,
+      actions: [
+        {
+          text: 'Get started',
+          link: withBase(GET_STARTED, base),
+          icon: 'right-arrow',
+          variant: 'primary',
+        },
+        { text: 'GitHub', link: GITHUB, icon: 'github', variant: 'minimal' },
+      ],
+    },
+  }}
+>
+  <CopyCommand command={INSTALL} />
+  <TerminalDemo />
+  <FeatureGrid />
+</StarlightPage>
