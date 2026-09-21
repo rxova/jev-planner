@@ -13,3 +13,15 @@ fetchTimeout: 15000
 fetchRetries: 1
 fetchRetryMintimeout: 5000
 fetchRetryMaxtimeout: 10000
+
+# The release-age quarantine holds a freshly published version back for a day, to
+# blunt supply-chain attacks on packages nobody here controls. @rxova/brand is
+# ours, published from rxova/brand, so waiting one out only delays our own design
+# changes — and without the exclusion `pnpm install` refuses the lockfile
+# outright on the day of a bump.
+#
+# By name rather than by version, matching rxova/rxova-website: `pnpm add` writes
+# the exact version if you let it, which leaves a line that means nothing a day
+# later and has to be renewed at every release.
+minimumReleaseAgeExclude:
+  - '@rxova/brand'

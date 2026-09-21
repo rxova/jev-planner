@@ -27,6 +27,15 @@ import { execSync } from 'node:child_process'
 import { isEntry } from './entry.js'
 
 export const STEPS: [name: string, command: string][] = [
+  // One version of each dependency across the workspace. Two packages on two
+  // minors of the same library typecheck fine and then disagree at runtime.
+  ['dependency versions', 'pnpm run sherif:check'],
+  // Unused files, exports and dependencies. The only check here that notices
+  // an export nothing imports.
+  ['unused files, exports and dependencies', 'pnpm run knip:check'],
+  // Both of the above come first on purpose: `pnpm dedupe --check` removes the
+  // modules directory when CI is set, so a step placed after it on a cache miss
+  // runs without node_modules and fails looking for its own binary.
   ['dependency dedupe', 'pnpm exec turbo run //#dedupe:check'],
   ['format', 'pnpm run format:check'],
   ['lint', 'pnpm run lint'],

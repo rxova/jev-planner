@@ -4,6 +4,8 @@ import { STEPS, shell, verify } from '../verify.js'
 describe('STEPS', () => {
   it('covers every check CI runs, cheapest first', () => {
     expect(STEPS.map(([name]) => name)).toEqual([
+      'dependency versions',
+      'unused files, exports and dependencies',
       'dependency dedupe',
       'format',
       'lint',

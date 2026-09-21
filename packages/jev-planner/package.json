@@ -60,13 +60,13 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@repo/config": "workspace:*",
-    "@types/node": "^26.5.1",
-    "@vitest/coverage-v8": "^5.0.0",
+    "@types/node": "^26.6.1",
+    "@vitest/coverage-v8": "^5.0.1",
     "publint": "^0.3.24",
     "tsdown": "^0.23.0",
     "tsx": "^4.23.13",
     "typescript": "6.0.3",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.1"
   },
   "publishConfig": {
     "access": "public"

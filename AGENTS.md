@@ -18,7 +18,9 @@ pnpm + Turborepo monorepo. Node >= 22.13 to develop. TypeScript everywhere.
 
 ## Commands
 
-- `pnpm run verify` — the full gate, every check CI runs. Run it before saying work is done.
+- `pnpm run verify` — the pre-push gate, in CI's order. Every check CI runs except two:
+  `audit:check`, left to CI on purpose so a newly disclosed advisory cannot block an unrelated
+  push (`verify.test.ts` pins that omission), and `pack:smoke`. Run it before saying work is done.
 - `pnpm test` / `pnpm typecheck` / `pnpm lint` / `pnpm format` — the pieces.
 - `pnpm --filter <package> test` — one package.
 - `pnpm run check:llms` — each `llms.txt` against the package exports; part of `verify`.
