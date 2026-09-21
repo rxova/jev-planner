@@ -1,0 +1,15 @@
+packages:
+  - packages/*
+  - apps/*
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+# The advisory lookup in `audit:check` is the one request whose answer is
+# optional, and pnpm's defaults (60s timeout, two retries) turn a registry outage
+# into minutes of waiting. One short retry is enough. These are pnpm settings, so
+# they live here: pnpm only reads npm-compatible keys from .npmrc.
+fetchTimeout: 15000
+fetchRetries: 1
+fetchRetryMintimeout: 5000
+fetchRetryMaxtimeout: 10000

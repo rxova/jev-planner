@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -e
+
+# eslint --fix + prettier --write over exactly the staged files.
+pnpm exec lint-staged
+
+# The whole-program checks lint-staged cannot do per file. Turbo replays every
+# package whose inputs did not change, so this only re-checks what moved.
+pnpm exec turbo run typecheck test

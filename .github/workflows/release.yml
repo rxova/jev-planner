@@ -1,0 +1,66 @@
+name: Release
+
+# Runs only after CI has gone green on main, so nothing publishes that a pull
+# request would have been blocked on. changesets/action opens a
+# `chore: version packages` pull request and publishes only once that pull
+# request is merged — a bad bump is visible before it is on npm, immutably.
+#
+# Publishing is opt-in: set the repository variable RELEASE_ENABLED to `true`
+# once npm trusted publishing is configured (see the README). Until then, and
+# always on the template repository itself, this job is skipped.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # workflow_run fires on failure as well, so the conclusion is checked.
+    if: >-
+      !github.event.repository.is_template &&
+      vars.RELEASE_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The version commit would otherwise fire the pre-commit hook. CI already
+      # gated this code on the pull request.
+      HUSKY: '0'
+    permissions:
+      contents: write # version commit and tags
+      pull-requests: write # the version pull request
+      id-token: write # npm trusted publishing (OIDC), with provenance
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # By name, not the workflow_run's detached SHA, so the action knows
+          # its base branch when it opens the version pull request.
+          ref: main
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          registry-url: 'https://registry.npmjs.org'
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@^11.5.1
+      - run: pnpm install --frozen-lockfile
+
+      - name: Create version PR or publish
+        uses: changesets/action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: pnpm exec changeset version
+          # Builds only the published packages, then `changeset publish`.
+          publish-script: pnpm run release
+          commit-message: 'chore: version packages'
+          pr-title: 'chore: version packages'
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'

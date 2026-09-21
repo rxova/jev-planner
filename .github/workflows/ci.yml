@@ -1,0 +1,297 @@
+name: CI
+
+# Public repositories get Actions minutes for free, so this workflow spends them
+# on breadth: every job runs in parallel, tests run on two Node versions across
+# three operating systems, and nothing is traded away to save time.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # No `edited`: it fires on body edits too, and the title check lives in
+    # pr-title.yml. `labeled`/`unlabeled` stay, because the changeset gate's
+    # escape hatch is a label and adding one has to re-run the checks.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+# One lane per ref. On main nothing is cancelled: the release commit that
+# follows a merge skips the matrix because it trusts its parent's verdict, so
+# that verdict has to be one that finished. Superseded pull request runs stay
+# cancellable — the branch is judged again on its next push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # The root of the graph. It runs on push as well as pull_request on purpose:
+  # a skipped job skips its dependents, so gating it on pull_request alone would
+  # silently skip the whole workflow on main.
+  commitlint:
+    name: commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      # Every job that reads the tree is gated on this. The only thing that sets
+      # it to false is a release commit (version + changelog only).
+      code-changed: ${{ steps.scope.outputs.code-changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Decide whether this commit touched the tree
+        id: scope
+        env:
+          BASE_SHA: >-
+            ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: >-
+            ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.head.sha || github.sha }}
+        run: node --import tsx ./packages/tooling/check-scope.ts
+
+      - name: Lint the branch commits
+        if: github.event_name == 'pull_request'
+        run: >-
+          pnpm exec commitlint --verbose
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
+
+      - name: Lint the pushed commit
+        if: github.event_name == 'push'
+        run: pnpm exec commitlint --last --verbose
+
+  checks:
+    name: lint · format · types · build
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/turbo-cache
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Check formatting
+        run: pnpm format:check
+      # The docs app is built by the `docs` job below, at the base path Pages
+      # serves it from — the only build of it whose output matters.
+      - name: Build
+        run: pnpm exec turbo run build --filter='!docs'
+      - name: Typecheck
+        run: pnpm exec turbo run typecheck
+
+  test:
+    name: unit (node ${{ matrix.node-version }}, ${{ matrix.os }})
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the major `engines` promises; 24 is
+        # current LTS. Path separators, line endings and the shell all differ
+        # on Windows, and only a Windows leg would notice.
+        node-version: [22, 24]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ matrix.node-version }}
+      # Turbo hashes files and env, not the Node binary, and the cache action
+      # keys on the job name — one string for every leg. Naming the partition
+      # after the leg keeps one Node from replaying a result from another.
+      - uses: ./.github/actions/turbo-cache
+        with:
+          key: unit-${{ matrix.os }}-node${{ matrix.node-version }}
+      - run: pnpm install --frozen-lockfile
+      - name: Test with coverage thresholds
+        run: pnpm test
+      # One leg reports, so the numbers are never averaged across platforms.
+      # Informational: vitest's per-file thresholds are the real gate, and an
+      # outage at the coverage service must not turn a pull request red.
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 24
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  supply-chain:
+    name: audit · sherif · knip · dedupe
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/turbo-cache
+      - run: pnpm install --frozen-lockfile
+      # Not a Turbo task: its verdict changes with the advisory database, not
+      # with any file here, so a cached pass could replay over a fresh CVE.
+      # `--ignore-registry-errors` keeps an unreachable advisory endpoint from
+      # failing the job; `timeout-minutes` is the backstop.
+      - name: Audit dependencies
+        timeout-minutes: 5
+        run: pnpm run audit:check
+      # One version of each dependency across the workspace. Two packages on
+      # two minors of the same library typecheck fine and then disagree at
+      # runtime.
+      - name: Check dependency versions across the workspace
+        run: pnpm run sherif:check
+      # Unused files, exports and dependencies. The only check here that
+      # notices an export nothing imports.
+      - name: Check for unused files, exports and dependencies
+        run: pnpm run knip:check
+      # Last, and it has to stay last: `pnpm dedupe --check` removes the
+      # modules directory when CI is set, so any step after it runs without
+      # node_modules and fails looking for its own binary.
+      - name: Check dependency dedupe
+        run: pnpm exec turbo run //#dedupe:check
+
+  pack-smoke:
+    name: package contract
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/turbo-cache
+      - run: pnpm install --frozen-lockfile
+      - name: Publint and Are The Types Wrong
+        run: pnpm run check:exports
+      # Packs the real tarball, installs it into a scratch project and imports
+      # it with plain Node. The only check that catches a `files` entry that
+      # dropped dist.
+      - name: Pack smoke test
+        run: pnpm run pack:smoke
+
+  # The unit matrix runs the newest release of each Node major, which says little
+  # about the oldest one `engines` promises: minors add APIs, and `>=22.13` is a
+  # promise about 22.13. This installs each packed tarball on exactly that floor,
+  # read from the manifests so lowering the promise moves the job with it.
+  # Plain `node` from the switch on, never pnpm or Turbo: Turbo does not hash the
+  # Node binary, so it would replay a result from another version, and the
+  # toolchain has floors of its own that a project is free to go below.
+  compat:
+    name: packages on their oldest node
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/turbo-cache
+        with:
+          key: compat
+      - run: pnpm install --frozen-lockfile
+      - name: Read the Node floor from engines
+        id: floor
+        run: node --import tsx ./packages/tooling/node-floor.ts
+      - name: Build
+        if: steps.floor.outputs.version != ''
+        run: pnpm exec turbo run build --filter='./packages/*'
+      - name: Switch to Node ${{ steps.floor.outputs.version }}
+        if: steps.floor.outputs.version != ''
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ steps.floor.outputs.version }}
+      - name: Pack, install and import each package on the floor
+        if: steps.floor.outputs.version != ''
+        env:
+          PACKAGES: ${{ steps.floor.outputs.packages }}
+        run: |
+          node --version
+          for dir in $PACKAGES; do
+            (cd "$dir" && node --import tsx ../tooling/pack-smoke.ts)
+          done
+
+  docs:
+    name: docs build
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/turbo-cache
+      - run: pnpm install --frozen-lockfile
+      # At the base path Pages serves it from, so an absolute link that only
+      # works at a domain root fails here. The build also runs
+      # starlight-links-validator, so a broken internal link fails too.
+      - name: Build the docs at the Pages base path
+        env:
+          DOCS_URL: https://${{ github.repository_owner }}.github.io
+          DOCS_BASE_URL: /${{ github.event.repository.name }}/
+        run: pnpm exec turbo run build --filter=docs
+
+  changeset:
+    name: changeset present
+    needs: [commitlint]
+    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require a changeset when a published package changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Still runs and reports rather than being skipped by an `if:`, so that
+          # honouring the label is visible in a log somebody can read.
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: node --import tsx ./packages/tooling/check-changeset.ts
+
+  # The single context branch protection should require, and the only job here
+  # that never skips. Matrix jobs skipped before expansion report under their
+  # unexpanded name, and a `skipped` report never satisfies a required context,
+  # so requiring the jobs one by one does not work. `skipped` is an answer this
+  # workflow gives deliberately (a release commit, a push with no pull request),
+  # so the gate accepts it; `cancelled` and `failure` it does not.
+  gate:
+    name: all checks
+    if: always()
+    needs:
+      - commitlint
+      - checks
+      - test
+      - supply-chain
+      - pack-smoke
+      - compat
+      - docs
+      - changeset
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to have passed or skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$RESULTS"
+          bad=$(echo "$RESULTS" | jq -r 'to_entries
+            | map(select(.value.result != "success" and .value.result != "skipped"))
+            | .[] | "\(.key): \(.value.result)"')
+          if [ -n "$bad" ]; then
+            echo "::error::a required job did not pass"
+            echo "$bad"
+            exit 1
+          fi
+          echo "every job passed or was deliberately skipped"

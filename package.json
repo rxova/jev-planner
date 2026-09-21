@@ -1,0 +1,63 @@
+{
+  "name": "template-oss",
+  "private": true,
+  "description": "Template for rxova open-source TypeScript projects.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rxova/template-oss.git"
+  },
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run eslint:check",
+    "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint/.eslintcache",
+    "eslint:check": "eslint . --cache --cache-location node_modules/.cache/eslint/.eslintcache",
+    "format": "prettier --write . --cache --cache-location node_modules/.cache/prettier/.prettiercache",
+    "format:check": "turbo run prettier:check",
+    "prettier:check": "prettier --check . --cache --cache-location node_modules/.cache/prettier/.prettiercache",
+    "audit:check": "pnpm audit --audit-level=high --ignore-registry-errors",
+    "dedupe:check": "pnpm dedupe --check",
+    "sherif:check": "sherif --fail-on-warnings",
+    "knip:check": "knip",
+    "check:exports": "turbo run check:exports",
+    "pack:smoke": "turbo run pack:smoke --concurrency=1",
+    "docs": "pnpm --filter docs dev",
+    "changeset": "changeset",
+    "release": "turbo run build --filter=./packages/* && changeset publish",
+    "verify": "node --import tsx ./packages/tooling/verify.ts",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,jsonc,css,md,mdx,yaml,yml}": "prettier --write"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.2",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "husky": "^9.1.7",
+    "knip": "^6.37.0",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.8",
+    "sherif": "^1.13.0",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}

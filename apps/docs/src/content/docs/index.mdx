@@ -1,0 +1,26 @@
+---
+title: template-oss
+description: Documentation for template-oss.
+template: splash
+hero:
+  tagline: Replace this page with what the project does, in one sentence.
+  actions:
+    - text: Get started
+      link: start/getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/rxova/template-oss
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Install" icon="add-document">
+    `pnpm add @rxova/example`
+  </Card>
+  <Card title="Use" icon="rocket">
+    `greet('Ada')` returns `'Hello, Ada.'`
+  </Card>
+</CardGrid>

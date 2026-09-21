@@ -1,0 +1,21 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": ["dist/**"],
+      // These decide the mount and therefore every emitted URL, so they belong
+      // in the cache key: without them a root-base build could replay for the
+      // Pages build in CI. Declared here rather than on the root task so that
+      // setting them does not also invalidate the package builds.
+      "env": ["DOCS_URL", "DOCS_BASE_URL"],
+      "outputLogs": "new-only"
+    },
+    // `astro check` generates the content types it needs itself.
+    "typecheck": {
+      "dependsOn": [],
+      "outputs": [],
+      "outputLogs": "new-only"
+    }
+  }
+}

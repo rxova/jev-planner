@@ -1,0 +1,21 @@
+name: Turbo cache
+description: Restore and save the local Turbo cache across runs.
+
+inputs:
+  key:
+    description: >-
+      Cache partition. Defaults to the job name, which is one string for every
+      leg of a matrix — pass a distinct value per leg so one Node version cannot
+      replay a result computed under another.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v6
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ inputs.key || github.job }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ inputs.key || github.job }}-

@@ -1,0 +1,27 @@
+# The numbers themselves are enforced by vitest — every package fails its own
+# `test` run below 95% per file — so this file exists for what a local threshold
+# cannot do: judge a *diff*. The project gate is slack; the patch gate is not.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.5%
+    patch:
+      default:
+        target: 90%
+        threshold: 0%
+
+comment:
+  layout: 'condensed_header, diff, flags, components'
+  require_changes: true
+
+flag_management:
+  default_rules:
+    carryforward: true
+
+ignore:
+  - 'apps/**'
+  - 'packages/tooling/**'
+  - '**/*.test.ts'
+  - '**/__tests__/**'

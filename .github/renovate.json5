@@ -1,0 +1,70 @@
+// Weekly, grouped, and patch/minor updates merge themselves once the required
+// `all checks` status passes. A major bump always gets its own pull request and
+// waits for a human.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended', ':semanticCommitTypeAll(chore)'],
+  schedule: ['before 6am on monday'],
+  timezone: 'Etc/UTC',
+
+  // `skip-changeset` is the escape hatch the changeset gate reads: a bump
+  // changes what the repository builds with, never what it publishes. Both
+  // labels must exist — see the README.
+  labels: ['dependencies', 'skip-changeset'],
+
+  // Rewrite the range in package.json too, not just the lockfile, so the
+  // manifest says what is actually installed.
+  rangeStrategy: 'bump',
+
+  // One bump rewrites transitive versions as well; without a dedupe pass the
+  // lockfile keeps the old copies and `dedupe:check` fails the pull request.
+  postUpdateOptions: ['pnpmDedupe'],
+
+  // pnpm refuses to install a release younger than its minimumReleaseAge, so a
+  // fresh publish would fail CI anyway. Waiting also sidesteps the window in
+  // which a compromised release is usually caught and unpublished. `strict`
+  // holds the pull request back until the age is met, instead of opening one
+  // that cannot go green yet.
+  minimumReleaseAge: '3 days',
+  internalChecksFilter: 'strict',
+
+  // GitHub's native auto-merge, with the only method the org rulesets allow.
+  automergeType: 'pr',
+  automergeStrategy: 'rebase',
+  platformAutomerge: true,
+
+  lockFileMaintenance: {
+    enabled: true,
+    automerge: true,
+    schedule: ['before 6am on monday'],
+  },
+
+  packageRules: [
+    {
+      description: 'One pull request for every patch and minor npm update.',
+      matchManagers: ['npm'],
+      matchUpdateTypes: ['minor', 'patch'],
+      groupName: 'npm non-major dependencies',
+      groupSlug: 'npm-non-major',
+      automerge: true,
+    },
+    {
+      description: 'One pull request for every patch and minor GitHub Actions update.',
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['minor', 'patch'],
+      groupName: 'github actions',
+      groupSlug: 'github-actions',
+      automerge: true,
+    },
+    {
+      description: 'typescript-eslint and the Astro checker lag a TypeScript major.',
+      matchPackageNames: ['typescript'],
+      allowedVersions: '<7',
+    },
+    {
+      description: 'engines.node is a promise to consumers, raised on purpose, never by a bot.',
+      matchDepTypes: ['engines'],
+      enabled: false,
+    },
+  ],
+}

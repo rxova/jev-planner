@@ -1,0 +1,74 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalDependencies": ["tsconfig.base.json", ".nvmrc"],
+  "globalPassThroughEnv": ["CI"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      // Tests and prose cannot change dist, so editing them should not cost a rebuild.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.test.ts",
+        "!**/__tests__/**",
+        "!README.md",
+        "!CHANGELOG.md"
+      ],
+      "outputLogs": "new-only"
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "outputLogs": "new-only"
+    },
+    // publint and attw read the manifest and the emitted types.
+    "check:exports": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    // Packs the real tarball and imports it from a scratch project. Keyed on the
+    // shared script too, so editing the checker re-runs it instead of replaying.
+    "pack:smoke": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/tooling/pack-smoke.ts"],
+      "outputLogs": "new-only"
+    },
+    // Root tasks (`//#`): each reads the whole tree in one pass, so there is
+    // nothing to fan out, but caching them makes an unchanged tree free.
+    "//#eslint:check": {
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.{md,mdx,css,svg,png,jpg,jpeg,webp,txt}", "!LICENSE"],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    "//#prettier:check": {
+      "inputs": ["$TURBO_DEFAULT$", "!pnpm-lock.yaml", "!**/CHANGELOG.md"],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    // Keyed on exactly the files that feed it. audit:check is deliberately not a
+    // task: its verdict changes with the advisory database, not with this tree.
+    "//#dedupe:check": {
+      "inputs": [
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "package.json",
+        "packages/*/package.json",
+        "apps/*/package.json"
+      ],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

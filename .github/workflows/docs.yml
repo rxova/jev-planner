@@ -1,0 +1,87 @@
+name: Docs
+
+# Publishes apps/docs to GitHub Pages on every push to main. Pull requests are
+# covered by CI's `docs build` job, which builds at the same base path.
+#
+# Skipped on the template repository itself, and quietly skipped (with a
+# notice) until Pages is switched on: Settings → Pages → Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/docs/**'
+      - 'packages/*/src/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Queued, never cancelled: this run is the publish, and cancelling one midway
+# risks Pages keeping stale docs if the run that replaced it then fails.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: read
+    outputs:
+      enabled: ${{ steps.pages.outputs.enabled }}
+    steps:
+      - name: Check that Pages is enabled
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/pages" --silent 2>/dev/null; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::GitHub Pages is not enabled; skipping the deploy. Settings → Pages → Source: GitHub Actions."
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: actions/checkout@v7
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: ./.github/actions/setup-pnpm
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: ./.github/actions/turbo-cache
+      - if: steps.pages.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the docs at the Pages base path
+        if: steps.pages.outputs.enabled == 'true'
+        env:
+          DOCS_URL: https://${{ github.repository_owner }}.github.io
+          DOCS_BASE_URL: /${{ github.event.repository.name }}/
+        run: pnpm exec turbo run build --filter=docs
+
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: actions/configure-pages@v6
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: apps/docs/dist
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
