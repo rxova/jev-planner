@@ -12,6 +12,13 @@ import type {
   RunTimings,
 } from './types.js'
 
+/**
+ * A call after the draft: a cross-review or the synthesis. It takes the
+ * review effort, and a shorter prompt for an agent continuing its session.
+ * `undefined` for a draft.
+ */
+type Later = { resumePrompt: string | undefined } | undefined
+
 /** One agent's current plan. */
 interface Draft {
   agent: PlanningAgent
@@ -91,11 +98,15 @@ export class Planner {
     const sessions = new Map<PlanningAgent, AgentSession>(
       resume ? this.agents.map((agent) => [agent, {}]) : [],
     )
-    const request = (agent: PlanningAgent, prompt: string, resumePrompt?: string) => {
+    const request = (agent: PlanningAgent, prompt: string, later: Later) => {
       const session = sessions.get(agent)
+      const effort = later ? options.reviewEfforts?.[agent.name] : undefined
       return {
         prompt,
-        ...(session ? { session, ...(resumePrompt === undefined ? {} : { resumePrompt }) } : {}),
+        ...(session
+          ? { session, ...(later?.resumePrompt ? { resumePrompt: later.resumePrompt } : {}) }
+          : {}),
+        ...(effort === undefined ? {} : { effort }),
         cwd: options.cwd,
         timeoutMs: options.timeoutMs,
         ...(onAgentProgress
@@ -107,9 +118,9 @@ export class Planner {
           : {}),
       }
     }
-    const call = (agent: PlanningAgent, prompt: string, resumePrompt?: string) =>
+    const call = (agent: PlanningAgent, prompt: string, later: Later) =>
       timed(
-        () => agent.generate(request(agent, prompt, resumePrompt)),
+        () => agent.generate(request(agent, prompt, later)),
         (ms) => {
           agentMs[agent.name] = ms
         },
@@ -117,10 +128,10 @@ export class Planner {
     const generate = async (
       agent: PlanningAgent,
       prompt: string,
-      resumePrompt?: string,
+      later: Later,
     ): Promise<Draft> => ({
       agent,
-      plan: await call(agent, prompt, resumePrompt),
+      plan: await call(agent, prompt, later),
     })
     const revise = (drafts: readonly Draft[], feedback?: string) =>
       Promise.all(
@@ -133,11 +144,9 @@ export class Planner {
               .map((draft) => ({ label: draft.agent.label, plan: draft.plan })),
             ...(feedback ? { feedback } : {}),
           }
-          return generate(
-            own.agent,
-            revisionPrompt(input),
-            resume ? revisionPrompt({ ...input, resumed: true }) : undefined,
-          )
+          return generate(own.agent, revisionPrompt(input), {
+            resumePrompt: resume ? revisionPrompt({ ...input, resumed: true }) : undefined,
+          })
         }),
       )
     const judge = (drafts: readonly Draft[]) =>
@@ -163,6 +172,7 @@ export class Planner {
         generate(
           agent,
           initialPlanPrompt(options.task, labelsOf(this.agents.filter((peer) => peer !== agent))),
+          undefined,
         ),
       ),
     )
@@ -192,11 +202,9 @@ export class Planner {
       plans: revised.map(({ agent, plan }) => ({ label: agent.label, plan })),
       verdict: JSON.stringify(verdict, null, 2),
     }
-    const finalPlan = await call(
-      finalizer,
-      finalPlanPrompt(finalInput),
-      resume ? finalPlanPrompt({ ...finalInput, resumed: true }) : undefined,
-    )
+    const finalPlan = await call(finalizer, finalPlanPrompt(finalInput), {
+      resumePrompt: resume ? finalPlanPrompt({ ...finalInput, resumed: true }) : undefined,
+    })
 
     await report('final', { [finalizer.name]: finalPlan }, verdict)
     timings.totalMs = performance.now() - runStart

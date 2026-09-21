@@ -57,6 +57,19 @@ describe('cliProvider', () => {
     expect(args.mock.calls).toEqual([[{}], [{ model: 'm', effort: 'low' }]])
   })
 
+  it("lets one call's effort win over the agent's, when the CLI takes an effort", async () => {
+    run.mockResolvedValue({ stdout: 'plan', stderr: '', exitCode: 0 })
+    const args = vi.fn(() => ['run'])
+    const setup = { omitEnv: [], env: {}, effort: 'xhigh' }
+    const withEffort = cliProvider({ ...config, args, effort: true }).create(setup)
+    await withEffort.generate(request)
+    await withEffort.generate({ ...request, effort: 'low' })
+    await cliProvider({ ...config, args })
+      .create({ omitEnv: [], env: {} })
+      .generate({ ...request, effort: 'low' })
+    expect(args.mock.calls).toEqual([[{ effort: 'xhigh' }], [{ effort: 'low' }], [{}]])
+  })
+
   it('reads events from stdout: progress as it comes, the last result as the answer', async () => {
     run.mockImplementation((_command, _args, options) => {
       for (const line of ['{"say":"step"}', '{"answer":"first"}', 'plain', '{"answer":"final"}']) {

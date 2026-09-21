@@ -433,6 +433,21 @@ describe('Planner', () => {
     })
   })
 
+  it('asks for the review effort in the cross-reviews and the synthesis, not the drafts', async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+    const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+    await new Planner([codex, claude], new FakeJev()).plan({
+      task: 'Add caching',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+      reviewEfforts: { claude: 'low' },
+    })
+    expect(claude.requests.map(({ effort }) => effort)).toEqual([undefined, 'low', 'low'])
+    for (const request of [...codex.requests, claude.requests[0]]) {
+      expect(request).not.toHaveProperty('effort')
+    }
+  })
+
   describe('timings', () => {
     afterEach(() => {
       vi.useRealTimers()

@@ -184,6 +184,23 @@ describe('main', () => {
     })
   })
 
+  it('passes --review-effort to the planner for the later stages only', async () => {
+    const h = harness()
+    await main(['--effort', 'codex=xhigh', '--review-effort', 'codex=low', 'task'], h.deps)
+    expect(h.setup()?.efforts).toEqual({ codex: 'xhigh' })
+    expect(h.planned()?.reviewEfforts).toEqual({ codex: 'low' })
+    await main(['task'], h.deps)
+    expect(h.planned()).not.toHaveProperty('reviewEfforts')
+  })
+
+  it('rejects --review-effort for an agent that takes no effort', async () => {
+    const h = harness()
+    await expect(
+      main(['--agents', 'codex,deepseek', '--review-effort', 'deepseek=low', 'task'], h.deps),
+    ).resolves.toBe(1)
+    expect(h.stderr()).toBe('jev-planner: DeepSeek does not take --review-effort\n')
+  })
+
   it('resumes sessions by default, and not with --no-resume', async () => {
     const h = harness()
     await main(['task'], h.deps)

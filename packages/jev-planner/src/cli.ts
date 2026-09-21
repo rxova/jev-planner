@@ -31,6 +31,8 @@ Options:
   -a, --agents <ids>          Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')})
   -m, --model <id>=<model>    Override one agent's model; repeatable
   -e, --effort <id>=<level>   Override one agent's reasoning effort; repeatable
+      --review-effort <id>=<level>
+                              The effort for its cross-review and synthesis only; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
       --finalizer <id>        auto, or one of the agents (default: auto/Jev decides)
       --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
@@ -260,6 +262,7 @@ function parse(argv: readonly string[]) {
       agents: { type: 'string', short: 'a' },
       model: { type: 'string', short: 'm', multiple: true, default: [] },
       effort: { type: 'string', short: 'e', multiple: true, default: [] },
+      'review-effort': { type: 'string', multiple: true, default: [] },
       'jev-model': { type: 'string' },
       finalizer: { type: 'string' },
       'review-rounds': { type: 'string' },
@@ -323,6 +326,12 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
 
   const models = parseOverrides('--model', values.model, agents)
   const efforts = parseOverrides('--effort', values.effort, agents, (agent) => agent.effort)
+  const reviewEfforts = parseOverrides(
+    '--review-effort',
+    values['review-effort'],
+    agents,
+    (agent) => agent.effort,
+  )
   const finalizer = parseFinalizer(values.finalizer, agents)
   const jevModel = values['jev-model']
   if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
@@ -346,6 +355,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     ...(jevModel ? { jevModel } : {}),
     ...(finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
+    ...(Object.keys(reviewEfforts).length > 0 ? { reviewEfforts } : {}),
     ...(values['no-resume'] ? { resume: false } : {}),
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
