@@ -38,6 +38,8 @@ Options:
       --json                  Emit plan metadata as JSON
       --verbose               Stream each agent's work, then Jev's verdict, to stderr
       --rounds-dir <path>     Write every round's plans to round1/, round2/, …, final/
+                              (default: .jev-planner/<run>/ in the repository)
+      --no-rounds             Do not write the rounds anywhere
       --allow-any-task        Plan the task even if it looks like a placeholder
   -h, --help                  Show help
   -v, --version               Show version
@@ -72,7 +74,12 @@ export interface CliDeps {
   readStdin: () => Promise<string | undefined>
   createPlanner: (setup: PlannerSetup) => PlanRunner
   doctor: (cwd: string, providers: readonly Provider[]) => Promise<CheckResult[]>
+  /** The clock that names a run's folder under `.jev-planner/`. */
+  now: () => Date
 }
+
+/** Where runs keep their rounds by default, relative to the repository. */
+export const RUNS_DIR = '.jev-planner'
 
 async function assertDirectory(path: string): Promise<void> {
   const info = await stat(path).catch(() => undefined)
@@ -147,6 +154,40 @@ async function prepareRoundsDir(dir: string): Promise<void> {
 }
 
 /**
+ * A new folder for this run under `<cwd>/.jev-planner/`, named by its UTC start
+ * time with no `:` so it is a valid name on Windows too. A second run in the
+ * same second gets `-2`, and so on: `mkdir` without `recursive` fails on an
+ * existing folder, so two runs can never claim the same one.
+ *
+ * The first run also writes `.jev-planner/.gitignore` with `*`, so the output
+ * never shows up as untracked in the repository being planned. One that is
+ * already there is left alone.
+ */
+async function newRunDir(cwd: string, now: Date): Promise<string> {
+  const home = join(cwd, RUNS_DIR)
+  await mkdir(home, { recursive: true })
+  await writeFile(
+    join(home, '.gitignore'),
+    '# Written by jev-planner: run output, not source.\n*\n',
+    {
+      flag: 'wx',
+    },
+  ).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  })
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+  for (let attempt = 1; ; attempt++) {
+    const dir = join(home, attempt === 1 ? stamp : `${stamp}-${String(attempt)}`)
+    try {
+      await mkdir(dir)
+      return dir
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+  }
+}
+
+/**
  * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
  * `jev-verdict.json` beside a judged round's plans, and `final/plan.md` last.
  */
@@ -197,6 +238,7 @@ function parse(argv: readonly string[]) {
       json: { type: 'boolean', default: false },
       verbose: { type: 'boolean', default: false },
       'rounds-dir': { type: 'string' },
+      'no-rounds': { type: 'boolean', default: false },
       'allow-any-task': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
@@ -253,9 +295,17 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const efforts = parseOverrides('--effort', values.effort, agents, (agent) => agent.effort)
   const finalizer = parseFinalizer(values.finalizer, agents)
   const jevModel = values['jev-model']
-  const roundsDir =
-    values['rounds-dir'] === undefined ? undefined : resolve(cwd, values['rounds-dir'])
-  if (roundsDir !== undefined) await prepareRoundsDir(roundsDir)
+  if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
+    throw new Error('Pass --rounds-dir or --no-rounds, not both')
+  }
+  let roundsDir: string | undefined
+  if (values['rounds-dir'] !== undefined) {
+    roundsDir = resolve(cwd, values['rounds-dir'])
+    await prepareRoundsDir(roundsDir)
+  } else if (!values['no-rounds']) {
+    roundsDir = await newRunDir(cwd, deps.now())
+  }
+  if (roundsDir !== undefined) deps.stderr(`[jev-planner] Writing rounds to ${roundsDir}\n`)
   const planner = deps.createPlanner({ agents, models, efforts })
   const result = await planner.plan({
     task,

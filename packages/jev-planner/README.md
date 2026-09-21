@@ -124,7 +124,8 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--review-rounds 1` to disable Jev's optional second review pass.
 - `--verbose` to watch the agents work, then print Jev's typed verdict to stderr (below).
-- `--rounds-dir <path>` to keep every round's plans, to see how they evolved (below).
+- `--rounds-dir <path>` to keep every round's plans somewhere other than `.jev-planner/`, or
+  `--no-rounds` to keep none (below).
 - `--allow-any-task` to plan text that looks like a placeholder.
 
 A task that is empty or a near-certain placeholder — the text `TODO`, `TBD` or `<coding task>`,
@@ -135,23 +136,28 @@ such as `Add caching`, is planned as usual. `Planner.plan` runs the same check a
 
 ## Following a run round by round
 
-`--rounds-dir <path>` writes each round's plans as soon as the round ends, relative to `--cwd`. The
-folder must be new or empty, so two runs never mix:
+Every run writes each round's plans as soon as the round ends, to a new folder under
+`.jev-planner/` in the repository, named by the run's UTC start time:
 
 ```text
-rounds/
-  round1/             the independent drafts
-    codex.md
-    claude.md
-  round2/             the cross-reviewed plans, and Jev's verdict on them
-    codex.md
-    claude.md
-    jev-verdict.json
-  round3/             only when Jev asked for a second review
-  final/
-    plan.md           the merged plan, headed by the agent that merged it
-    jev-verdict.json  the verdict the merge followed
+.jev-planner/
+  .gitignore          `*`, so the folder never shows up in git
+  20260921-230512/
+    round1/           the independent drafts
+      codex.md
+      claude.md
+    round2/           the cross-reviewed plans, and Jev's verdict on them
+      codex.md
+      claude.md
+      jev-verdict.json
+    round3/           only when Jev asked for a second review
+    final/
+      plan.md         the merged plan, headed by the agent that merged it
+      jev-verdict.json  the verdict the merge followed
 ```
+
+`--rounds-dir <path>` writes them somewhere else instead, relative to `--cwd`; that folder must be
+new or empty, so two runs never mix. `--no-rounds` writes nothing.
 
 ```sh
 jev-planner --rounds-dir rounds -o PLAN.md "Add caching to the search endpoint"
