@@ -18,6 +18,6 @@ Commit on its own. Commitlint checks it.
 
 ## Checklist
 
-- [ ] No new runtime dependency in `packages/ts-extended-errors`
+- [ ] No new runtime dependency in `packages/jev-planner`
 - [ ] Changeset added (`pnpm changeset`), or the change does not touch the published package
 - [ ] For a public API change: TSDoc, the package README, the docs page and the `llms.txt` API table all updated

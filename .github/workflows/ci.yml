@@ -214,6 +214,15 @@ jobs:
       - name: Audit dependencies
         timeout-minutes: 5
         run: pnpm run audit:check
+      # One version of each dependency across the workspace. Two packages on
+      # two minors of the same library typecheck fine and then disagree at
+      # runtime.
+      - name: Check dependency versions across the workspace
+        run: pnpm run sherif:check
+      # Unused files, exports and dependencies. The only check here that
+      # notices an export nothing imports.
+      - name: Check for unused files, exports and dependencies
+        run: pnpm run knip:check
       - name: Check dependency dedupe
         run: pnpm run dedupe:check
 
