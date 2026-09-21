@@ -1,3 +1,4 @@
+import type { Provider } from './provider.js'
 import { runProcess } from './process.js'
 
 export interface CheckResult {
@@ -11,11 +12,12 @@ function firstLine(text: string): string {
   return text.trim().replace(/\n[\s\S]*$/, '')
 }
 
-function errorDetail(error: unknown): string {
+export function errorDetail(error: unknown): string {
   return error instanceof Error ? firstLine(error.message) : String(error)
 }
 
-async function commandCheck(
+/** Passes when `command args` exits 0; the detail is the first line it printed. */
+export async function commandCheck(
   name: string,
   command: string,
   args: readonly string[],
@@ -25,60 +27,26 @@ async function commandCheck(
     const result = await runProcess(command, args, { cwd, timeoutMs: 15_000 })
     return { name, ok: true, detail: firstLine(result.stdout || result.stderr) || 'available' }
   } catch (error) {
-    return {
-      name,
-      ok: false,
-      detail: errorDetail(error),
-    }
+    return { name, ok: false, detail: errorDetail(error) }
   }
 }
 
-async function claudeAuthCheck(cwd: string): Promise<CheckResult> {
-  try {
-    const result = await runProcess('claude', ['auth', 'status', '--json'], {
-      cwd,
-      timeoutMs: 15_000,
-    })
-    const status = JSON.parse(result.stdout) as {
-      loggedIn?: boolean
-      authMethod?: string
-      subscriptionType?: string
-    }
-    const detail = [status.authMethod, status.subscriptionType].filter(Boolean).join(', ')
-    return {
-      name: 'Claude auth',
-      ok: status.loggedIn === true,
-      detail:
-        status.loggedIn === true ? `Logged in${detail ? ` (${detail})` : ''}` : 'Not logged in',
-    }
-  } catch (error) {
-    return {
-      name: 'Claude auth',
-      ok: false,
-      detail: errorDetail(error),
-    }
-  }
+/** Passes when the variable is set to something other than whitespace. Never prints the value. */
+export function envCheck(
+  name: string,
+  variable: string,
+  env: Readonly<Record<string, string | undefined>>,
+): CheckResult {
+  const set = Boolean(env[variable]?.trim())
+  return { name, ok: set, detail: `${variable} is ${set ? 'set' : 'not set'}` }
 }
 
-export async function runDoctor(cwd: string): Promise<CheckResult[]> {
-  const [codexVersion, codexAuth, claudeVersion, claudeAuth] = await Promise.all([
-    commandCheck('Codex CLI', 'codex', ['--version'], cwd),
-    commandCheck('Codex auth', 'codex', ['login', 'status'], cwd),
-    commandCheck('Claude CLI', 'claude', ['--version'], cwd),
-    claudeAuthCheck(cwd),
-  ])
-
-  return [
-    codexVersion,
-    codexAuth,
-    claudeVersion,
-    claudeAuth,
-    {
-      name: 'TypeSafe key',
-      ok: Boolean(process.env.TYPESAFE_API_KEY?.trim()),
-      detail: process.env.TYPESAFE_API_KEY?.trim()
-        ? 'TYPESAFE_API_KEY is set'
-        : 'TYPESAFE_API_KEY is not set',
-    },
-  ]
+/** Each provider's own checks, in order, then the TypeSafe key Jev needs. No paid call. */
+export async function runDoctor(
+  cwd: string,
+  providers: readonly Provider[],
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<CheckResult[]> {
+  const checks = await Promise.all(providers.map((provider) => provider.doctor(cwd, env)))
+  return [...checks.flat(), envCheck('TypeSafe key', 'TYPESAFE_API_KEY', env)]
 }

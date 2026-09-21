@@ -1,3 +1,9 @@
+/** A plan and the agent that wrote it, as a prompt shows it. */
+export interface AuthoredPlan {
+  label: string
+  plan: string
+}
+
 const PLAN_CONTRACT = `
 You are designing an implementation plan, not implementing code. Work read-only.
 Inspect the repository before deciding. Make the plan specific to files and symbols that exist.
@@ -6,10 +12,21 @@ Include architecture, edge cases, tests, validation, and rollout/compatibility c
 If the task is a placeholder or too vague to act on, say so and list the clarifying questions instead of inventing scope.
 Keep the response under 1,500 words. Return Markdown only.`
 
-export function initialPlanPrompt(task: string, peer: 'Codex' | 'Claude'): string {
+/** "Claude", "Claude and GLM", "Claude, GLM and Kimi". */
+export function listLabels(labels: readonly string[]): string {
+  return labels.join(', ').replace(/, ([^,]*)$/, ' and $1')
+}
+
+function planBlocks(plans: readonly AuthoredPlan[], tag: string): string {
+  return plans
+    .map(({ label, plan }) => `${label}'s plan:\n<${tag} author="${label}">\n${plan}\n</${tag}>`)
+    .join('\n\n')
+}
+
+export function initialPlanPrompt(task: string, peers: readonly string[]): string {
   return `${PLAN_CONTRACT}
 
-You are the first planner in a collaboration with ${peer}. Produce your strongest independent plan.
+You are the first planner in a collaboration with ${listLabels(peers)}. Produce your strongest independent plan.
 
 Task:
 <task>
@@ -20,13 +37,13 @@ ${task}
 export function revisionPrompt(input: {
   task: string
   ownPlan: string
-  peerPlan: string
-  peer: 'Codex' | 'Claude'
+  peerPlans: readonly AuthoredPlan[]
   feedback?: string
 }): string {
+  const peers = listLabels(input.peerPlans.map(({ label }) => label))
   return `${PLAN_CONTRACT}
 
-You are reviewing a peer plan from ${input.peer}. Compare it with your own draft, correct weak assumptions,
+You are reviewing peer plans from ${peers}. Compare them with your own draft, correct weak assumptions,
 adopt useful details, and return a revised standalone plan. Do not merely write a critique.
 
 Task:
@@ -39,10 +56,7 @@ Your earlier draft:
 ${input.ownPlan}
 </own-plan>
 
-Peer draft:
-<peer-plan>
-${input.peerPlan}
-</peer-plan>${
+${planBlocks(input.peerPlans, 'peer-plan')}${
     input.feedback
       ? `\n\nJev identified remaining uncertainty. Use this typed feedback to target the revision:\n<jev-feedback>\n${input.feedback}\n</jev-feedback>`
       : ''
@@ -51,13 +65,12 @@ ${input.peerPlan}
 
 export function finalPlanPrompt(input: {
   task: string
-  codexPlan: string
-  claudePlan: string
+  plans: readonly AuthoredPlan[]
   verdict: string
 }): string {
   return `${PLAN_CONTRACT}
 
-Act as the final editor. Merge the best concrete parts of both revised plans, guided by Jev's typed verdict.
+Act as the final editor. Merge the best concrete parts of all the revised plans, guided by Jev's typed verdict.
 Resolve contradictions explicitly. Return one self-contained execution plan—no discussion of the planning process,
 no winner announcement, and no Jev commentary.
 
@@ -66,15 +79,7 @@ Task:
 ${input.task}
 </task>
 
-Codex revised plan:
-<codex-plan>
-${input.codexPlan}
-</codex-plan>
-
-Claude revised plan:
-<claude-plan>
-${input.claudePlan}
-</claude-plan>
+${planBlocks(input.plans, 'revised-plan')}
 
 Jev verdict:
 <jev-verdict>

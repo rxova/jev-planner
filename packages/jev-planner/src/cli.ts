@@ -3,25 +3,35 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import packageJson from '../package.json' with { type: 'json' }
 import type { CheckResult } from './doctor.js'
+import type { Provider } from './provider.js'
+import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
 import { requireNonEmptyTask, validateTask } from './task.js'
-import type { AgentName, PlanOptions, PlanResult } from './types.js'
+import type { PlanOptions, PlanResult } from './types.js'
 
 export const VERSION: string = packageJson.version
 
-export const HELP = `jev-planner — collaborative coding plans from Codex, Claude, and Jev
+function agentLine(provider: Provider): string {
+  const access =
+    provider.kind === 'cli'
+      ? 'agent CLI, reads the repository'
+      : `chat API, gets a repository snapshot; needs ${provider.secretEnv.join(', ')}`
+  return `  ${provider.id.padEnd(26)}${provider.label}: ${access}`
+}
+
+export const HELP = `jev-planner — collaborative coding plans from several AIs, judged by Jev
 
 Usage:
   jev-planner [plan] [options] "<coding task>"
-  jev-planner doctor [--cwd <directory>]
+  jev-planner doctor [--agents <ids>] [--cwd <directory>]
 
 Options:
   -C, --cwd <directory>       Repository to inspect (default: current directory)
   -f, --file <path>           Read the coding task from a UTF-8 file
   -o, --output <path>         Write the final plan to a file instead of stdout
-      --codex-model <model>   Override the Codex CLI model
-      --claude-model <model>  Override the Claude Code model
+  -a, --agents <ids>          Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')})
+  -m, --model <id>=<model>    Override one agent's model; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
-      --finalizer <agent>     auto, codex, or claude (default: auto/Jev decides)
+      --finalizer <id>        auto, or one of the agents (default: auto/Jev decides)
       --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --json                  Emit plan metadata as JSON
@@ -30,7 +40,10 @@ Options:
   -h, --help                  Show help
   -v, --version               Show version
 
-The task can also be piped on stdin. Codex and Claude use their existing CLI logins.
+Agents:
+${PROVIDERS.map(agentLine).join('\n')}
+
+The task can also be piped on stdin. Agent CLIs use their existing logins.
 Jev requires TYPESAFE_API_KEY.`
 
 /** The planner surface the CLI drives; `Planner` in production, a fake in tests. */
@@ -38,10 +51,11 @@ export interface PlanRunner {
   plan(options: PlanOptions): Promise<PlanResult>
 }
 
-/** Model overrides from the command line, handed to the planner factory. */
-export interface ModelOverrides {
-  codexModel?: string
-  claudeModel?: string
+/** The run's agents and model overrides from the command line, handed to the planner factory. */
+export interface PlannerSetup {
+  agents: readonly Provider[]
+  /** `--model` overrides, by provider id. */
+  models: Readonly<Record<string, string>>
 }
 
 /** Everything `main` touches outside its arguments, so tests can replace it. */
@@ -52,8 +66,8 @@ export interface CliDeps {
   cwd: () => string
   /** The piped task, or `undefined` when stdin is a terminal. */
   readStdin: () => Promise<string | undefined>
-  createPlanner: (models: ModelOverrides) => PlanRunner
-  doctor: (cwd: string) => Promise<CheckResult[]>
+  createPlanner: (setup: PlannerSetup) => PlanRunner
+  doctor: (cwd: string, providers: readonly Provider[]) => Promise<CheckResult[]>
 }
 
 async function assertDirectory(path: string): Promise<void> {
@@ -61,10 +75,57 @@ async function assertDirectory(path: string): Promise<void> {
   if (!info?.isDirectory()) throw new Error(`Not a directory: ${path}`)
 }
 
-function parseFinalizer(value: string | undefined): AgentName | undefined {
+const PROVIDER_IDS = PROVIDERS.map(({ id }) => id).join(', ')
+
+function provider(id: string, flag: string): Provider {
+  const found = PROVIDERS.find((candidate) => candidate.id === id)
+  if (!found) throw new Error(`Unknown agent in ${flag}: ${id}. Expected one of ${PROVIDER_IDS}.`)
+  return found
+}
+
+function parseAgents(value: string | undefined): Provider[] {
+  const ids = (value ?? DEFAULT_AGENTS.join(','))
+    .split(',')
+    .map((id) => id.trim().toLowerCase())
+    .filter(Boolean)
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index)
+  if (duplicate !== undefined) throw new Error(`--agents lists ${duplicate} more than once`)
+  const agents = ids.map((id) => provider(id, '--agents'))
+  if (agents.length < 2) throw new Error('--agents needs at least two agents')
+  return agents
+}
+
+function parseModels(
+  values: readonly string[],
+  agents: readonly Provider[],
+): Record<string, string> {
+  const models: Record<string, string> = {}
+  for (const value of values) {
+    const separator = value.indexOf('=')
+    const id = value.slice(0, separator).trim().toLowerCase()
+    const model = value.slice(separator + 1).trim()
+    if (separator < 0 || !id || !model) {
+      throw new Error(`Invalid --model value: ${value}. Expected <agent>=<model>.`)
+    }
+    provider(id, '--model')
+    if (!agents.some((agent) => agent.id === id)) {
+      throw new Error(`--model sets ${id}, which is not one of the --agents`)
+    }
+    models[id] = model
+  }
+  return models
+}
+
+function parseFinalizer(
+  value: string | undefined,
+  agents: readonly Provider[],
+): string | undefined {
   if (value === undefined || value === 'auto') return undefined
-  if (value === 'codex' || value === 'claude') return value
-  throw new Error(`Invalid --finalizer value: ${value}. Expected auto, codex, or claude.`)
+  const id = value.toLowerCase()
+  if (agents.some((agent) => agent.id === id)) return id
+  throw new Error(
+    `Invalid --finalizer value: ${value}. Expected auto or one of ${agents.map((a) => a.id).join(', ')}.`,
+  )
 }
 
 function parseTimeout(value: string | undefined): number {
@@ -90,8 +151,8 @@ function parse(argv: readonly string[]) {
       cwd: { type: 'string', short: 'C' },
       file: { type: 'string', short: 'f' },
       output: { type: 'string', short: 'o' },
-      'codex-model': { type: 'string' },
-      'claude-model': { type: 'string' },
+      agents: { type: 'string', short: 'a' },
+      model: { type: 'string', short: 'm', multiple: true, default: [] },
       'jev-model': { type: 'string' },
       finalizer: { type: 'string' },
       'review-rounds': { type: 'string' },
@@ -120,9 +181,10 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const cwd = resolve(deps.cwd(), values.cwd ?? '.')
   await assertDirectory(cwd)
 
+  const agents = parseAgents(values.agents)
   if (positionals[0] === 'doctor') {
     if (positionals.length > 1) throw new Error('doctor does not accept a task')
-    const checks = await deps.doctor(cwd)
+    const checks = await deps.doctor(cwd, agents)
     for (const check of checks) {
       deps.stdout(`${check.ok ? '✓' : '✗'} ${check.name}: ${check.detail}\n`)
     }
@@ -149,12 +211,10 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     )
   }
 
-  const finalizer = parseFinalizer(values.finalizer)
+  const models = parseModels(values.model, agents)
+  const finalizer = parseFinalizer(values.finalizer, agents)
   const jevModel = values['jev-model']
-  const planner = deps.createPlanner({
-    ...(values['codex-model'] === undefined ? {} : { codexModel: values['codex-model'] }),
-    ...(values['claude-model'] === undefined ? {} : { claudeModel: values['claude-model'] }),
-  })
+  const planner = deps.createPlanner({ agents, models })
   const result = await planner.plan({
     task,
     cwd,

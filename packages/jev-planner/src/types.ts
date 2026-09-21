@@ -1,4 +1,5 @@
-export type AgentName = 'codex' | 'claude'
+/** A provider id from the registry: `codex`, `claude`, `deepseek`, … */
+export type AgentName = string
 
 export interface AgentRequest {
   prompt: string
@@ -7,12 +8,16 @@ export interface AgentRequest {
 }
 
 export interface PlanningAgent {
+  /** The provider id: what `--agents`, `--finalizer` and the Jev verdict use. */
   readonly name: AgentName
+  /** How prompts, stages and the plan refer to it: `Codex`, `DeepSeek`, … */
+  readonly label: string
   generate(request: AgentRequest): Promise<string>
 }
 
 export interface JevVerdict {
-  strongerPlan: 'codex' | 'claude' | 'tie'
+  /** An agent's name, or `'tie'`. */
+  strongerPlan: string
   strongerPlanConfidence: number
   finalizer: AgentName
   finalizerConfidence: number
@@ -26,13 +31,15 @@ export interface JevVerdict {
   model: string
 }
 
+/** One revised plan, for Jev: the agent that wrote it and the text. */
+export interface JudgedPlan {
+  agent: AgentName
+  label: string
+  plan: string
+}
+
 export interface JevJudge {
-  judge(input: {
-    task: string
-    codexPlan: string
-    claudePlan: string
-    model?: string
-  }): Promise<JevVerdict>
+  judge(input: { task: string; plans: readonly JudgedPlan[]; model?: string }): Promise<JevVerdict>
 }
 
 export interface PlanOptions {
@@ -41,6 +48,7 @@ export interface PlanOptions {
   timeoutMs: number
   maxReviewRounds?: 1 | 2
   jevModel?: string
+  /** Override Jev's choice; must be the name of one of the planner's agents. */
   finalizer?: AgentName
   /**
    * Skip the placeholder check `plan` runs before any agent call. An empty
@@ -54,8 +62,6 @@ export interface PlanResult {
   plan: string
   verdict: JevVerdict
   finalizer: AgentName
-  drafts: {
-    codex: string
-    claude: string
-  }
+  /** Each agent's last revised plan, by agent name. */
+  drafts: Record<AgentName, string>
 }

@@ -1,25 +1,28 @@
 # jev-planner
 
-> A CLI, and the library behind it, that writes a coding plan with two agents
-> and a judge. Codex and Claude Code each draft a plan for the same task in the
-> repository, review each other's draft, and Jev — TypeSafe's typed judge —
-> picks the stronger plan and the agent that writes the final version. Every
-> agent runs read-only. Node >= 20.19. MIT. Ships ESM and CommonJS with type
-> declarations.
+> A CLI, and the library behind it, that writes a coding plan with two or more
+> AIs and a judge. Each agent — Codex and Claude Code by default; DeepSeek,
+> Kimi and GLM too — drafts a plan for the same task, reviews every other
+> draft, and Jev — TypeSafe's typed judge — picks the stronger plan and the
+> agent that writes the final version. Every agent runs read-only. Node >=
+> 20.19. MIT. Ships ESM and CommonJS with type declarations.
 
 ## Install
 
     npm install -g jev-planner
 
-or, without installing, `npx jev-planner "<coding task>"`. It needs the
-`codex` and `claude` CLIs installed and logged in, and `TYPESAFE_API_KEY` set
-for Jev. `jev-planner doctor` checks all three.
+or, without installing, `npx jev-planner "<coding task>"`. It needs each
+selected agent CLI installed and logged in (`codex` and `claude` by default),
+each selected chat API's key (`DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`,
+`ZAI_API_KEY`), and `TYPESAFE_API_KEY` for Jev. `jev-planner doctor` checks
+them; `jev-planner --help` lists every agent id.
 
 ## Minimal working example
 
 ```sh
 jev-planner doctor
 jev-planner "Add rate limiting to the public API" -o PLAN.md
+jev-planner --agents claude,deepseek,glm --model glm=glm-4.6 "Add a CSV export"
 ```
 
 The plan goes to stdout, or to the file given with `-o`; progress goes to
@@ -28,9 +31,13 @@ stderr. `--json` prints `{ plan, verdict, finalizer }` instead.
 The same flow from code:
 
 ```ts
-import { ClaudeAgent, CodexAgent, Planner, TypeSafeJevJudge } from 'jev-planner'
+import { PROVIDERS, Planner, TypeSafeJevJudge } from 'jev-planner'
 
-const planner = new Planner(new CodexAgent(), new ClaudeAgent(), new TypeSafeJevJudge())
+const secrets = ['TYPESAFE_API_KEY', ...PROVIDERS.flatMap((p) => p.secretEnv)]
+const agents = PROVIDERS.filter((p) => ['codex', 'deepseek'].includes(p.id)).map((p) =>
+  p.create({ env: process.env, omitEnv: secrets }),
+)
+const planner = new Planner(agents, new TypeSafeJevJudge())
 const { plan, verdict, finalizer } = await planner.plan({
   task: 'Add rate limiting to the public API',
   cwd: process.cwd(),
@@ -40,29 +47,37 @@ const { plan, verdict, finalizer } = await planner.plan({
 
 ## API
 
-| Export                | Kind     | What it does                                                                                 |
-| --------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `Planner`             | class    | `new Planner(codex, claude, jev).plan(options)`: drafts, cross-reviews, finalizes            |
-| `CodexAgent`          | class    | A `PlanningAgent` that runs `codex exec` in a read-only sandbox                              |
-| `ClaudeAgent`         | class    | A `PlanningAgent` that runs `claude -p` in plan mode                                         |
-| `TypeSafeJevJudge`    | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                          |
-| `runDoctor`           | function | `runDoctor(cwd)` checks the CLIs, the API key and the directory                              |
-| `ProcessError`        | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                             |
-| `TaskValidationError` | class    | Thrown by `plan` before any call when the task is empty or a placeholder                     |
-| `ProcessResult`       | type     | `{ stdout, stderr }` of a finished agent process                                             |
-| `CheckResult`         | type     | `{ name, ok, detail }`, one `runDoctor` check                                                |
-| `AgentName`           | type     | `'codex' \| 'claude'`                                                                        |
-| `AgentRequest`        | type     | `{ prompt, cwd, timeoutMs }`, what a `PlanningAgent` is given                                |
-| `PlanningAgent`       | type     | `{ name, generate(request) }`, the agent interface `Planner` drives                          |
-| `JevJudge`            | type     | `{ judge({ task, codexPlan, claudePlan, model? }) }`, returns a `JevVerdict`                 |
-| `JevVerdict`          | type     | Scores and confidences for both plans, and the chosen finalizer                              |
-| `PlanOptions`         | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, allowAnyTask?, onStage? }` |
-| `PlanResult`          | type     | `{ plan, verdict, finalizer, drafts: { codex, claude } }`                                    |
+| Export                     | Kind     | What it does                                                                                 |
+| -------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `Planner`                  | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize   |
+| `TypeSafeJevJudge`         | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                          |
+| `PROVIDERS`                | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                      |
+| `DEFAULT_AGENTS`           | const    | The ids used without `--agents`: `['codex', 'claude']`                                       |
+| `cliProvider`              | function | Builds a `Provider` for an agent CLI run read-only in the repository                         |
+| `openAICompatibleProvider` | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                  |
+| `runDoctor`                | function | `runDoctor(cwd, providers, env?)` runs each provider's checks and the Jev key check          |
+| `ProcessError`             | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                             |
+| `TaskValidationError`      | class    | Thrown by `plan` before any call when the task is empty or a placeholder                     |
+| `Provider`                 | type     | `{ id, label, kind, secretEnv, create(setup), doctor(cwd, env) }`, one AI                    |
+| `AgentSetup`               | type     | `{ model?, omitEnv, env, fetch? }`, what `Provider.create` is given                          |
+| `CliProviderConfig`        | type     | `{ id, label, command, args(model), auth? }`, `cliProvider`'s input                          |
+| `OpenAICompatibleConfig`   | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input               |
+| `ProcessResult`            | type     | `{ stdout, stderr }` of a finished agent process                                             |
+| `CheckResult`              | type     | `{ name, ok, detail }`, one `runDoctor` check                                                |
+| `AgentName`                | type     | `string`: a provider id                                                                      |
+| `AgentRequest`             | type     | `{ prompt, cwd, timeoutMs }`, what a `PlanningAgent` is given                                |
+| `PlanningAgent`            | type     | `{ name, label, generate(request) }`, the agent interface `Planner` drives                   |
+| `JudgedPlan`               | type     | `{ agent, label, plan }`, one revised plan as Jev sees it                                    |
+| `JevJudge`                 | type     | `{ judge({ task, plans, model? }) }`, returns a `JevVerdict`                                 |
+| `JevVerdict`               | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer              |
+| `PlanOptions`              | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, allowAnyTask?, onStage? }` |
+| `PlanResult`               | type     | `{ plan, verdict, finalizer, drafts }`; `drafts` maps agent name to revised plan             |
 
 ## Mistakes to avoid
 
-- **Treating a run as free.** One plan is 5 or 7 agent calls and 1 or 2 Jev
-  calls, each billed to the account it runs under. Run `jev-planner doctor`
+- **Treating a run as free.** With N agents one plan is 2N + 1 agent calls,
+  or 3N + 1 with a second review, and 1 or 2 Jev calls, each billed to the
+  account or key it runs under. Run `jev-planner doctor`
   first rather than a real task to check the setup.
 - **Sending a template as the task.** A placeholder — `TODO`, `<coding task>`,
   `{{task}}`, text with no letters — is rejected with `TaskValidationError`
@@ -70,8 +85,17 @@ const { plan, verdict, finalizer } = await planner.plan({
   API) only when that text really is the task.
 - **Giving the task two ways.** The task comes from the arguments, from `-f`,
   or from stdin — passing both arguments and `-f` is an error.
-- **Expecting the agents to edit code.** Both run read-only; the output is a
+- **Expecting the agents to edit code.** All run read-only; the output is a
   plan, not a change.
+- **Expecting a chat API agent to see the whole repository.** `deepseek`,
+  `kimi` and `glm` get only the tracked file list and the top-level docs and
+  manifests; the agent CLIs read the code itself. Pair an API agent with a CLI
+  agent for a task that depends on code.
+- **Passing `--model` or `--finalizer` for an agent not in `--agents`.** Both
+  are rejected; name the agent in `--agents` too.
+- **Hand-building agents without `omitEnv`.** `Provider.create` needs the
+  variables to strip from agent subprocesses; pass every provider's
+  `secretEnv` and `TYPESAFE_API_KEY`, as the CLI does.
 - **A short `--timeout`.** It applies to each agent call, not the whole run,
   and defaults to 600 seconds; a large repository needs most of it.
 

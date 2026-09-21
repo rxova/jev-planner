@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-import { ClaudeAgent, CodexAgent } from './agents.js'
 import { main } from './cli.js'
 import type { CliDeps } from './cli.js'
 import { runDoctor } from './doctor.js'
 import { TypeSafeJevJudge } from './jev.js'
 import { Planner } from './orchestrator.js'
+import { PROVIDERS } from './providers.js'
+
+// Every provider's credentials, and Jev's, are kept from every agent subprocess:
+// an agent only ever sees the login it uses itself.
+const omitEnv = ['TYPESAFE_API_KEY', ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv)]
 
 async function readPipedStdin(): Promise<string | undefined> {
   if (process.stdin.isTTY) return undefined
@@ -21,8 +25,17 @@ const deps: CliDeps = {
   env: process.env,
   cwd: () => process.cwd(),
   readStdin: readPipedStdin,
-  createPlanner: ({ codexModel, claudeModel }) =>
-    new Planner(new CodexAgent(codexModel), new ClaudeAgent(claudeModel), new TypeSafeJevJudge()),
+  createPlanner: ({ agents, models }) =>
+    new Planner(
+      agents.map((provider) =>
+        provider.create({
+          ...(models[provider.id] === undefined ? {} : { model: models[provider.id] }),
+          omitEnv,
+          env: process.env,
+        }),
+      ),
+      new TypeSafeJevJudge(),
+    ),
   doctor: runDoctor,
 }
 

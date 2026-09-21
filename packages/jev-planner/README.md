@@ -1,24 +1,45 @@
 # jev-planner
 
-`jev-planner` creates repository-aware implementation plans by combining two coding agents with
+`jev-planner` creates repository-aware implementation plans by combining two or more AIs with
 [TypeSafe Jev](https://docs.typesafe.ai/concepts/system-one):
 
-1. Codex and Claude independently inspect the repository and draft plans in parallel.
-2. Each agent sees the other's draft and returns a revised, standalone plan.
+1. Each agent — Codex and Claude by default — drafts a plan independently, all in parallel.
+2. Each agent sees every other agent's draft and returns a revised, standalone plan.
 3. Jev scores completeness, feasibility, and risk coverage; chooses a finalizer; and decides
    whether the plans need one more cross-review.
 4. The selected agent merges the revised drafts into one final implementation plan.
 
-Codex and Claude run read-only. The tool uses the existing CLI logins, so their calls consume your
-Codex and Claude subscription allowances instead of OpenAI or Anthropic API keys. Jev is a separate
-service and requires its own API key. That key is removed from the environment inherited by the two
-coding-agent subprocesses.
+## Agents
+
+Pick the agents with `--agents`, two or more, comma-separated:
+
+| Id         | AI                                                                            | Kind      | Needs              |
+| ---------- | ----------------------------------------------------------------------------- | --------- | ------------------ |
+| `codex`    | [Codex CLI](https://learn.chatgpt.com/docs/non-interactive-mode)              | agent CLI | the CLI, logged in |
+| `claude`   | [Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started) | agent CLI | the CLI, logged in |
+| `deepseek` | [DeepSeek](https://api-docs.deepseek.com)                                     | chat API  | `DEEPSEEK_API_KEY` |
+| `kimi`     | [Kimi](https://platform.moonshot.ai) (Moonshot)                               | chat API  | `MOONSHOT_API_KEY` |
+| `glm`      | [GLM](https://docs.z.ai) (Z.ai)                                               | chat API  | `ZAI_API_KEY`      |
+
+`jev-planner --help` prints the same list, generated from the registry.
+
+- **Agent CLIs** inspect the repository themselves, read-only: Codex runs in its read-only sandbox,
+  Claude Code in plan mode with only `Read`, `Glob` and `Grep`. They use the CLIs' existing logins,
+  so their calls consume your Codex and Claude subscription allowances, not API keys.
+- **Chat APIs** cannot open files. Each of their calls is sent with a snapshot of the repository:
+  the list of files git tracks, and the contents of the tracked top-level docs and manifests
+  (`AGENTS.md`, `CLAUDE.md`, `README.md`, `CONTRIBUTING.md`, `package.json`, …), within fixed size
+  limits. Only tracked files are read, so an ignored `.env` is never sent. Outside a git repository
+  the snapshot is empty. The model is told to name the files it would need rather than guess them.
+
+Every provider's API key, and Jev's, is removed from the environment of every agent subprocess:
+an agent never sees another provider's credentials.
 
 ## Requirements
 
 - Node.js 20 or newer
-- [Codex CLI](https://learn.chatgpt.com/docs/non-interactive-mode), already logged in
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started), already logged in
+- For each agent CLI you select: the CLI, already logged in
+- For each chat API you select: its API key in the environment
 - A TypeSafe API key from <https://console.typesafe.ai/keys>
 
 The implementation uses the official [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript)
@@ -34,8 +55,9 @@ export TYPESAFE_API_KEY="your-key"
 jev-planner doctor
 ```
 
-`doctor` verifies that both CLIs are installed and authenticated and that the Jev environment
-variable exists. It does not make a paid model call.
+`doctor` checks the selected agents — each CLI is installed and logged in, each API key is set —
+and the Jev key. `jev-planner doctor --agents codex,deepseek` checks that pair. It does not make a
+paid model call.
 
 ## Use
 
@@ -57,6 +79,12 @@ Target a different repository or provide a longer brief:
 jev-planner --cwd ../my-app --file ./brief.md --output PLAN.md
 ```
 
+Plan with three agents, and pin one's model:
+
+```sh
+jev-planner --agents claude,deepseek,glm --model glm=glm-4.6 "Add a CSV export to the reports page"
+```
+
 Use JSON in another tool:
 
 ```sh
@@ -65,9 +93,10 @@ jev-planner --json "Make image uploads resumable" | jq '.verdict, .plan'
 
 See every option with `jev-planner --help`. Useful controls include:
 
-- `--codex-model` and `--claude-model` to override each CLI's configured/default model.
+- `--agents <ids>` to choose two or more agents (default: `codex,claude`).
+- `--model <id>=<model>`, repeatable, to override one agent's model.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
-- `--finalizer codex|claude` to override Jev's routing decision.
+- `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--review-rounds 1` to disable Jev's optional second review pass.
 - `--verbose` to print Jev's typed verdict to stderr.
 - `--allow-any-task` to plan text that looks like a placeholder.
@@ -80,21 +109,57 @@ such as `Add caching`, is planned as usual. `Planner.plan` runs the same check a
 
 ## Cost and data flow
 
-A normal run makes five coding-agent calls: two initial drafts, two cross-reviews, and one final
-synthesis. If Jev requests another pass, it makes two more coding-agent calls. Codex and Claude calls
-use the accounts currently logged into their respective CLIs.
+With N agents, a normal run makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
+synthesis. If Jev requests another pass, it makes N more. With the default two agents that is five
+calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
 
 Each evaluation uses one TypeSafe API call; a second review pass causes one re-evaluation. Jev sees
-the task and the agents' plan text, not a direct repository snapshot. Nevertheless, plan text may
-contain file names or code details. Do not run this on material you are not allowed to send to all
-three providers.
+the task and the agents' plan text, not a direct repository snapshot. Chat APIs see the snapshot
+described under [Agents](#agents), and every agent sees the other agents' plans, which may contain
+file names or code details. Do not run this on material you are not allowed to send to every
+provider you select.
+
+## Adding a new AI
+
+Every agent comes from one list, `PROVIDERS` in `src/providers.ts`. The CLI flags, `--help`,
+`doctor`, the prompts and Jev's choices are all built from it, so adding an AI is one entry there.
+
+An OpenAI-compatible chat API — most are — is one `openAICompatibleProvider` call:
+
+```ts
+openAICompatibleProvider({
+  id: 'qwen',
+  label: 'Qwen',
+  baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  apiKeyEnv: 'DASHSCOPE_API_KEY',
+  model: 'qwen-max',
+}),
+```
+
+An agent CLI that can run non-interactively and read-only, taking the prompt on stdin and printing
+the plan on stdout, is one `cliProvider` call:
+
+```ts
+cliProvider({
+  id: 'acme',
+  label: 'Acme',
+  command: 'acme',
+  // Whatever makes this CLI answer once, read-only, without prompting.
+  args: (model) => ['ask', '--read-only', ...(model ? ['--model', model] : [])],
+  auth: ['whoami'],
+}),
+```
+
+`auth` is optional: arguments that exit 0 when the CLI is logged in, or a check function. The same
+two builders are exported, so a program using the library can build its own agents from them and
+pass them to `Planner`.
 
 ## Development
 
 ```sh
 npm run check
 npm run build
-node dist/cli.js --help
+node dist/bin.mjs --help
 ```
 
 The orchestration tests use fake agents and make no model calls.
@@ -103,8 +168,8 @@ The orchestration tests use fake agents and make no model calls.
 
 Jev does not generate prose or code. It returns constrained `choice`, `score`, and `noul` decisions
 with probabilities. That makes it a good fit for the branch points in this workflow—quality scoring,
-review routing, and finalizer selection—while Codex and Claude handle repository exploration and
-plan writing.
+review routing, and finalizer selection—while the agents handle repository exploration and plan
+writing.
 
 ## License
 

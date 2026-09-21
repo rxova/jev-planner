@@ -61,8 +61,10 @@ describe('TypeSafeJevJudge', () => {
     const { client, requests } = fakeClient()
     const result = await new TypeSafeJevJudge(client).judge({
       task: 'task',
-      codexPlan: 'codex',
-      claudePlan: 'claude',
+      plans: [
+        { agent: 'codex', label: 'Codex', plan: 'codex' },
+        { agent: 'claude', label: 'Claude', plan: 'claude' },
+      ],
       model: 'jev-test',
     })
 
@@ -77,18 +79,47 @@ describe('TypeSafeJevJudge', () => {
     expect(Object.keys(requests[0]?.questions as object)).toHaveLength(6)
   })
 
+  it("offers each agent's name as a choice, and keys the plans by it", async () => {
+    const { client, requests } = fakeClient()
+    await new TypeSafeJevJudge(client).judge({
+      task: 'task',
+      plans: [
+        { agent: 'codex', label: 'Codex', plan: 'a' },
+        { agent: 'deepseek', label: 'DeepSeek', plan: 'b' },
+        { agent: 'glm', label: 'GLM', plan: 'c' },
+      ],
+    })
+
+    const request = JSON.stringify(requests[0])
+    for (const option of [
+      "DeepSeek's plan is materially stronger overall",
+      'GLM should perform the final synthesis',
+      'No plan is materially stronger',
+    ]) {
+      expect(request).toContain(option)
+    }
+    expect((requests[0]?.state as { revised_plans: unknown }).revised_plans).toEqual({
+      codex: { author: 'Codex', plan: 'a' },
+      deepseek: { author: 'DeepSeek', plan: 'b' },
+      glm: { author: 'GLM', plan: 'c' },
+    })
+  })
+
   it("leaves the model to the SDK's default and truncates oversized plans", async () => {
     const { client, requests } = fakeClient()
     await new TypeSafeJevJudge(client).judge({
       task: 'task',
-      codexPlan: 'x'.repeat(40_001),
-      claudePlan: 'short',
+      plans: [
+        { agent: 'codex', label: 'Codex', plan: 'x'.repeat(40_001) },
+        { agent: 'claude', label: 'Claude', plan: 'short' },
+      ],
     })
 
-    const state = requests[0]?.state as Record<string, string>
+    const plans = (requests[0]?.state as { revised_plans: Record<string, { plan: string }> })
+      .revised_plans
     // No override is passed, so the SDK's own default goes out.
     expect(requests[0]?.model).toBe('jev-latest')
-    expect(state.codex_revised_plan).toBe(`${'x'.repeat(40_000)}\n[truncated for Jev evaluation]`)
-    expect(state.claude_revised_plan).toBe('short')
+    expect(plans.codex?.plan).toBe(`${'x'.repeat(40_000)}\n[truncated for Jev evaluation]`)
+    expect(plans.claude?.plan).toBe('short')
   })
 })
