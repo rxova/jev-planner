@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#0f172a"/>
-  <g fill="none" stroke="#f97316" stroke-linecap="round" stroke-linejoin="round">
+  <defs>
+    <!-- The rxova gradient: accent a, b and c from @rxova/brand tokens.css. -->
+    <linearGradient id="accent" gradientUnits="userSpaceOnUse" x1="3" y1="0" x2="24" y2="0">
+      <stop offset="0" stop-color="#0a84ff"/>
+      <stop offset="0.5" stop-color="#6b3df0"/>
+      <stop offset="1" stop-color="#e6199b"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#100f0d"/>
+  <g fill="none" stroke="url(#accent)" stroke-linecap="round" stroke-linejoin="round">
     <path d="M11 5.5h8l4.5 4.5v15.5H11a3 3 0 0 1-3-3v-14a3 3 0 0 1 3-3Z" stroke-width="2.25"/>
     <path d="M19 5.5V10h4.5" stroke-width="2.25"/>
     <path d="M3.5 14h11c2.5 0 3.5-3 1.5-4.5" stroke-width="2.25"/>
