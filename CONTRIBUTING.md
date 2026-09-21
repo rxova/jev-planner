@@ -97,6 +97,18 @@ CI checks for one. A pull request that touches the package but publishes nothing
 — a dev dependency bump, say — is labelled `skip-changeset` instead. Before 1.0,
 a breaking change is a minor.
 
+## Adding a new AI
+
+One entry in `PROVIDERS`, in `packages/jev-planner/src/providers.ts`. The CLI flags, `--help`,
+`doctor`, the prompts and Jev's choices are all built from that list, so nothing else changes:
+
+- An OpenAI-compatible chat API: one `openAICompatibleProvider({ id, label, baseUrl, apiKeyEnv, model })`.
+- An agent CLI that answers once, non-interactively and read-only, with the prompt on stdin: one
+  `cliProvider({ id, label, command, args, auth? })`.
+
+Add the agent to the table under "Agents" in the package README too. `providers.test.ts` checks the
+ids are unique and every API key is declared as a secret; a new adapter kind needs its own tests.
+
 ## Changing the public API
 
 An export is described in four places, and they are checked against each other.

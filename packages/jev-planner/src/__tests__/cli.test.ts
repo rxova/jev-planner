@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import packageJson from '../../package.json' with { type: 'json' }
 import { HELP, main, VERSION } from '../cli.js'
-import type { CliDeps, ModelOverrides } from '../cli.js'
+import type { CliDeps } from '../cli.js'
 import type { CheckResult } from '../doctor.js'
+import { PROVIDERS } from '../providers.js'
 import type { JevVerdict, PlanOptions, PlanResult } from '../types.js'
 
 /** A rejection with a non-Error reason: what the `String(error)` fallback is for. */
@@ -41,7 +42,8 @@ interface Harness {
   stdout: () => string
   stderr: () => string
   planned: () => PlanOptions | undefined
-  models: () => ModelOverrides | undefined
+  /** The agent ids and model overrides the planner was created with. */
+  setup: () => { agents: string[]; models: Readonly<Record<string, string>> } | undefined
 }
 
 let dir: string
@@ -58,15 +60,15 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
   let out = ''
   let err = ''
   let planned: PlanOptions | undefined
-  let models: ModelOverrides | undefined
+  let setup: ReturnType<Harness['setup']>
   const deps: CliDeps = {
     stdout: (text) => (out += text),
     stderr: (text) => (err += text),
     env: { TYPESAFE_API_KEY: 'key' },
     cwd: () => dir,
     readStdin: () => Promise.resolve(undefined),
-    createPlanner: (overrides) => {
-      models = overrides
+    createPlanner: ({ agents, models }) => {
+      setup = { agents: agents.map(({ id }) => id), models }
       return {
         plan: (options) => {
           planned = options
@@ -83,7 +85,7 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
     stdout: () => out,
     stderr: () => err,
     planned: () => planned,
-    models: () => models,
+    setup: () => setup,
   }
 }
 
@@ -92,6 +94,14 @@ describe('main', () => {
     const h = harness()
     await expect(main(['--help'], h.deps)).resolves.toBe(0)
     expect(h.stdout()).toBe(`${HELP}\n`)
+  })
+
+  it('lists every registered agent in the help, with what an API agent needs', () => {
+    for (const { id, label } of PROVIDERS)
+      expect(HELP).toMatch(new RegExp(`^  ${id} +${label}: `, 'm'))
+    expect(HELP).toContain('Codex: agent CLI, reads the repository')
+    expect(HELP).toContain('DeepSeek: chat API, gets a repository snapshot; needs DEEPSEEK_API_KEY')
+    expect(HELP).toContain('(default: codex,claude)')
   })
 
   it("prints the package's version", async () => {
@@ -113,7 +123,7 @@ describe('main', () => {
     expect(h.planned()).not.toHaveProperty('jevModel')
     expect(h.planned()).not.toHaveProperty('finalizer')
     expect(h.planned()).not.toHaveProperty('allowAnyTask')
-    expect(h.models()).toEqual({})
+    expect(h.setup()).toEqual({ agents: ['codex', 'claude'], models: {} })
     expect(h.stdout()).toBe('# The plan\n')
     expect(h.stderr()).toBe('[jev-planner] Drafting…\n')
   })
@@ -123,10 +133,12 @@ describe('main', () => {
     const code = await main(
       [
         'plan',
-        '--codex-model',
-        'gpt-x',
-        '--claude-model',
-        'opus',
+        '--agents',
+        ' Codex, claude ,glm,',
+        '--model',
+        'codex=gpt-x',
+        '-m',
+        'GLM= glm-5 ',
         '--jev-model',
         'jev-custom',
         '--finalizer',
@@ -140,7 +152,10 @@ describe('main', () => {
       h.deps,
     )
     expect(code).toBe(0)
-    expect(h.models()).toEqual({ codexModel: 'gpt-x', claudeModel: 'opus' })
+    expect(h.setup()).toEqual({
+      agents: ['codex', 'claude', 'glm'],
+      models: { codex: 'gpt-x', glm: 'glm-5' },
+    })
     expect(h.planned()).toMatchObject({
       task: 'Add caching',
       timeoutMs: 1_500,
@@ -215,10 +230,11 @@ describe('main', () => {
     const check = (ok: boolean): CheckResult => ({ name: 'Codex CLI', ok, detail: 'detail' })
 
     it('prints each check and succeeds when all pass', async () => {
-      const doctor = vi.fn(() => Promise.resolve([check(true)]))
+      const doctor = vi.fn<CliDeps['doctor']>(() => Promise.resolve([check(true)]))
       const h = harness({ doctor })
       await expect(main(['doctor'], h.deps)).resolves.toBe(0)
-      expect(doctor).toHaveBeenCalledWith(dir)
+      expect(doctor.mock.calls[0]?.[0]).toBe(dir)
+      expect(doctor.mock.calls[0]?.[1].map(({ id }) => id)).toEqual(['codex', 'claude'])
       expect(h.stdout()).toBe('✓ Codex CLI: detail\n')
     })
 
@@ -226,6 +242,12 @@ describe('main', () => {
       const h = harness({ doctor: () => Promise.resolve([check(true), check(false)]) })
       await expect(main(['doctor'], h.deps)).resolves.toBe(1)
       expect(h.stdout()).toContain('✗ Codex CLI: detail\n')
+    })
+
+    it('checks the selected agents', async () => {
+      const doctor = vi.fn<CliDeps['doctor']>(() => Promise.resolve([]))
+      await main(['doctor', '--agents', 'deepseek,kimi'], harness({ doctor }).deps)
+      expect(doctor.mock.calls[0]?.[1].map(({ id }) => id)).toEqual(['deepseek', 'kimi'])
     })
 
     it('rejects a task', async () => {
@@ -280,7 +302,10 @@ describe('main', () => {
 
     it('rejects invalid option values', async () => {
       await expect(failure(['--finalizer', 'jev', 'task'])).resolves.toContain(
-        'Invalid --finalizer value: jev',
+        'Invalid --finalizer value: jev. Expected auto or one of codex, claude.',
+      )
+      await expect(failure(['--finalizer', 'glm', 'task'])).resolves.toContain(
+        'Invalid --finalizer value: glm',
       )
       await expect(failure(['--review-rounds', '3', 'task'])).resolves.toContain(
         '--review-rounds must be 1 or 2',
@@ -290,6 +315,32 @@ describe('main', () => {
       )
       await expect(failure(['--timeout', 'soon', 'task'])).resolves.toContain(
         '--timeout must be a positive number',
+      )
+    })
+
+    it('rejects an invalid agent list', async () => {
+      await expect(failure(['--agents', 'codex,gpt9', 'task'])).resolves.toContain(
+        'Unknown agent in --agents: gpt9. Expected one of codex, claude,',
+      )
+      await expect(failure(['--agents', 'codex', 'task'])).resolves.toContain(
+        '--agents needs at least two agents',
+      )
+      await expect(failure(['--agents', 'codex,claude,CODEX', 'task'])).resolves.toContain(
+        '--agents lists codex more than once',
+      )
+    })
+
+    it('rejects an invalid model override', async () => {
+      for (const value of ['gpt-x', '=gpt-x', 'codex=', 'codex= ']) {
+        await expect(failure(['--model', value, 'task'])).resolves.toContain(
+          `Invalid --model value: ${value}. Expected <agent>=<model>.`,
+        )
+      }
+      await expect(failure(['--model', 'gpt9=x', 'task'])).resolves.toContain(
+        'Unknown agent in --model: gpt9',
+      )
+      await expect(failure(['--model', 'glm=glm-5', 'task'])).resolves.toContain(
+        '--model sets glm, which is not one of the --agents',
       )
     })
 

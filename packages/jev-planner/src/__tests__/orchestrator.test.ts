@@ -21,10 +21,14 @@ const verdict: JevVerdict = {
 class FakeAgent implements PlanningAgent {
   readonly prompts: string[] = []
 
+  readonly label: string
+
   constructor(
-    readonly name: 'codex' | 'claude',
+    readonly name: string,
     private readonly responses: string[],
-  ) {}
+  ) {
+    this.label = `${name.charAt(0).toUpperCase()}${name.slice(1)}`
+  }
 
   async generate(request: AgentRequest): Promise<string> {
     this.prompts.push(request.prompt)
@@ -48,7 +52,7 @@ describe('Planner', () => {
     const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
     const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
     const jev = new FakeJev()
-    const planner = new Planner(codex, claude, jev)
+    const planner = new Planner([codex, claude], jev)
 
     const result = await planner.plan({
       task: 'Add caching',
@@ -60,9 +64,12 @@ describe('Planner', () => {
     expect(result.finalizer).toBe('claude')
     expect(jev.input).toMatchObject({
       task: 'Add caching',
-      codexPlan: 'codex revised',
-      claudePlan: 'claude revised',
+      plans: [
+        { agent: 'codex', label: 'Codex', plan: 'codex revised' },
+        { agent: 'claude', label: 'Claude', plan: 'claude revised' },
+      ],
     })
+    expect(result.drafts).toEqual({ codex: 'codex revised', claude: 'claude revised' })
     expect(codex.prompts).toHaveLength(2)
     expect(claude.prompts).toHaveLength(3)
     expect(codex.prompts[1]).toContain('claude draft')
@@ -73,7 +80,7 @@ describe('Planner', () => {
   it('honors an explicit finalizer override', async () => {
     const codex = new FakeAgent('codex', ['codex draft', 'codex revised', 'codex final'])
     const claude = new FakeAgent('claude', ['claude draft', 'claude revised'])
-    const planner = new Planner(codex, claude, new FakeJev())
+    const planner = new Planner([codex, claude], new FakeJev())
 
     const result = await planner.plan({
       task: 'Add caching',
@@ -103,7 +110,7 @@ describe('Planner', () => {
       }),
     }
 
-    const result = await new Planner(codex, claude, jev).plan({
+    const result = await new Planner([codex, claude], jev).plan({
       task: 'Add caching',
       cwd: '/tmp',
       timeoutMs: 1_000,
@@ -122,7 +129,7 @@ describe('Planner', () => {
     const jev = new FakeJev()
     const stages: string[] = []
 
-    await new Planner(codex, claude, jev).plan({
+    await new Planner([codex, claude], jev).plan({
       task: 'Add caching',
       cwd: '/tmp',
       timeoutMs: 1_000,
@@ -131,7 +138,12 @@ describe('Planner', () => {
     })
 
     expect(jev.input?.model).toBe('jev-custom')
-    expect(stages.at(-1)).toBe('Synthesizing the final plan with Claude…')
+    expect(stages).toEqual([
+      'Drafting independent plans with Codex and Claude…',
+      'Cross-reviewing the 2 drafts…',
+      'Asking Jev for typed quality and routing decisions…',
+      'Synthesizing the final plan with Claude…',
+    ])
   })
 
   it('skips the extra review when limited to one round, and passes the model on a re-judge', async () => {
@@ -145,7 +157,7 @@ describe('Planner', () => {
           return { ...verdict, finalizer: 'codex', needsAnotherPassProbability: 0.9 }
         },
       }
-      await new Planner(codex, claude, jev).plan({
+      await new Planner([codex, claude], jev).plan({
         task: 'Add caching',
         cwd: '/tmp',
         timeoutMs: 1_000,
@@ -163,7 +175,7 @@ describe('Planner', () => {
     const codex = new FakeAgent('codex', ['codex draft'])
     const claude = new FakeAgent('claude', ['claude draft'])
     const jev = new FakeJev()
-    const planner = new Planner(codex, claude, jev)
+    const planner = new Planner([codex, claude], jev)
 
     await expect(
       planner.plan({
@@ -180,7 +192,7 @@ describe('Planner', () => {
   it('plans a placeholder task when allowAnyTask is set', async () => {
     const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
     const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
-    const planner = new Planner(codex, claude, new FakeJev())
+    const planner = new Planner([codex, claude], new FakeJev())
 
     const result = await planner.plan({
       task: 'TODO',
@@ -190,5 +202,67 @@ describe('Planner', () => {
     })
     expect(result.plan).toBe('final plan')
     expect(codex.prompts[0]).toContain('<task>\nTODO\n</task>')
+  })
+
+  it('runs any number of agents, each revising against every peer', async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+    const claude = new FakeAgent('claude', ['claude draft', 'claude revised'])
+    const glm = new FakeAgent('glm', ['glm draft', 'glm revised', 'glm final'])
+    const jev: JevJudge = { judge: async () => ({ ...verdict, finalizer: 'glm' }) }
+    const stages: string[] = []
+
+    const result = await new Planner([codex, claude, glm], jev).plan({
+      task: 'Add caching',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+      onStage: (message) => stages.push(message),
+    })
+
+    expect(result).toMatchObject({ plan: 'glm final', finalizer: 'glm' })
+    expect(result.drafts).toEqual({
+      codex: 'codex revised',
+      claude: 'claude revised',
+      glm: 'glm revised',
+    })
+    expect(stages[0]).toBe('Drafting independent plans with Codex, Claude and Glm…')
+    expect(codex.prompts[0]).toContain('in a collaboration with Claude and Glm.')
+    expect(codex.prompts[1]).toContain('<peer-plan author="Claude">\nclaude draft\n</peer-plan>')
+    expect(codex.prompts[1]).toContain('<peer-plan author="Glm">\nglm draft\n</peer-plan>')
+    expect(codex.prompts[1]).not.toContain('<peer-plan author="Codex">')
+    expect(glm.prompts[2]).toContain(
+      '<revised-plan author="Claude">\nclaude revised\n</revised-plan>',
+    )
+  })
+
+  it('needs at least two agents with distinct names', () => {
+    const jev = new FakeJev()
+    expect(() => new Planner([new FakeAgent('codex', [])], jev)).toThrow(
+      'A planner needs at least two agents',
+    )
+    expect(
+      () => new Planner([new FakeAgent('codex', []), new FakeAgent('codex', [])], jev),
+    ).toThrow('Agent "codex" is listed more than once')
+  })
+
+  it('rejects a finalizer override that is not one of its agents, before any call', async () => {
+    const codex = new FakeAgent('codex', [])
+    const planner = new Planner([codex, new FakeAgent('claude', [])], new FakeJev())
+    await expect(
+      planner.plan({ task: 'Add caching', cwd: '/tmp', timeoutMs: 1_000, finalizer: 'glm' }),
+    ).rejects.toThrow('"glm" is not one of this planner\'s agents: codex, claude')
+    expect(codex.prompts).toEqual([])
+  })
+
+  it("rejects Jev's pick when it names no agent", async () => {
+    const codex = new FakeAgent('codex', ['d', 'r'])
+    const claude = new FakeAgent('claude', ['d', 'r'])
+    const jev: JevJudge = { judge: async () => ({ ...verdict, finalizer: 'nobody' }) }
+    await expect(
+      new Planner([codex, claude], jev).plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow('"nobody" is not one of')
   })
 })

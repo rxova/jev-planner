@@ -1,5 +1,5 @@
 import { choice, noul, score, TypeSafeClient } from '@typesafe-ai/sdk'
-import type { JevJudge, JevVerdict } from './types.js'
+import type { JevJudge, JevVerdict, JudgedPlan } from './types.js'
 
 const MAX_PLAN_CHARS = 40_000
 
@@ -8,37 +8,44 @@ function bounded(text: string): string {
   return `${text.slice(0, MAX_PLAN_CHARS)}\n[truncated for Jev evaluation]`
 }
 
+function agentOptions(plans: readonly JudgedPlan[], describe: (label: string) => string) {
+  return Object.fromEntries(plans.map(({ agent, label }) => [agent, describe(label)]))
+}
+
 export class TypeSafeJevJudge implements JevJudge {
   constructor(private readonly client: TypeSafeClient = new TypeSafeClient()) {}
 
   async judge(input: {
     task: string
-    codexPlan: string
-    claudePlan: string
+    plans: readonly JudgedPlan[]
     model?: string
   }): Promise<JevVerdict> {
     const response = await this.client.systemOne({
       ...(input.model ? { model: input.model } : {}),
       state: {
         task: input.task,
-        codex_revised_plan: bounded(input.codexPlan),
-        claude_revised_plan: bounded(input.claudePlan),
+        // Keyed by agent name: the names the choices below answer with.
+        revised_plans: Object.fromEntries(
+          input.plans.map(({ agent, label, plan }) => [
+            agent,
+            { author: label, plan: bounded(plan) },
+          ]),
+        ),
       },
       questions: {
         stronger_plan: choice(
-          'Which revised plan is more likely to lead to a correct, efficient implementation of the task?',
+          'Which revised plan is most likely to lead to a correct, efficient implementation of the task?',
           {
-            codex: 'Codex is materially stronger overall',
-            claude: 'Claude is materially stronger overall',
-            tie: 'The plans are similarly strong or have complementary strengths',
+            ...agentOptions(
+              input.plans,
+              (label) => `${label}'s plan is materially stronger overall`,
+            ),
+            tie: 'No plan is materially stronger, or their strengths are complementary',
           },
         ),
         finalizer: choice(
-          "Which agent's revised plan demonstrates better judgment for merging both plans into the final plan?",
-          {
-            codex: 'Codex should perform the final synthesis',
-            claude: 'Claude should perform the final synthesis',
-          },
+          "Which agent's revised plan demonstrates the best judgment for merging all the plans into the final plan?",
+          agentOptions(input.plans, (label) => `${label} should perform the final synthesis`),
         ),
         completeness: score(
           'How complete is the combined planning material for the requested task?',
