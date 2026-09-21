@@ -9,11 +9,13 @@ description: Independent drafts, cross-review, Jev's typed evaluation, an option
 ## 1. Independent drafts
 
 Each agent — Codex and Claude by default — drafts a plan independently, all in parallel. None of
-them sees another's work yet.
+them sees another's work yet. This is the stage where the agents explore the repository; later
+stages are told to open a file only to settle a specific point.
 
 ## 2. Cross-review
 
-Each agent sees every other agent's draft and returns a revised, standalone plan.
+Each agent sees every other agent's draft and returns a revised, standalone plan. It opens a file
+only to check a claim the plans disagree on, or one it is unsure of.
 
 ## 3. Jev evaluates
 
