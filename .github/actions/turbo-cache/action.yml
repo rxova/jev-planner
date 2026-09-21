@@ -1,21 +1,21 @@
 name: Turbo cache
-description: Restore and save the local Turbo cache across runs.
+description: Point Turbo at a remote cache backed by this repository's Actions cache.
 
-inputs:
-  key:
-    description: >-
-      Cache partition. Defaults to the job name, which is one string for every
-      leg of a matrix — pass a distinct value per leg so one Node version cannot
-      replay a result computed under another.
-    required: false
-    default: ''
+# A remote cache rather than a tarball of `.turbo` per job: each task's artifact
+# is fetched and stored on its own, by hash, so a job reads exactly what it needs
+# and writes exactly what it produced. The action runs a small server on the
+# runner that speaks Turbo's remote-cache API, stores each artifact as an Actions
+# cache entry, and exports TURBO_API / TURBO_TOKEN / TURBO_TEAM. No account, no
+# token, no bucket.
+#
+# Pinned to a commit: a third-party action whose tag can move is one whose
+# behaviour can change under a workflow nobody edited. `server-port: 0` lets the
+# OS pick, so nothing else the job starts can collide with it.
 
 runs:
   using: composite
   steps:
-    - uses: actions/cache@v6
+    - uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
       with:
-        path: .turbo
-        key: turbo-${{ runner.os }}-${{ inputs.key || github.job }}-${{ github.sha }}
-        restore-keys: |
-          turbo-${{ runner.os }}-${{ inputs.key || github.job }}-
+        provider: github
+        server-port: '0'

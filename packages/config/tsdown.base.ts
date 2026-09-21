@@ -1,26 +1,22 @@
-import type { UserConfig } from 'tsdown';
+import type { UserConfig } from 'tsdown'
 
 /**
- * The shared build defaults, so raising the floor is a single-file change
- * rather than a sweep across every package that misses one.
+ * Dual ESM + CJS build for every package.
  *
- * ESM only: every supported Node can `require()` an ES module, so a CJS twin
- * would double the tarball to serve nobody.
- *
- * `fixedExtension` stays off: `.js` / `.d.ts`, matching the exports map, rather
- * than `.mjs` / `.d.mts`.
- *
- * Entries are passed per package as an object, never an array. An array makes
- * the output paths depend on an inferred common base dir, and a different
- * inference silently renames the files the exports map points at.
+ * Whatever a consumer's toolchain needs, the dual format also gives
+ * `check:exports` two independent resolutions to prove. An
+ * exports map that resolves under a bundler but not under plain Node is the
+ * classic silent breakage, and a `require()` path is the cheapest way to catch
+ * it. Drop `cjs` in a package that will only ever be imported.
  */
 export const baseBuildConfig = (overrides: UserConfig = {}): UserConfig => ({
-  entry: { index: 'src/index.ts' },
-  format: ['esm'],
+  entry: ['src/index.ts'],
+  format: ['esm', 'cjs'],
   platform: 'node',
   target: 'node22',
-  fixedExtension: false,
+  // `.mjs` / `.cjs` and `.d.mts` / `.d.cts`, matching the exports maps.
+  fixedExtension: true,
   dts: true,
   clean: true,
   ...overrides,
-});
+})

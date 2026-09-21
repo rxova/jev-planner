@@ -1,87 +1,106 @@
 name: Docs
 
-# Publishes apps/docs to GitHub Pages on every push to main. Pull requests are
-# covered by CI's `docs build` job, which builds at the same base path.
+# The docs are published as part of rxova.org (the rxova/rxova-website
+# aggregator), not from this repository. The aggregator does not build them:
+# this workflow builds the dist for /packages/ts-extended-errors/, uploads it as
+# the `docs-dist` artifact, and dispatches a `docs` event naming this run —
+# gate 1 of the contract in rxova/rxova-website docs/INPUTS-CONTRACT.md.
+# rxova.org validates what arrives, persists it and republishes; a rejection
+# leaves the live site untouched.
 #
-# Skipped on the template repository itself, and quietly skipped (with a
-# notice) until Pages is switched on: Settings → Pages → Source: GitHub Actions.
+# Requires the AGGREGATOR_DISPATCH_TOKEN secret (a fine-grained PAT with
+# Contents: write on rxova/rxova-website).
 
 on:
   push:
     branches: [main]
+  # Docs breakage should fail the pull request that causes it, not the
+  # aggregator deploy that ships it — a red rxova.org build blocks every project
+  # on the site.
+  pull_request:
     paths:
       - 'apps/docs/**'
-      - 'packages/*/src/**'
-      - 'pnpm-lock.yaml'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Queued, never cancelled: this run is the publish, and cancelling one midway
-# risks Pages keeping stale docs if the run that replaced it then fails.
+# `cancel-in-progress` on pull requests only, and the distinction is
+# load-bearing. Superseding a docs build for a branch still under review only
+# saves a build nobody will read. On main the same run is also the publish —
+# `notify-website` below hands rxova.org this run's artifact — so cancelling one
+# mid-flight risks the site keeping stale docs if the run that replaced it then
+# fails. Queueing is the right behaviour there.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-    if: ${{ !github.event.repository.is_template }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: read
-      pages: read
-    outputs:
-      enabled: ${{ steps.pages.outputs.enabled }}
     steps:
-      - name: Check that Pages is enabled
-        id: pages
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/turbo-cache
+      - run: pnpm install --frozen-lockfile
+
+      # Build at the path the aggregator actually serves these docs from.
+      # Absolute references that only work at the domain root are invisible in a
+      # root build and break silently once mounted. The build also runs
+      # starlight-links-validator and scripts/check-md-routes.mjs, so a broken
+      # internal link, a `.md` twin with markup the normalizer does not handle,
+      # or an llms.txt over its size budget fails here.
+      - name: Build the docs at the aggregator base path
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh api "repos/$GITHUB_REPOSITORY/pages" --silent 2>/dev/null; then
-            echo 'enabled=true' >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::GitHub Pages is not enabled; skipping the deploy. Settings → Pages → Source: GitHub Actions."
-            echo 'enabled=false' >> "$GITHUB_OUTPUT"
-          fi
+          DOCS_URL: https://rxova.org
+          DOCS_BASE_URL: /packages/ts-extended-errors/
+        run: pnpm --filter @repo/docs build
 
-      - if: steps.pages.outputs.enabled == 'true'
-        uses: actions/checkout@v7
-      - if: steps.pages.outputs.enabled == 'true'
-        uses: ./.github/actions/setup-pnpm
-      - if: steps.pages.outputs.enabled == 'true'
-        uses: ./.github/actions/turbo-cache
-      - if: steps.pages.outputs.enabled == 'true'
-        run: pnpm install --frozen-lockfile
+      - name: Mark the page-component bundle
+        run: node apps/docs/scripts/write-page-bundle.mjs
 
-      - name: Build the docs at the Pages base path
-        if: steps.pages.outputs.enabled == 'true'
-        env:
-          DOCS_URL: https://${{ github.repository_owner }}.github.io
-          DOCS_BASE_URL: /${{ github.event.repository.name }}/
-        run: pnpm exec turbo run build --filter=docs
-
-      - if: steps.pages.outputs.enabled == 'true'
-        uses: actions/configure-pages@v6
-      - if: steps.pages.outputs.enabled == 'true'
-        uses: actions/upload-pages-artifact@v5
+      # The dist the aggregator composes into its shell. `docs-dist` is the
+      # fixed artifact name in the contract — the aggregator's ingest downloads
+      # it by that name from this run — so it is not ours to rename. Pointing
+      # `path` at the dist directory rather than its parent is what puts
+      # index.html at the artifact root, which is the aggregator's gate 2b.
+      #
+      # Uploaded on pull requests too: the artifact is then the reviewable
+      # output of the check, and an empty dist fails here rather than at ingest.
+      - name: Upload docs-dist
+        uses: actions/upload-artifact@v7
         with:
+          name: docs-dist
           path: apps/docs/dist
+          if-no-files-found: error
 
-  deploy:
+  # Gate 1 of the docs pipeline: tell rxova.org that this run holds a dist built
+  # for /packages/ts-extended-errors/. The aggregator validates the payload,
+  # downloads the artifact above, and persists and publishes it — it never builds
+  # these docs itself. Contract: rxova/rxova-website docs/INPUTS-CONTRACT.md.
+  notify-website:
     needs: build
-    if: needs.build.outputs.enabled == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      - name: Dispatch the docs ingest to rxova.org
+        # No continue-on-error: the dispatch *is* the publish, so swallowing a
+        # failure would leave the site serving stale docs behind a green tick.
+        env:
+          GH_TOKEN: ${{ secrets.AGGREGATOR_DISPATCH_TOKEN }}
+        # `-F` only for schema, which the receiver compares as the number 2.
+        # Everything else goes through `-f` so it stays a string, and an
+        # all-digit ref or sha cannot arrive as a number.
+        run: |
+          gh api repos/rxova/rxova-website/dispatches \
+            -f event_type=docs \
+            -F 'client_payload[schema]=2' \
+            -f 'client_payload[project]=ts-extended-errors' \
+            -f "client_payload[ref]=${GITHUB_REF_NAME}" \
+            -f "client_payload[sha]=${GITHUB_SHA}" \
+            -f "client_payload[run_id]=${GITHUB_RUN_ID}" \
+            -f 'client_payload[base]=/packages/ts-extended-errors/' \
+            -f 'client_payload[framework]=astro'

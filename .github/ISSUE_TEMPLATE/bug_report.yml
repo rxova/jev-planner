@@ -1,19 +1,19 @@
 name: Bug report
-description: Something that does not work the way the docs say it should
+description: Something the package does that it should not, or fails to do
 labels: ['bug']
 body:
   - type: markdown
     attributes:
       value: |
         For a security issue, please use private vulnerability reporting instead:
-        https://github.com/rxova/template-oss/security/advisories/new
+        https://github.com/rxova/ts-extended-errors/security/advisories/new
 
   - type: input
     id: version
     attributes:
-      label: Version
-      description: The package version you are using.
-      placeholder: '1.0.0'
+      label: Package version
+      description: The version of `ts-extended-errors` you are on.
+      placeholder: '0.3.0'
     validations:
       required: true
 
@@ -21,8 +21,11 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Node version, operating system, and bundler or runtime if relevant.
-      placeholder: 'Node 24, macOS 26'
+      description: >-
+        The runtime and its version, and whether your code loads the package as
+        ESM or CommonJS. A bundler and its target matter for anything about
+        `instanceof`.
+      placeholder: 'Node 22.14, ESM'
     validations:
       required: true
 
@@ -30,7 +33,7 @@ body:
     id: what-happened
     attributes:
       label: What happened
-      description: What you did, what happened, and what you expected instead.
+      description: What you observed, and what you expected instead.
     validations:
       required: true
 
@@ -38,7 +41,12 @@ body:
     id: reproduction
     attributes:
       label: Reproduction
-      description: The smallest code that shows the problem, or a link to a repository.
+      description: >-
+        The smallest snippet that shows it. For a serialization problem, include
+        the object `serializeError` produced and the `classes` passed to
+        `deserializeError`; for an `instanceof` that is false, say where the
+        class is declared and whether two copies of the package are installed
+        (`npm ls ts-extended-errors`).
       render: ts
     validations:
-      required: false
+      required: true

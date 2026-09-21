@@ -1,12 +1,19 @@
 name: CodeQL
 
+# Free for a public repository, and the one check here that reads the code for
+# a class of problem the type system and the tests do not: injection, prototype
+# pollution, an unsafe dynamic property write. This package writes properties
+# from names that came out of a JSON payload, so that last one is not
+# hypothetical.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   schedule:
-    - cron: '17 9 * * 6'
+    # A weekly run, because the query pack changes without this tree changing.
+    - cron: '23 6 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -14,9 +21,9 @@ permissions:
   contents: read
   security-events: write
 
-# An analysis is a property of a commit, and only the newest commit on a ref can
-# still be merged, so superseded runs are cancelled. Per ref, so two branches
-# under review do not cancel each other.
+# Grouped per ref rather than per workflow, so two branches under review do not
+# take turns cancelling each other. An analysis is a property of a commit, and
+# only the newest commit on a ref can still be merged.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,23 +31,58 @@ concurrency:
 jobs:
   analyze:
     name: Analyze
-    # Code scanning is free on public repositories only; on a private one (this
-    # template, or a project before it goes public) the upload is refused.
-    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        language: ['javascript-typescript', 'actions']
+        language: ['javascript-typescript']
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      # Whether code scanning will accept an upload at all. `analyze` ends by
+      # uploading its SARIF, and where Code Security is not enabled GitHub
+      # answers "Code Security must be enabled for this repository" — so the job
+      # goes red after two minutes of analysis, for a reason that has nothing to
+      # do with the code under review.
+      #
+      # This asks the code-scanning API directly rather than inferring from the
+      # repository's visibility, which was the first two attempts at this and was
+      # wrong both times: `github.event.repository.visibility` is not on the
+      # repository object in every event payload, and visibility is in any case
+      # only a proxy — what decides the upload is whether the feature is enabled,
+      # which is a repository setting of its own.
+      #
+      # Unknown errors fall through to running CodeQL. A probe that cannot reach
+      # a verdict should not be the thing that silences a security scan.
+      - name: Is code scanning available here
+        id: scanning
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          if error=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/alerts?per_page=1" 2>&1 >/dev/null); then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$error" in
+            *'must be enabled'*|*'Advanced Security'*|*'Code Security'*)
+              echo "::notice::Skipping CodeQL: code scanning is not enabled for this repository."
+              echo 'enabled=false' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::warning::Could not tell whether code scanning is enabled, so running anyway: $error"
+              echo 'enabled=true' >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - uses: actions/checkout@v7
+        if: steps.scanning.outputs.enabled == 'true'
 
       - name: Initialize CodeQL
+        if: steps.scanning.outputs.enabled == 'true'
         uses: github/codeql-action/init@v4.38.0
         with:
           languages: ${{ matrix.language }}
 
       - name: Perform CodeQL Analysis
+        if: steps.scanning.outputs.enabled == 'true'
         uses: github/codeql-action/analyze@v4.38.0
