@@ -1,5 +1,14 @@
 {
   "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    // `import.meta.env.SITE` and `BASE_URL` are declared by `astro/client`. The
+    // preset's include also lists `.astro/types.d.ts`, which references the same
+    // package — but Astro generates that file, it is gitignored, and lint runs
+    // before anything has built. Without this line the endpoints under
+    // `src/pages/` lint as `any` on a clean checkout and fail every
+    // type-aware rule, which is a failure that only ever appears in CI.
+    "types": ["astro/client"]
+  },
   "include": [".astro/types.d.ts", "**/*"],
   "exclude": ["dist"]
 }

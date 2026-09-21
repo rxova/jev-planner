@@ -6,13 +6,38 @@
       "outputs": ["dist/**"],
       // These decide the mount and therefore every emitted URL, so they belong
       // in the cache key: without them a root-base build could replay for the
-      // Pages build in CI. Declared here rather than on the root task so that
-      // setting them does not also invalidate the package builds.
+      // /packages/overlock/ build in CI, and nothing would notice until
+      // rxova.org served it.
+      //
+      // Declared here rather than on the root task so that setting them does not
+      // also invalidate the package build, which never reads them.
       "env": ["DOCS_URL", "DOCS_BASE_URL"],
       "outputLogs": "new-only"
     },
-    // `astro check` generates the content types it needs itself.
+    // No `^build` and no coverage: every module under test is plain JavaScript
+    // over plain objects, which is the whole reason they are split out from the
+    // Astro-only adapter beside them.
+    "test": {
+      "dependsOn": [],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
     "typecheck": {
+      "dependsOn": [],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    // This app publishes no tarball and has neither of these scripts, but both
+    // root tasks declare `dependsOn: ["build"]` — which applies here too and
+    // pulls a full Astro build into `pnpm run check:exports` and
+    // `pnpm run pack:smoke`. Overriding them to nothing keeps the
+    // package-contract job from rendering a site it will not look at.
+    "check:exports": {
+      "dependsOn": [],
+      "outputs": [],
+      "outputLogs": "new-only"
+    },
+    "pack:smoke": {
       "dependsOn": [],
       "outputs": [],
       "outputLogs": "new-only"

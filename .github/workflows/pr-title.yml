@@ -1,10 +1,12 @@
 name: PR title
 
 # The squash-merge subject is the PR *title*: no commit in the branch contains
-# it, and `edited` lets someone change it after CI has already gone green, so it
-# is checked on every edit. It lives here rather than in CI's `types:` because
-# `edited` also fires on body edits, and there is no trigger-level way to tell
-# the two apart. Here the same edit costs one job under a name nothing requires.
+# it, and it can be changed after CI has gone green. It lives here rather than in
+# CI because `edited` also fires on *body* edits, and re-running the whole verify
+# job because a description gained a link is a billed minute for nothing. Here a
+# body edit is skipped by the `if:` below and costs no runner at all.
+#
+# Its own concurrency group, so re-titling can never cancel a CI run.
 
 on:
   pull_request:
@@ -12,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: pr-title-${{ github.event.pull_request.number }}
@@ -21,21 +22,18 @@ concurrency:
 jobs:
   title:
     name: commit message (PR title)
+    # `changes.title` is only present when the edit touched the title.
+    if: github.event.action != 'edited' || github.event.changes.title
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Read live from the API rather than out of `github.event`, so an
-      # overlapping older run cannot affirm a title a newer edit has broken.
-      # Piped, never interpolated — a PR title is attacker-controlled text.
+      # Through the environment, never interpolated into the shell — a title is
+      # attacker-controlled text.
       - name: Lint the PR title
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -o pipefail
-          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title --jq .title \
-            | pnpm exec commitlint --verbose
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$PR_TITLE" | pnpm exec commitlint --verbose

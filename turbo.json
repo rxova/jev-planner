@@ -7,13 +7,15 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      // Tests and prose cannot change dist, so editing them should not cost a rebuild.
+      // Tests and prose cannot change dist, so editing them should not cost a
+      // rebuild. The shared preset is named explicitly: @repo/config has no
+      // build task, so nothing in `dependsOn` would carry a change to it.
       "inputs": [
         "$TURBO_DEFAULT$",
-        "!**/*.test.ts",
+        "$TURBO_ROOT$/packages/config/tsdown.base.ts",
         "!**/__tests__/**",
-        "!README.md",
-        "!CHANGELOG.md"
+        "!**/*.test.*",
+        "!README.md"
       ],
       "outputLogs": "new-only"
     },
@@ -22,27 +24,29 @@
       "outputs": [],
       "outputLogs": "new-only"
     },
+    // Keyed on the shared preset for the same reason as build: a raised
+    // threshold has to re-run every suite, not replay yesterday's pass.
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/config/vitest.base.ts"],
       "outputLogs": "new-only"
     },
-    // publint and attw read the manifest and the emitted types.
+    // publint and attw read the built artifacts, so never a stale dist.
     "check:exports": {
       "dependsOn": ["build"],
       "outputs": [],
       "outputLogs": "new-only"
     },
-    // Packs the real tarball and imports it from a scratch project. Keyed on the
-    // shared script too, so editing the checker re-runs it instead of replaying.
+    // Never cached: a replayed pass says nothing about what npm would serve.
     "pack:smoke": {
       "dependsOn": ["build"],
-      "outputs": [],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/tooling/pack-smoke.ts"],
+      "cache": false,
       "outputLogs": "new-only"
     },
     // Root tasks (`//#`): each reads the whole tree in one pass, so there is
-    // nothing to fan out, but caching them makes an unchanged tree free.
+    // nothing to fan out, but caching them makes an unchanged tree free — and
+    // with the remote cache in CI, free on the runner too.
     "//#eslint:check": {
       "inputs": ["$TURBO_DEFAULT$", "!**/*.{md,mdx,css,svg,png,jpg,jpeg,webp,txt}", "!LICENSE"],
       "outputs": [],

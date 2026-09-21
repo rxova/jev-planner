@@ -6,8 +6,8 @@ name: Release
 # request is merged — a bad bump is visible before it is on npm, immutably.
 #
 # Publishing is opt-in: set the repository variable RELEASE_ENABLED to `true`
-# once npm trusted publishing is configured (see the README). Until then, and
-# always on the template repository itself, this job is skipped.
+# once npm trusted publishing is configured (see the README). Until then, this
+# job is skipped.
 
 on:
   workflow_run:
@@ -25,7 +25,6 @@ jobs:
   release:
     # workflow_run fires on failure as well, so the conclusion is checked.
     if: >-
-      !github.event.repository.is_template &&
       vars.RELEASE_ENABLED == 'true' &&
       (github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success')

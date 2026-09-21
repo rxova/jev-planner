@@ -1,0 +1,83 @@
+{
+  "name": "jev-planner",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Collaborative coding plans from Codex and Claude, arbitrated by TypeSafe Jev.",
+  "keywords": [
+    "cli",
+    "planning",
+    "implementation-plan",
+    "codex",
+    "claude",
+    "claude-code",
+    "jev",
+    "typesafe",
+    "ai-agents",
+    "llm"
+  ],
+  "license": "MIT",
+  "author": "Jonatan Kruszewski",
+  "sideEffects": false,
+  "bin": {
+    "jev-planner": "./dist/bin.mjs"
+  },
+  "files": [
+    "dist",
+    "llms.txt"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsx src/bin.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "check:exports": "publint --strict && attw --pack .",
+    "pack:smoke": "node --import tsx ../tooling/src/pack-smoke.ts",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@repo/config": "workspace:*",
+    "@types/node": "^26.5.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "publint": "^0.3.24",
+    "tsdown": "^0.23.0",
+    "tsx": "^4.23.13",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rxova/jev-planner.git",
+    "directory": "packages/jev-planner"
+  },
+  "bugs": {
+    "url": "https://github.com/rxova/jev-planner/issues"
+  },
+  "homepage": "https://github.com/rxova/jev-planner/tree/main/packages/jev-planner#readme"
+}

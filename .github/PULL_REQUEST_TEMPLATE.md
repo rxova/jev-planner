@@ -18,5 +18,6 @@ Commit on its own. Commitlint checks it.
 
 ## Checklist
 
-- [ ] Changeset added (`pnpm changeset`), or the change does not touch a published package
-- [ ] Docs (`apps/docs`) updated if the public API changed
+- [ ] No new runtime dependency in `packages/ts-extended-errors`
+- [ ] Changeset added (`pnpm changeset`), or the change does not touch the published package
+- [ ] For a public API change: TSDoc, the package README, the docs page and the `llms.txt` API table all updated

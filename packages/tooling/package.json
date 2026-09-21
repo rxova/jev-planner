@@ -1,16 +1,19 @@
 {
-  "name": "@rxova/tooling",
+  "name": "@repo/tooling",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "Repo scripts: the verify gate, pack-smoke, check-llms and check-changeset.",
   "scripts": {
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "@vitest/coverage-v8": "^5.0.1",
+    "@repo/config": "workspace:*",
+    "@types/node": "^26.5.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "tsx": "^4.23.13",
     "typescript": "6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.0"
   }
 }
