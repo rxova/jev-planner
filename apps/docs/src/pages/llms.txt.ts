@@ -1,4 +1,4 @@
-// https://rxova.org/packages/jev-planner/llms.txt — the agent-facing index.
+// https://jev-planner.com/llms.txt — the agent-facing index.
 //
 // See src/lib/llms.mjs for the document's shape. This is the adapter: read the
 // pages, serve the text.
@@ -16,9 +16,8 @@ export const GET: APIRoute = async () => {
     base: import.meta.env.BASE_URL,
   })
 
-  // The mount, not the bare origin: under the aggregator this site lives at
-  // /packages/jev-planner/, and a URL that dropped that prefix would 404 in the one
-  // place it is meant to be followed.
+  // The mount, not the bare origin: served from a sub-path, a URL that dropped
+  // the base would 404 in the one place it is meant to be followed.
   const mount = `${import.meta.env.SITE}${import.meta.env.BASE_URL}`.replace(/\/$/, '')
 
   return new Response(llmsIndex(pages, mount), {

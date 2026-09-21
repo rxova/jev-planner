@@ -106,11 +106,10 @@ const { plan, verdict, finalizer } = await planner.plan({
 
 ## Docs
 
-- Documentation site: https://rxova.org/packages/jev-planner/ — every page is
-  also raw markdown at the same URL plus `.md`
-- Index for an agent: https://rxova.org/packages/jev-planner/llms.txt, and
-  https://rxova.org/packages/jev-planner/llms-full.txt for every page in one
-  fetch
+- Documentation site: https://jev-planner.com/ — every page is also raw
+  markdown at the same URL plus `.md`
+- Index for an agent: https://jev-planner.com/llms.txt, and
+  https://jev-planner.com/llms-full.txt for every page in one fetch
 - README: `node_modules/jev-planner/README.md`, or
   https://github.com/rxova/jev-planner/tree/main/packages/jev-planner#readme
 - Package: https://www.npmjs.com/package/jev-planner

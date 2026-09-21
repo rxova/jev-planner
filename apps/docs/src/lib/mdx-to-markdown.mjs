@@ -172,7 +172,7 @@ export function resolveRelativeLinks(text, { origin, base, fromRoute }) {
  * A `.md` twin gets read detached from the site — pasted into a prompt, fetched
  * on its own — so a root-relative link is not merely inconvenient, it is
  * unresolvable. Composes `withBase` rather than concatenating, so the
- * aggregator's mount prefix is applied by the same idempotent function every
+ * site's base is applied by the same idempotent function every
  * other link on the site uses.
  */
 export function absolutizeUrls(text, { origin, base }) {
@@ -196,7 +196,7 @@ export function absolutizeUrls(text, { origin, base }) {
 
 /**
  * The whole pipeline. `origin` and `base` come from Astro (`import.meta.env.SITE`
- * and `BASE_URL`), so a build for the aggregator and a build for a preview each
+ * and `BASE_URL`), so a production build and a sub-path build each
  * emit links to themselves.
  *
  * Relative links are resolved before root-relative ones. Order matters:

@@ -13,9 +13,9 @@
  * belongs.
  *
  * The docs site is excluded from `build` for a different reason: docs.yml
- * builds it at the base path rxova.org mounts it on, and that is the build
- * whose output ships. Rendering it again here, at a base nothing serves, would
- * add an Astro build to every push to prove nothing. `typecheck` and `test`
+ * builds it for jev-planner.com, runs its browser tests against that dist and
+ * deploys it. Rendering it again here would add an Astro build to every push
+ * to re-prove what that job proves on the output that ships. `typecheck` and `test`
  * still cover it.
  *
  * CI runs these steps as separate parallel jobs rather than calling this script,

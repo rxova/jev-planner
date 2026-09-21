@@ -27,9 +27,9 @@
  */
 const SUMMARY = [
   'A command-line tool that writes an implementation plan for a coding task by',
-  'making two agents collaborate: the Codex CLI and Claude Code each draft a plan',
-  'against the repository, read-only, then revise it after reading the other',
-  "one's. TypeSafe Jev scores the revised plans with typed answers —",
+  'making two or more AI agents collaborate — the Codex CLI and Claude Code by',
+  'default: each drafts a plan against the repository, read-only, then revises',
+  "it after reading the others'. TypeSafe Jev scores the revised plans with typed answers —",
   'completeness, feasibility, risk coverage, which agent should merge them, and',
   'whether another review round is worth it — and the chosen agent writes one',
   'final plan. The plan goes to stdout as Markdown, or as JSON with `--json`;',
