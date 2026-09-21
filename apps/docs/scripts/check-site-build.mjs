@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 
+import { manifestVersion, markerProblems } from '../src/lib/version-marker.mjs'
 import { collect } from './check-md-routes.mjs'
 
 export const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
@@ -63,6 +64,7 @@ export const REQUIRED = [
   'llms.txt',
   'llms-full.txt',
   'og.png',
+  'version.json',
 ]
 
 /** A docs page to compare the landing page against: what it adds is landing-specific. */
@@ -165,7 +167,8 @@ export function metaProblems(html, prefix) {
 
 const kB = (bytes) => `${(bytes / 1024).toFixed(1)} kB`
 
-export async function checkSiteBuild(distDir = DEFAULT_DIST) {
+/** `expected` is the jev-planner version the marker must name. */
+export async function checkSiteBuild(distDir = DEFAULT_DIST, expected = manifestVersion()) {
   const failures = []
   const read = (path) => readFile(join(distDir, path))
   const exists = async (path) => Boolean(await stat(join(distDir, path)).catch(() => null))
@@ -245,6 +248,8 @@ export async function checkSiteBuild(distDir = DEFAULT_DIST) {
   if (sizes.fonts > BUDGETS.fonts) {
     failures.push(`fonts are ${kB(sizes.fonts)}, over the ${kB(BUDGETS.fonts)} budget`)
   }
+
+  failures.push(...markerProblems(await readFile(join(distDir, 'version.json'), 'utf8'), expected))
 
   // --- Base-path safety, on every page -----------------------------------
   for (const html of await collect(distDir, '.html')) {

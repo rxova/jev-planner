@@ -38,6 +38,7 @@ function png(width, height) {
 
 const PREFIX = 'https://example.com/sub'
 const BASE = '/sub/'
+const VERSION = '1.2.3'
 
 const head = (path = '') =>
   `<link rel="canonical" href="${PREFIX}/${path}">` +
@@ -59,6 +60,7 @@ const good = () => ({
   'llms.txt': 'x',
   'llms-full.txt': 'x',
   'og.png': png(1200, 630),
+  'version.json': JSON.stringify({ version: VERSION, commit: 'local' }),
   '_astro/site.css': 'body{color:red}',
   '_astro/page.js': 'import "./chunk.js";run()',
   '_astro/chunk.js': 'export const run = () => 1',
@@ -138,7 +140,7 @@ describe('metaProblems', () => {
 
 describe('checkSiteBuild', () => {
   it('passes a well-formed build and measures it', async () => {
-    const { failures, sizes } = await checkSiteBuild(await dist(good()))
+    const { failures, sizes } = await checkSiteBuild(await dist(good()), VERSION)
     expect(failures).toEqual([])
     // Both modules are counted, the inline script only on the landing page.
     expect(sizes.allJs).toBeGreaterThan(sizes.landingJs)
@@ -146,12 +148,15 @@ describe('checkSiteBuild', () => {
   })
 
   it('reports every missing required file and stops there', async () => {
-    const { failures } = await checkSiteBuild(await dist({ 'x.txt': '' }))
+    const { failures } = await checkSiteBuild(await dist({ 'x.txt': '' }), VERSION)
     expect(failures).toEqual(REQUIRED.map((p) => `${p} is missing`))
   })
 
   it('fails without a source to read the prefix from', async () => {
-    const { failures } = await checkSiteBuild(await dist({ ...good(), 'index.md': 'no source' }))
+    const { failures } = await checkSiteBuild(
+      await dist({ ...good(), 'index.md': 'no source' }),
+      VERSION,
+    )
     expect(failures).toEqual(['index.md has no "source:" to read the site prefix from'])
   })
 
@@ -160,6 +165,7 @@ describe('checkSiteBuild', () => {
     const bloat = Buffer.from(Array.from({ length: BUDGETS.css + 4096 }, () => Math.random() * 256))
     const { failures } = await checkSiteBuild(
       await dist({ ...good(), '_astro/site.css': bloat.toString('base64') }),
+      VERSION,
     )
     expect(failures).toHaveLength(1)
     expect(failures[0]).toMatch(/^landing css is .* over the 25\.0 kB budget$/)
@@ -171,6 +177,7 @@ describe('checkSiteBuild', () => {
     )
     const { failures } = await checkSiteBuild(
       await dist({ ...good(), '_astro/chunk.js': bloat.toString('base64') }),
+      VERSION,
     )
     expect(failures.some((f) => f.startsWith('landing allJs'))).toBe(true)
   })
@@ -182,6 +189,7 @@ describe('checkSiteBuild', () => {
         '_astro/space-grotesk-latin-500-normal.B7xQ-1aZ.woff2': 'x'.repeat(1000),
         '_astro/space-grotesk-latin-700-normal.Dk2f_9sE.woff2': 'x'.repeat(500),
       }),
+      VERSION,
     )
     expect(failures).toEqual([])
     expect(sizes.fonts).toBe(1500)
@@ -195,6 +203,7 @@ describe('checkSiteBuild', () => {
         '_astro/space-grotesk-latin-ext-500-normal.a1.woff2': 'x',
         '_astro/space-grotesk-latin-500-normal.a1.woff': 'x',
       }),
+      VERSION,
     )
     expect(failures).toEqual([
       'ships font files: _astro/space-grotesk-latin-500-normal.a1.woff, ' +
@@ -209,6 +218,7 @@ describe('checkSiteBuild', () => {
         ...good(),
         '_astro/space-grotesk-latin-500-normal.a1.woff2': 'x'.repeat(BUDGETS.fonts + 1),
       }),
+      VERSION,
     )
     expect(failures).toEqual(['fonts are 30.0 kB, over the 30.0 kB budget'])
   })
@@ -221,11 +231,50 @@ describe('checkSiteBuild', () => {
         '_astro/inter.woff2': 'x',
         'guides/getting-started/index.html': html('guides/getting-started/', '<a href="/learn/">'),
       }),
+      VERSION,
     )
     expect(failures).toEqual([
       'og.png is 1200×600, not 1200×630',
       'ships font files: _astro/inter.woff2',
       'guides/getting-started/index.html links /learn/ without the base /sub/',
+    ])
+  })
+
+  it('fails a malformed version marker', async () => {
+    for (const [body, failure] of [
+      ['<html>', 'version.json is not JSON'],
+      ['[]', 'version.json is not an object'],
+      ['null', 'version.json is not an object'],
+    ]) {
+      const { failures } = await checkSiteBuild(
+        await dist({ ...good(), 'version.json': body }),
+        VERSION,
+      )
+      expect(failures).toEqual([failure])
+    }
+  })
+
+  it('fails a marker for another version, with extra keys or no commit', async () => {
+    const { failures } = await checkSiteBuild(
+      await dist({ ...good(), 'version.json': JSON.stringify({ version: '1.2.2', built: 1 }) }),
+      VERSION,
+    )
+    expect(failures).toEqual([
+      'version.json has keys built,version',
+      'version.json says 1.2.2, the package is 1.2.3',
+      'version.json commit undefined is not "local" or a git sha',
+    ])
+  })
+
+  it('accepts a marker from CI and rejects a commit that is not a sha', async () => {
+    const marker = (commit) => ({
+      ...good(),
+      'version.json': JSON.stringify({ version: VERSION, commit }),
+    })
+    const sha = 'a'.repeat(40)
+    expect((await checkSiteBuild(await dist(marker(sha)), VERSION)).failures).toEqual([])
+    expect((await checkSiteBuild(await dist(marker('main')), VERSION)).failures).toEqual([
+      'version.json commit main is not "local" or a git sha',
     ])
   })
 })
