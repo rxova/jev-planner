@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "The jev-planner landing page and documentation, deployed to GitHub Pages at rxova.github.io/jev-planner/.",
+  "description": "The jev-planner landing page and documentation, deployed to GitHub Pages at jev-planner.com.",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build && node ./scripts/check-md-routes.mjs",

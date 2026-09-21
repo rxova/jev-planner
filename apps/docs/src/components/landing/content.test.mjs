@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { FEATURES, GET_STARTED, INSTALL, TRANSCRIPT, landingMarkdown } from './content.mjs'
 
-const site = { origin: 'https://rxova.github.io', base: '/jev-planner/' }
+// A sub-path base, not the production root: it is the case where a link that
+// skipped `withBase` would show.
+const site = { origin: 'https://example.com', base: '/sub/' }
 
 describe('landingMarkdown', () => {
   const md = landingMarkdown(site)
 
   it('cites the landing page under the base as its source', () => {
-    expect(md).toContain('source: https://rxova.github.io/jev-planner/\n')
+    expect(md).toContain('source: https://example.com/sub/\n')
   })
 
   it('has the install command and the whole transcript', () => {
@@ -19,7 +21,7 @@ describe('landingMarkdown', () => {
 
   it('links every feature and the getting-started page absolutely, under the base', () => {
     for (const { href } of [...FEATURES, { href: GET_STARTED }]) {
-      expect(md).toContain(`](https://rxova.github.io/jev-planner${href})`)
+      expect(md).toContain(`](https://example.com/sub${href})`)
     }
     expect(md).not.toMatch(/\]\(\//)
   })
