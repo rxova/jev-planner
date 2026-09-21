@@ -368,9 +368,9 @@ describe('main', () => {
       expect(JSON.parse(h.stdout())).toMatchObject({ finalizer: 'codex', selected: true })
     })
 
-    it('prints how long each round and call took with --verbose, and writes nothing', async () => {
+    it('prints how long each round and call took with --verbose, even with --no-rounds', async () => {
       const h = harness(replaying())
-      await expect(main(['--verbose', 'task'], h.deps)).resolves.toBe(0)
+      await expect(main(['--verbose', '--no-rounds', 'task'], h.deps)).resolves.toBe(0)
       expect(h.stderr()).toContain(
         [
           '[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)',
@@ -412,8 +412,19 @@ describe('main', () => {
 
   describe('the default run folder', () => {
     const rounds: PlanRound[] = [
-      { round: 1, stage: 'draft', plans: { codex: 'codex draft', claude: 'claude draft' } },
-      { round: 2, stage: 'final', plans: { codex: 'merged' }, verdict },
+      {
+        round: 1,
+        stage: 'draft',
+        plans: { codex: 'codex draft', claude: 'claude draft' },
+        timings: { totalMs: 1_000, agents: { codex: 1_000, claude: 900 } },
+      },
+      {
+        round: 2,
+        stage: 'final',
+        plans: { codex: 'merged' },
+        verdict,
+        timings: { totalMs: 500, agents: { codex: 500 } },
+      },
     ]
     const replaying = (): Partial<CliDeps> => ({
       createPlanner: () => ({
