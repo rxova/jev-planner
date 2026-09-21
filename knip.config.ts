@@ -22,5 +22,10 @@ export default {
       // Knip reads imports, so a loader named in an argument list is invisible.
       ignoreDependencies: ['tsx'],
     },
+    'apps/docs': {
+      // Loaded by Starlight from a string in astro.config's `customCss`, which
+      // knip does not read as an import.
+      ignoreDependencies: ['@rxova/brand'],
+    },
   },
 } satisfies KnipConfig

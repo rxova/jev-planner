@@ -66,37 +66,42 @@ const { command } = Astro.props
     align-items: center;
     gap: 0.5rem 0.75rem;
     padding: 0.5rem 0.5rem 0.5rem 1rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.75rem;
-    background: var(--sl-color-black);
+    border: 1px solid var(--rx-rule);
+    border-radius: var(--rx-radius);
+    background: var(--rx-card);
   }
   code {
     flex: 1 1 14rem;
     font-family: var(--sl-font-mono);
     font-size: var(--sl-text-base);
-    color: var(--sl-color-white);
+    color: var(--rx-fg);
     overflow-wrap: anywhere;
   }
   code::before {
     content: '$ ' / '';
-    color: var(--sl-color-gray-3);
+    color: var(--rx-muted);
     user-select: none;
   }
   button {
     min-height: 44px;
     min-width: 44px;
     padding: 0 1rem;
-    border: 1px solid var(--sl-color-accent);
-    border-radius: 0.5rem;
-    background: var(--sl-color-accent-low);
-    color: var(--sl-color-text-accent);
+    border: 1px solid var(--rx-primary);
+    border-radius: var(--rx-radius-sm);
+    background: var(--rx-tag-bg);
+    color: var(--rx-fg);
     font: inherit;
     font-weight: 600;
     cursor: pointer;
   }
+  /* White on the light theme's violet, the page colour on the dark theme's
+     lighter one: both over 4.5:1. */
   button:hover {
-    background: var(--sl-color-accent);
-    color: var(--sl-color-black);
+    background: var(--rx-primary);
+    color: #fff;
+  }
+  :global([data-theme='dark']) button:hover {
+    color: var(--rx-bg);
   }
   /* Outside the box, with its line reserved, so the message appearing moves nothing. */
   .status {
@@ -104,6 +109,6 @@ const { command } = Astro.props
     margin: 0.5rem 0 0;
     text-align: center;
     font-size: var(--sl-text-sm);
-    color: var(--sl-color-gray-2);
+    color: var(--rx-muted);
   }
 </style>

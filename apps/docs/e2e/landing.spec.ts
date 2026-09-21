@@ -41,6 +41,24 @@ test('uses the logo for the home link', async ({ page }) => {
   await expect(home.locator('img:visible')).toHaveCount(1)
 })
 
+test('wears the rxova brand', async ({ page }) => {
+  await page.goto(LANDING)
+
+  // The gradient's one placement on this site: the hairline under the header.
+  const hairline = await page
+    .locator('header.header')
+    .evaluate((el) => getComputedStyle(el, '::after').backgroundImage)
+  expect(hairline).toMatch(/^linear-gradient/)
+
+  // Starlight's accent resolves to the brand violet, not its own blue or the old orange.
+  const [accent, primary] = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement)
+    return ['--sl-color-accent', '--rx-primary'].map((name) => style.getPropertyValue(name).trim())
+  })
+  expect(primary).toMatch(/^#[0-9a-f]{6}$/i)
+  expect(accent).toBe(primary)
+})
+
 test('reaches the calls to action in reading order from the keyboard', async ({
   page,
 }, testInfo) => {

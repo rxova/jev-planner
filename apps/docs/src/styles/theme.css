@@ -1,24 +1,69 @@
 /*
- * The site's colours, on top of Starlight's defaults. Starlight already uses the
- * system font stack, so no font is loaded.
- *
- * The accent pairs are chosen for WCAG AA against Starlight's backgrounds in
- * each theme: link text uses `--sl-color-text-accent`, which is `accent-high`
- * in the dark theme and `accent` in the light one.
+ * jev-planner on top of the rxova brand. `@rxova/brand/starlight.css`, loaded
+ * before this file, maps the `--rx-*` tokens onto Starlight's variables: warm
+ * monochrome, one violet accent, and the three-stop gradient as the only other
+ * colour. What is here is where this site departs from that mapping.
  */
+
+/* The brand maps gray-3 to `--rx-faint`, which is under 4.5:1 on the page
+   background in both themes, and Starlight sets body copy in the sidebar,
+   table of contents and captions in gray-3. `--rx-muted` passes AA in both. */
 :root {
-  --sl-color-accent-low: #431407;
-  --sl-color-accent: #ea580c;
-  --sl-color-accent-high: #fed7aa;
+  --sl-color-gray-3: var(--rx-muted);
 }
 
-:root[data-theme='light'] {
-  --sl-color-accent-low: #ffedd5;
-  --sl-color-accent: #c2410c;
-  --sl-color-accent-high: #7c2d12;
+/* Text on an accent fill — the sidebar's current page. Starlight uses
+   accent-low, which the brand mixes to 4.35:1 against the dark theme's violet;
+   the page background clears 5:1 against the violet in either theme. */
+:root {
+  --sl-color-text-invert: var(--rx-bg);
 }
 
 :focus-visible {
-  outline: 2px solid var(--sl-color-text-accent);
+  outline: 2px solid var(--rx-primary);
   outline-offset: 2px;
+}
+
+/* The gradient's first placement: a hairline along the bottom of the header,
+   drawn over the neutral border the brand gives it. */
+header.header {
+  position: relative;
+}
+
+header.header::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: -1px;
+  height: 1px;
+  background: var(--rx-gradient);
+  pointer-events: none;
+}
+
+/* Starlight's own blocks, on the brand's radii. */
+.expressive-code .frame,
+.starlight-aside,
+.sl-link-card,
+.card {
+  border-radius: var(--rx-radius);
+}
+
+.expressive-code .frame {
+  overflow: hidden;
+}
+
+/* The default footer: previous/next cards on the brand's rules, and the
+   Starlight mark in the accent instead of its own orange. */
+.pagination-links a {
+  border-color: var(--rx-rule);
+  border-radius: var(--rx-radius);
+  box-shadow: none;
+}
+
+.pagination-links a:hover {
+  border-color: var(--rx-primary);
+}
+
+.kudos svg {
+  color: var(--rx-primary);
 }

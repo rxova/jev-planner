@@ -23,22 +23,22 @@ import { TRANSCRIPT } from './content.mjs'
   .terminal {
     max-width: 48rem;
     margin: 2.5rem auto 0;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.75rem;
-    background: var(--sl-color-black);
+    border: 1px solid var(--rx-rule);
+    border-radius: var(--rx-radius);
+    background: var(--rx-card);
     overflow: hidden;
   }
   .bar {
     display: flex;
     gap: 0.4rem;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--sl-color-gray-5);
+    border-bottom: 1px solid var(--rx-rule);
   }
   .bar span {
     width: 0.75rem;
     height: 0.75rem;
     border-radius: 50%;
-    background: var(--sl-color-gray-5);
+    background: var(--rx-rule-strong);
   }
   pre {
     margin: 0;
@@ -47,21 +47,21 @@ import { TRANSCRIPT } from './content.mjs'
     font-family: var(--sl-font-mono);
     font-size: var(--sl-text-sm);
     line-height: 1.7;
-    color: var(--sl-color-gray-2);
+    color: var(--rx-muted);
   }
   .line {
     display: block;
     white-space: pre;
   }
   .command {
-    color: var(--sl-color-white);
+    color: var(--rx-fg);
   }
   .command::before {
     content: '$ ' / '';
-    color: var(--sl-color-text-accent);
+    color: var(--rx-primary);
   }
   .note {
-    color: var(--sl-color-gray-3);
+    color: var(--rx-muted);
     font-style: italic;
   }
 
