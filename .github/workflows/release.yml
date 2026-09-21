@@ -8,6 +8,11 @@ name: Release
 # Publishing is opt-in: set the repository variable RELEASE_ENABLED to `true`
 # once npm trusted publishing is configured (see the README). Until then, this
 # job is skipped.
+#
+# A publish that includes jev-planner then redeploys the docs (docs.yml, called
+# below) from the release commit, so jev-planner.com describes what npm serves.
+# The version-bump push to main does not deploy on its own for that reason:
+# until the publish succeeds, the new version is not installable.
 
 on:
   workflow_run:
@@ -30,6 +35,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      version: ${{ steps.released.outputs.version }}
+      sha: ${{ steps.released.outputs.sha }}
     env:
       # The version commit would otherwise fire the pre-commit hook. CI already
       # gated this code on the pull request.
@@ -53,6 +61,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Create version PR or publish
+        id: changesets
         uses: changesets/action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -63,3 +72,37 @@ jobs:
           pr-title: 'chore: version packages'
         env:
           NPM_CONFIG_PROVENANCE: 'true'
+
+      # Empty unless this run published jev-planner. A bumped manifest that did
+      # not publish is a release the docs would silently miss, so it fails.
+      - name: Read the released jev-planner version
+        id: released
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.published }}
+          PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          version=''
+          if [ "$PUBLISHED" = 'true' ]; then
+            version=$(jq -r '.[] | select(.name == "jev-planner") | .version' <<<"$PACKAGES")
+            manifest=$(jq -r .version packages/jev-planner/package.json)
+            before=$(git show HEAD^:packages/jev-planner/package.json | jq -r .version || true)
+            if [ -z "$version" ] && [ "$manifest" != "$before" ]; then
+              echo "::error::jev-planner went from $before to $manifest but was not published"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Released jev-planner: ${version:-(none)}"
+
+  docs:
+    needs: release
+    if: needs.release.outputs.version != ''
+    uses: ./.github/workflows/docs.yml
+    with:
+      released-version: ${{ needs.release.outputs.version }}
+      ref: ${{ needs.release.outputs.sha }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
