@@ -71,6 +71,7 @@ export default defineConfig({
         'default — cross-reviewed and arbitrated by TypeSafe Jev.',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/rxova/jev-planner' }],
       favicon: '/favicon.svg',
+      components: { Head: './src/components/overrides/Head.astro' },
       // Starlight already writes the canonical link, og:url, og:title,
       // og:description, twitter:card and the sitemap link. It has no image.
       head: [
@@ -85,8 +86,8 @@ export default defineConfig({
           },
         },
       ],
-      // The brand's Starlight mapping first; theme.css adjusts it.
-      customCss: ['@rxova/brand/starlight.css', './src/styles/theme.css'],
+      // The brand face, then the brand's Starlight mapping; theme.css adjusts it.
+      customCss: ['./src/styles/fonts.css', '@rxova/brand/starlight.css', './src/styles/theme.css'],
       // Wrap long lines instead of scrolling them. A scrolling code block is a
       // region keyboard users cannot reach (axe: scrollable-region-focusable),
       // and on a phone most commands on these pages are wider than the screen.

@@ -1,0 +1,20 @@
+---
+/**
+ * Starlight's head, plus a preload for each Space Grotesk file.
+ *
+ * fonts.css uses `font-display: optional`, which drops a face that arrives
+ * after the ~100 ms block period. Discovered from the stylesheet, the request
+ * starts too late to make it; preloaded, it starts with the HTML. `?url` gives
+ * the same hashed file the stylesheet references, so nothing is fetched twice.
+ */
+import Default from '@astrojs/starlight/components/Head.astro'
+import medium from '@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2?url'
+import bold from '@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2?url'
+---
+
+{
+  [medium, bold].map((href) => (
+    <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
+  ))
+}
+<Default />
