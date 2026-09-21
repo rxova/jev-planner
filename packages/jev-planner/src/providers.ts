@@ -38,7 +38,7 @@ export const PROVIDERS: readonly Provider[] = [
     id: 'codex',
     label: 'Codex',
     command: 'codex',
-    args: (model) => [
+    args: ({ model, effort }) => [
       'exec',
       '--ephemeral',
       '--sandbox',
@@ -47,15 +47,18 @@ export const PROVIDERS: readonly Provider[] = [
       '--color',
       'never',
       ...(model ? ['--model', model] : []),
+      // A config override, so it wins over model_reasoning_effort in ~/.codex/config.toml.
+      ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []),
       '-',
     ],
+    effort: true,
     auth: ['login', 'status'],
   }),
   cliProvider({
     id: 'claude',
     label: 'Claude',
     command: 'claude',
-    args: (model) => [
+    args: ({ model, effort }) => [
       '--print',
       '--permission-mode',
       'plan',
@@ -67,7 +70,9 @@ export const PROVIDERS: readonly Provider[] = [
       '--tools',
       'Read,Glob,Grep',
       ...(model ? ['--model', model] : []),
+      ...(effort ? ['--effort', effort] : []),
     ],
+    effort: true,
     auth: claudeAuth,
   }),
   openAICompatibleProvider({

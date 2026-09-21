@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Planner } from '../orchestrator.js'
 import { TaskValidationError } from '../task.js'
-import type { AgentRequest, JevJudge, JevVerdict, PlanningAgent } from '../types.js'
+import type { AgentRequest, JevJudge, JevVerdict, PlanRound, PlanningAgent } from '../types.js'
 
 const verdict: JevVerdict = {
   strongerPlan: 'tie',
@@ -264,5 +264,67 @@ describe('Planner', () => {
         timeoutMs: 1_000,
       }),
     ).rejects.toThrow('"nobody" is not one of')
+  })
+
+  it('reports every round as it ends, and waits for each report', async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised', 'codex refined'])
+    const claude = new FakeAgent('claude', [
+      'claude draft',
+      'claude revised',
+      'claude refined',
+      'final plan',
+    ])
+    const verdicts = [
+      { ...verdict, needsAnotherPassProbability: 0.9 },
+      { ...verdict, needsAnotherPassProbability: 0.1 },
+    ]
+    const jev: JevJudge = { judge: async () => verdicts.shift() ?? verdict }
+    const rounds: PlanRound[] = []
+    const events: string[] = []
+
+    await new Planner([codex, claude], jev).plan({
+      task: 'Add caching',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+      onStage: (message) => events.push(message),
+      onRound: async (round) => {
+        await Promise.resolve()
+        rounds.push(round)
+        events.push(`round ${String(round.round)}`)
+      },
+    })
+
+    expect(rounds).toEqual([
+      { round: 1, stage: 'draft', plans: { codex: 'codex draft', claude: 'claude draft' } },
+      {
+        round: 2,
+        stage: 'review',
+        plans: { codex: 'codex revised', claude: 'claude revised' },
+        verdict: { ...verdict, needsAnotherPassProbability: 0.9 },
+      },
+      {
+        round: 3,
+        stage: 'review',
+        plans: { codex: 'codex refined', claude: 'claude refined' },
+        verdict,
+      },
+      { round: 4, stage: 'final', plans: { claude: 'final plan' }, verdict },
+    ])
+    expect(events.indexOf('round 1')).toBeLessThan(events.indexOf('Cross-reviewing the 2 drafts…'))
+  })
+
+  it('stops the run when a round report fails', async () => {
+    const codex = new FakeAgent('codex', ['codex draft'])
+    const claude = new FakeAgent('claude', ['claude draft'])
+    const planner = new Planner([codex, claude], new FakeJev())
+    await expect(
+      planner.plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+        onRound: () => Promise.reject(new Error('disk full')),
+      }),
+    ).rejects.toThrow('disk full')
+    expect(codex.prompts).toHaveLength(1)
   })
 })

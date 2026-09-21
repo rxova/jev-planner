@@ -19,6 +19,7 @@ function fakeProvider(id: string, ok: boolean): Provider {
     label: id,
     kind: 'api',
     secretEnv: [],
+    effort: false,
     create: () => {
       throw new Error('not used')
     },

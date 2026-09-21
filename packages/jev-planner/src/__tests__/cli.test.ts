@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,7 +7,7 @@ import { HELP, main, VERSION } from '../cli.js'
 import type { CliDeps } from '../cli.js'
 import type { CheckResult } from '../doctor.js'
 import { PROVIDERS } from '../providers.js'
-import type { JevVerdict, PlanOptions, PlanResult } from '../types.js'
+import type { JevVerdict, PlanOptions, PlanResult, PlanRound } from '../types.js'
 
 /** A rejection with a non-Error reason: what the `String(error)` fallback is for. */
 function rejectWith(reason: unknown): Promise<never> {
@@ -43,7 +43,13 @@ interface Harness {
   stderr: () => string
   planned: () => PlanOptions | undefined
   /** The agent ids and model overrides the planner was created with. */
-  setup: () => { agents: string[]; models: Readonly<Record<string, string>> } | undefined
+  setup: () =>
+    | {
+        agents: string[]
+        models: Readonly<Record<string, string>>
+        efforts: Readonly<Record<string, string>>
+      }
+    | undefined
 }
 
 let dir: string
@@ -67,8 +73,8 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
     env: { TYPESAFE_API_KEY: 'key' },
     cwd: () => dir,
     readStdin: () => Promise.resolve(undefined),
-    createPlanner: ({ agents, models }) => {
-      setup = { agents: agents.map(({ id }) => id), models }
+    createPlanner: ({ agents, models, efforts }) => {
+      setup = { agents: agents.map(({ id }) => id), models, efforts }
       return {
         plan: (options) => {
           planned = options
@@ -99,7 +105,7 @@ describe('main', () => {
   it('lists every registered agent in the help, with what an API agent needs', () => {
     for (const { id, label } of PROVIDERS)
       expect(HELP).toMatch(new RegExp(`^  ${id} +${label}: `, 'm'))
-    expect(HELP).toContain('Codex: agent CLI, reads the repository')
+    expect(HELP).toContain('Codex: agent CLI, reads the repository; takes --effort')
     expect(HELP).toContain('DeepSeek: chat API, gets a repository snapshot; needs DEEPSEEK_API_KEY')
     expect(HELP).toContain('(default: codex,claude)')
   })
@@ -123,7 +129,7 @@ describe('main', () => {
     expect(h.planned()).not.toHaveProperty('jevModel')
     expect(h.planned()).not.toHaveProperty('finalizer')
     expect(h.planned()).not.toHaveProperty('allowAnyTask')
-    expect(h.setup()).toEqual({ agents: ['codex', 'claude'], models: {} })
+    expect(h.setup()).toEqual({ agents: ['codex', 'claude'], models: {}, efforts: {} })
     expect(h.stdout()).toBe('# The plan\n')
     expect(h.stderr()).toBe('[jev-planner] Drafting…\n')
   })
@@ -139,6 +145,10 @@ describe('main', () => {
         'codex=gpt-x',
         '-m',
         'GLM= glm-5 ',
+        '--effort',
+        'codex=low',
+        '-e',
+        'Claude=high',
         '--jev-model',
         'jev-custom',
         '--finalizer',
@@ -155,6 +165,7 @@ describe('main', () => {
     expect(h.setup()).toEqual({
       agents: ['codex', 'claude', 'glm'],
       models: { codex: 'gpt-x', glm: 'glm-5' },
+      efforts: { codex: 'low', claude: 'high' },
     })
     expect(h.planned()).toMatchObject({
       task: 'Add caching',
@@ -224,6 +235,61 @@ describe('main', () => {
     expect(h.stderr()).toBe(
       'jev-planner: Missing coding task. Pass it as an argument, with --file, or on stdin.\n',
     )
+  })
+
+  describe('--rounds-dir', () => {
+    const rounds: PlanRound[] = [
+      { round: 1, stage: 'draft', plans: { codex: ' codex draft ', claude: 'claude draft' } },
+      { round: 2, stage: 'review', plans: { codex: 'codex revised', claude: 'x' }, verdict },
+      { round: 3, stage: 'final', plans: { codex: 'merged\n' }, verdict },
+    ]
+    const replaying = (): Partial<CliDeps> => ({
+      createPlanner: () => ({
+        plan: async (options) => {
+          for (const round of rounds) await options.onRound?.(round)
+          return result
+        },
+      }),
+    })
+
+    it('writes each round to its own folder, relative to --cwd', async () => {
+      const h = harness(replaying())
+      await expect(main(['--rounds-dir', 'out/rounds', 'task'], h.deps)).resolves.toBe(0)
+      const out = join(dir, 'out/rounds')
+      const read = (path: string) => readFile(join(out, path), 'utf8')
+      await expect(read('round1/codex.md')).resolves.toBe('codex draft\n')
+      await expect(read('round1/claude.md')).resolves.toBe('claude draft\n')
+      await expect(readdir(join(out, 'round1'))).resolves.toHaveLength(2)
+      await expect(read('round2/codex.md')).resolves.toBe('codex revised\n')
+      expect(JSON.parse(await read('round2/jev-verdict.json'))).toEqual(verdict)
+      await expect(read('final/plan.md')).resolves.toBe('<!-- merged by codex -->\nmerged\n')
+      await expect(read('final/jev-verdict.json')).resolves.toContain('"finalizer": "codex"')
+    })
+
+    it('passes no round hook without the flag', async () => {
+      const h = harness()
+      await main(['task'], h.deps)
+      expect(h.planned()).not.toHaveProperty('onRound')
+    })
+
+    it('reuses an empty folder, and refuses one with files in it', async () => {
+      await mkdir(join(dir, 'empty'))
+      await expect(main(['--rounds-dir', 'empty', 'task'], harness().deps)).resolves.toBe(0)
+      await writeFile(join(dir, 'empty', 'old.md'), 'old')
+      const h = harness()
+      await expect(main(['--rounds-dir', 'empty', 'task'], h.deps)).resolves.toBe(1)
+      expect(h.stderr()).toBe(
+        `jev-planner: --rounds-dir must be new or empty: ${join(dir, 'empty')}\n`,
+      )
+      expect(h.planned()).toBeUndefined()
+    })
+
+    it('reports a path it cannot use', async () => {
+      await writeFile(join(dir, 'file'), 'x')
+      const h = harness()
+      await expect(main(['--rounds-dir', 'file', 'task'], h.deps)).resolves.toBe(1)
+      expect(h.stderr()).toMatch(/^jev-planner: ENOTDIR/)
+    })
   })
 
   describe('doctor', () => {
@@ -342,6 +408,18 @@ describe('main', () => {
       await expect(failure(['--model', 'glm=glm-5', 'task'])).resolves.toContain(
         '--model sets glm, which is not one of the --agents',
       )
+    })
+
+    it('rejects an invalid effort override', async () => {
+      await expect(failure(['--effort', 'low', 'task'])).resolves.toContain(
+        'Invalid --effort value: low. Expected <agent>=<effort>.',
+      )
+      await expect(failure(['--effort', 'glm=low', 'task'])).resolves.toContain(
+        '--effort sets glm, which is not one of the --agents',
+      )
+      await expect(
+        failure(['--agents', 'codex,deepseek', '--effort', 'deepseek=low', 'task']),
+      ).resolves.toContain('DeepSeek does not take --effort')
     })
 
     it('rejects an unknown option', async () => {

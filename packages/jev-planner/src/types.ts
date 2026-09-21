@@ -56,6 +56,23 @@ export interface PlanOptions {
    */
   allowAnyTask?: boolean
   onStage?: (message: string) => void
+  /**
+   * Called with every round's plans as soon as the round ends, and awaited:
+   * a rejection stops the run. Rounds are numbered from 1 — the drafts, then
+   * each cross-review — and the final synthesis comes last.
+   */
+  onRound?: (round: PlanRound) => void | Promise<void>
+}
+
+/** One round of a run, as `PlanOptions.onRound` sees it. */
+export interface PlanRound {
+  /** 1 for the drafts, 2 and up for the cross-reviews; one more for the final plan. */
+  round: number
+  stage: 'draft' | 'review' | 'final'
+  /** Each agent's plan in this round, by agent name; for `final`, the finalizer's merged plan. */
+  plans: Record<AgentName, string>
+  /** Jev's verdict on a `review` round's plans, and the one the final plan followed. */
+  verdict?: JevVerdict
 }
 
 export interface PlanResult {

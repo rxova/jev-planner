@@ -95,10 +95,22 @@ See every option with `jev-planner --help`. Useful controls include:
 
 - `--agents <ids>` to choose two or more agents (default: `codex,claude`).
 - `--model <id>=<model>`, repeatable, to override one agent's model.
+- `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
+  CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
+
+Model and effort overrides win over the CLIs' local configuration, such as `model` and
+`model_reasoning_effort` in `~/.codex/config.toml`, for that run only. Codex on GPT-5.6-Terra at low
+effort, with Claude at its defaults:
+
+```sh
+jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the search endpoint"
+```
+
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--review-rounds 1` to disable Jev's optional second review pass.
 - `--verbose` to print Jev's typed verdict to stderr.
+- `--rounds-dir <path>` to keep every round's plans, to see how they evolved (below).
 - `--allow-any-task` to plan text that looks like a placeholder.
 
 A task that is empty or a near-certain placeholder — the text `TODO`, `TBD` or `<coding task>`,
@@ -106,6 +118,32 @@ an unfilled `<…>`, `{{…}}` or `[…]` slot, or text with no letters — is r
 call. Only the whole text is compared, so a brief that quotes a placeholder, or a short real task
 such as `Add caching`, is planned as usual. `Planner.plan` runs the same check and throws
 `TaskValidationError`; set `allowAnyTask: true` in its options to skip it.
+
+## Following a run round by round
+
+`--rounds-dir <path>` writes each round's plans as soon as the round ends, relative to `--cwd`. The
+folder must be new or empty, so two runs never mix:
+
+```text
+rounds/
+  round1/             the independent drafts
+    codex.md
+    claude.md
+  round2/             the cross-reviewed plans, and Jev's verdict on them
+    codex.md
+    claude.md
+    jev-verdict.json
+  round3/             only when Jev asked for a second review
+  final/
+    plan.md           the merged plan, headed by the agent that merged it
+    jev-verdict.json  the verdict the merge followed
+```
+
+```sh
+jev-planner --rounds-dir rounds -o PLAN.md "Add caching to the search endpoint"
+```
+
+From code, `onRound` in `Planner.plan`'s options receives the same rounds as `PlanRound` objects.
 
 ## Cost and data flow
 
@@ -145,12 +183,19 @@ cliProvider({
   label: 'Acme',
   command: 'acme',
   // Whatever makes this CLI answer once, read-only, without prompting.
-  args: (model) => ['ask', '--read-only', ...(model ? ['--model', model] : [])],
+  args: ({ model, effort }) => [
+    'ask',
+    '--read-only',
+    ...(model ? ['--model', model] : []),
+    ...(effort ? ['--effort', effort] : []),
+  ],
+  effort: true,
   auth: ['whoami'],
 }),
 ```
 
-`auth` is optional: arguments that exit 0 when the CLI is logged in, or a check function. The same
+`effort: true` says `args` passes an effort on, so `--effort` is accepted for it. `auth` is
+optional: arguments that exit 0 when the CLI is logged in, or a check function. The same
 two builders are exported, so a program using the library can build its own agents from them and
 pass them to `Planner`.
 
