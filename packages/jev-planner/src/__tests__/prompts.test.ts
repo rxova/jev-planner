@@ -65,4 +65,22 @@ describe('planning prompts', () => {
     ]
     for (const prompt of prompts) expect(prompt).toContain(sentence)
   })
+
+  it('asks only the draft to explore the repository, and later stages to open a file for a reason', () => {
+    const plans = [{ label: 'Codex', plan: 'b' }]
+    const draft = initialPlanPrompt('task', ['Codex'])
+    const revision = revisionPrompt({ task: 'task', ownPlan: 'a', peerPlans: plans })
+    const final = finalPlanPrompt({ task: 'task', plans, verdict: '{}' })
+    const explore = 'Inspect the repository before deciding.'
+    expect(draft).toContain(explore)
+    expect(revision).not.toContain(explore)
+    expect(final).not.toContain(explore)
+    expect(revision).toContain(
+      'Open a file only to check a claim on which the plans disagree, or one you are unsure of.',
+    )
+    expect(final).toContain('Open a file only to settle a contradiction between them.')
+    for (const prompt of [draft, revision, final]) {
+      expect(prompt).toContain('Make the plan specific to files and symbols that exist.')
+    }
+  })
 })
