@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "The ts-extended-errors documentation site, mounted on rxova.org at /packages/ts-extended-errors/.",
+  "description": "The jev-planner landing page and documentation, deployed to GitHub Pages at rxova.github.io/jev-planner/.",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build && node ./scripts/check-md-routes.mjs",
@@ -15,7 +15,6 @@
     "@astrojs/markdown-remark": "^7.3.0",
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/starlight": "^0.42.1",
-    "@rxova/brand": "^0.14.1",
     "astro": "^7.3.3",
     "sharp": "^0.35.0",
     "starlight-links-validator": "^0.26.0"

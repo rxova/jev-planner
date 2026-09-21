@@ -1,0 +1,24 @@
+/*
+ * The site's colours, on top of Starlight's defaults. Starlight already uses the
+ * system font stack, so no font is loaded.
+ *
+ * The accent pairs are chosen for WCAG AA against Starlight's backgrounds in
+ * each theme: link text uses `--sl-color-text-accent`, which is `accent-high`
+ * in the dark theme and `accent` in the light one.
+ */
+:root {
+  --sl-color-accent-low: #431407;
+  --sl-color-accent: #ea580c;
+  --sl-color-accent-high: #fed7aa;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ffedd5;
+  --sl-color-accent: #c2410c;
+  --sl-color-accent-high: #7c2d12;
+}
+
+:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
