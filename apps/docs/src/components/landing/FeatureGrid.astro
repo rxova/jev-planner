@@ -1,0 +1,83 @@
+---
+/** Four cards, each a README claim linking to the page that explains it. */
+import { withBase } from '../../lib/base-url.mjs'
+import { FEATURES } from './content.mjs'
+
+const base = import.meta.env.BASE_URL
+---
+
+<section class="features not-content" aria-labelledby="features">
+  <h2 id="features">How a plan gets made</h2>
+  <ul>
+    {
+      FEATURES.map(({ title, body, href }) => (
+        <li>
+          <h3>
+            <a href={withBase(href, base)}>{title}</a>
+          </h3>
+          <p>{body}</p>
+        </li>
+      ))
+    }
+  </ul>
+</section>
+
+<style>
+  .features {
+    max-width: 67.5rem;
+    margin: 4rem auto 1rem;
+  }
+  h2 {
+    margin-bottom: 1.5rem;
+    font-size: var(--sl-text-2xl);
+    text-align: center;
+    color: var(--sl-color-white);
+  }
+  ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    position: relative;
+    padding: 1.25rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+    background: var(--sl-color-gray-6);
+    transition: border-color 0.15s;
+  }
+  li:hover,
+  li:focus-within {
+    border-color: var(--sl-color-accent);
+  }
+  h3 {
+    margin: 0 0 0.5rem;
+    font-size: var(--sl-text-lg);
+  }
+  a {
+    color: var(--sl-color-white);
+    text-decoration: none;
+  }
+  /* The whole card is the link's hit area; the link text stays the title. */
+  a::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+  p {
+    margin: 0;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    line-height: 1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    li {
+      transition: none;
+    }
+  }
+</style>

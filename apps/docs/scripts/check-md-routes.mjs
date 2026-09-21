@@ -28,9 +28,10 @@ export const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 
 /**
  * Pages that are deliberately not twinned.
  *
- * Only Astro's 404. Every content page here is prose — there is no splash and no
- * standalone app in `public/` — so nothing else is excluded, and a page that
- * arrives without a twin is a bug rather than a category.
+ * Only Astro's 404. The landing page is a splash, but it has a hand-written twin
+ * (src/pages/index.md.ts) rendered from the same copy, so it is checked like any
+ * other page. Nothing else is excluded, and a page that arrives without a twin is
+ * a bug rather than a category.
  */
 export const isUntwinned = (htmlPath) => htmlPath === '404.html'
 

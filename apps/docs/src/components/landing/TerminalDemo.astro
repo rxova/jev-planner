@@ -1,0 +1,85 @@
+---
+/**
+ * The example run: a static transcript, revealed a line at a time.
+ *
+ * The whole transcript is real text in the DOM from the first byte; the reveal
+ * is CSS `animation-delay` only, plays once, and is skipped entirely under
+ * `prefers-reduced-motion`. No script, no loop, no blinking cursor.
+ */
+import { TRANSCRIPT } from './content.mjs'
+---
+
+<section class="terminal not-content" aria-labelledby="example-run">
+  <h2 id="example-run" class="sr-only">Example run</h2>
+  <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+  <pre tabindex="0"><code>{
+    TRANSCRIPT.map(({ kind, text }, i) => (
+      <span class:list={['line', kind]} style={`--i: ${String(i)}`}>{text}</span>
+    ))
+  }</code></pre>
+</section>
+
+<style>
+  .terminal {
+    max-width: 48rem;
+    margin: 2.5rem auto 0;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+    background: var(--sl-color-black);
+    overflow: hidden;
+  }
+  .bar {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+  .bar span {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--sl-color-gray-5);
+  }
+  pre {
+    margin: 0;
+    padding: 1rem 1.25rem 1.25rem;
+    overflow-x: auto;
+    font-family: var(--sl-font-mono);
+    font-size: var(--sl-text-sm);
+    line-height: 1.7;
+    color: var(--sl-color-gray-2);
+  }
+  .line {
+    display: block;
+    white-space: pre;
+  }
+  .command {
+    color: var(--sl-color-white);
+  }
+  .command::before {
+    content: '$ ' / '';
+    color: var(--sl-color-text-accent);
+  }
+  .note {
+    color: var(--sl-color-gray-3);
+    font-style: italic;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .line {
+      opacity: 0;
+      animation: reveal 0.35s ease-out forwards;
+      animation-delay: calc(var(--i) * 0.55s + 0.3s);
+    }
+    @keyframes reveal {
+      from {
+        opacity: 0;
+        transform: translateY(0.25rem);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
+</style>
