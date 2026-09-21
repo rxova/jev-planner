@@ -21,6 +21,12 @@ import { rehypeMdLinks } from './src/lib/rehype-md-links.mjs'
 const site = process.env.DOCS_URL ?? 'https://rxova.github.io'
 const base = process.env.DOCS_BASE_URL ?? '/jev-planner/'
 
+/**
+ * The social card, absolute: a crawler resolves nothing against the page it
+ * found the tag on. Rendered by scripts/make-og.mjs into public/.
+ */
+const ogImage = new URL(`${base.replace(/\/?$/, '/')}og.png`, site).href
+
 export default defineConfig({
   site,
   base,
@@ -58,6 +64,20 @@ export default defineConfig({
         'default — cross-reviewed and arbitrated by TypeSafe Jev.',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/rxova/jev-planner' }],
       favicon: '/favicon.svg',
+      // Starlight already writes the canonical link, og:url, og:title,
+      // og:description, twitter:card and the sitemap link. It has no image.
+      head: [
+        { tag: 'meta', attrs: { property: 'og:image', content: ogImage } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image:alt',
+            content: 'jev-planner: implementation plans from AIs that review each other.',
+          },
+        },
+      ],
       customCss: ['./src/styles/theme.css'],
       sidebar: [
         { label: 'Learn', items: [{ autogenerate: { directory: 'learn' } }] },
