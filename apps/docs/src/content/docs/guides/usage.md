@@ -42,6 +42,8 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--review-rounds 1` to disable Jev's optional second review pass.
+- `--no-resume` to start every agent call afresh rather than continue its draft session; the
+  [agents reference](../reference/agents.md#sessions) says where sessions are kept.
 
 Plan with three agents, and pin one's model:
 

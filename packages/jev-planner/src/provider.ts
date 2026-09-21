@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { commandCheck, envCheck } from './doctor.js'
 import type { CheckResult } from './doctor.js'
-import { runProcess } from './process.js'
+import { ProcessError, runProcess } from './process.js'
 import { repoSnapshot } from './repo-context.js'
-import type { AgentRequest, PlanningAgent } from './types.js'
+import type { AgentRequest, AgentSession, PlanningAgent } from './types.js'
 
 type Env = Readonly<Record<string, string | undefined>>
 
@@ -70,7 +71,22 @@ export interface CliProviderConfig {
    * shown as it is. Without `events`, stdout is the answer; either way, each
    * stderr line is progress.
    */
-  events?: (event: unknown) => { progress?: string; result?: string }
+  events?: (event: unknown) => { progress?: string; result?: string; session?: string }
+  /**
+   * For a CLI that can keep a conversation and continue it in a later call:
+   * the arguments for each. Used when the request carries an `AgentSession`;
+   * `args` otherwise. Both keep the run read-only, like `args`.
+   */
+  sessions?: {
+    /**
+     * The first call, keeping its conversation. `id` is a fresh UUID for a CLI
+     * that lets the caller name the session; a CLI that names its own reports
+     * the name as an event's `session`.
+     */
+    start: (overrides: { model?: string; effort?: string }, id: string) => string[]
+    /** A later call, continuing the conversation `id`, with the prompt on stdin. */
+    resume: (overrides: { model?: string; effort?: string }, id: string) => string[]
+  }
   /**
    * How `doctor` checks the login: arguments to `command` that exit 0 when
    * logged in, or a check of its own.
@@ -94,8 +110,7 @@ export function cliProvider(config: CliProviderConfig): Provider {
           ...(model === undefined ? {} : { model }),
           ...(effort === undefined ? {} : { effort }),
         }
-        const { events } = config
-        let answer = ''
+        const { events, sessions } = config
         const read = (line: string, stream: 'stdout' | 'stderr') => {
           if (stream === 'stderr') return { progress: line }
           if (!events) return {}
@@ -107,18 +122,54 @@ export function cliProvider(config: CliProviderConfig): Provider {
           }
           return events(event)
         }
-        const { stdout } = await runProcess(config.command, config.args(overrides), {
-          cwd: request.cwd,
-          input: request.prompt,
-          timeoutMs: request.timeoutMs,
-          omitEnv,
-          onLine: (line, stream) => {
-            const { progress, result } = read(line, stream)
-            if (progress) request.onProgress?.(progress)
-            if (result !== undefined) answer = result
-          },
-        })
-        return requireOutput(config.label, events ? answer : stdout)
+        const once = async (args: string[], input: string) => {
+          let answer = ''
+          let session: string | undefined
+          const { stdout } = await runProcess(config.command, args, {
+            cwd: request.cwd,
+            input,
+            timeoutMs: request.timeoutMs,
+            omitEnv,
+            onLine: (line, stream) => {
+              const event = read(line, stream)
+              if (event.progress) request.onProgress?.(event.progress)
+              if (event.result !== undefined) answer = event.result
+              if (event.session !== undefined) session = event.session
+            },
+          })
+          return { answer: requireOutput(config.label, events ? answer : stdout), session }
+        }
+        const { session } = request
+        if (!sessions || !session)
+          return (await once(config.args(overrides), request.prompt)).answer
+
+        // Kept only once a call succeeds, so a failed start is never resumed.
+        const start = async (conversation: AgentSession) => {
+          const id = randomUUID()
+          const result = await once(sessions.start(overrides, id), request.prompt)
+          conversation.id = result.session ?? id
+          return result.answer
+        }
+        if (session.id === undefined) return start(session)
+        try {
+          return (
+            await once(
+              sessions.resume(overrides, session.id),
+              request.resumePrompt ?? request.prompt,
+            )
+          ).answer
+        } catch (error) {
+          // A session the CLI no longer has, or a CLI too old to resume: start
+          // afresh with the whole prompt rather than fail the run. A timeout is
+          // not a failed resume, so it still ends the call.
+          if (!(error instanceof ProcessError)) throw error
+          // The CLI's own reason is usually its last word on stderr.
+          const reason = brief(error.stderr.trim().split('\n').at(-1) ?? '') || error.message
+          request.onProgress?.(
+            `Could not continue the earlier session (${brief(reason)}); starting a new one`,
+          )
+          return start(session)
+        }
       },
     }),
     doctor: (cwd) => {
@@ -148,6 +199,11 @@ export const API_AGENT_SYSTEM_PROMPT = `You cannot run commands or open files. T
 you can see of the codebase: ground the plan in it, and name the files you would need to read wherever
 the plan depends on code the snapshot does not show.`
 
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
 interface ChatCompletion {
   choices?: { message?: { content?: string | null } }[]
 }
@@ -156,7 +212,9 @@ interface ChatCompletion {
  * A chat API that speaks OpenAI's `/chat/completions`, as DeepSeek, Moonshot,
  * Z.ai and most others do. It cannot read the repository, so each prompt is
  * sent with a snapshot of it: the tracked file list and the top-level docs and
- * manifests (see `repoSnapshot`).
+ * manifests (see `repoSnapshot`). Given an `AgentSession`, it keeps the
+ * conversation and sends it back on the next call, so the snapshot is sent once
+ * and later prompts can leave out what the conversation already holds.
  */
 export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provider {
   const endpoint = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`
@@ -170,6 +228,8 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
     create: ({ model = config.model, env, fetch: send = fetch }) => {
       // Built once per run and per directory: every call in a run sees the same snapshot.
       const snapshots = new Map<string, Promise<string>>()
+      // Each session's messages so far, the answers included.
+      const conversations = new WeakMap<AgentSession, ChatMessage[]>()
       return {
         name: config.id,
         label: config.label,
@@ -177,10 +237,23 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
           const key = env[config.apiKeyEnv]?.trim()
           if (!key) throw new Error(`${config.apiKeyEnv} is not set, so ${config.label} cannot run`)
 
-          let snapshot = snapshots.get(request.cwd)
-          if (!snapshot) {
-            snapshot = repoSnapshot(request.cwd)
-            snapshots.set(request.cwd, snapshot)
+          const earlier = request.session && conversations.get(request.session)
+          let messages: ChatMessage[]
+          if (earlier) {
+            messages = [
+              ...earlier,
+              { role: 'user', content: request.resumePrompt ?? request.prompt },
+            ]
+          } else {
+            let snapshot = snapshots.get(request.cwd)
+            if (!snapshot) {
+              snapshot = repoSnapshot(request.cwd)
+              snapshots.set(request.cwd, snapshot)
+            }
+            messages = [
+              { role: 'system', content: API_AGENT_SYSTEM_PROMPT },
+              { role: 'user', content: `${await snapshot}\n\n${request.prompt}` },
+            ]
           }
 
           request.onProgress?.(`Waiting for ${model} to answer…`)
@@ -189,13 +262,7 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
             response = await send(endpoint, {
               method: 'POST',
               headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-              body: JSON.stringify({
-                model,
-                messages: [
-                  { role: 'system', content: API_AGENT_SYSTEM_PROMPT },
-                  { role: 'user', content: `${await snapshot}\n\n${request.prompt}` },
-                ],
-              }),
+              body: JSON.stringify({ model, messages }),
               signal: AbortSignal.timeout(request.timeoutMs),
             })
           } catch (error) {
@@ -217,7 +284,14 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
             )
           }
           const body = (await response.json()) as ChatCompletion
-          return requireOutput(config.label, body.choices?.[0]?.message?.content ?? '')
+          const answer = requireOutput(config.label, body.choices?.[0]?.message?.content ?? '')
+          if (request.session) {
+            conversations.set(request.session, [
+              ...messages,
+              { role: 'assistant', content: answer },
+            ])
+          }
+          return answer
         },
       }
     },

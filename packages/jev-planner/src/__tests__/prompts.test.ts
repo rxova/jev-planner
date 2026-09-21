@@ -83,4 +83,22 @@ describe('planning prompts', () => {
       expect(prompt).toContain('Make the plan specific to files and symbols that exist.')
     }
   })
+
+  it('leaves the task and own plan out of a resumed revision, and the task out of a resumed synthesis', () => {
+    const peerPlans = [{ label: 'Claude', plan: 'theirs' }]
+    const full = revisionPrompt({ task: 'the task', ownPlan: 'mine', peerPlans })
+    const resumed = revisionPrompt({ task: 'the task', ownPlan: 'mine', peerPlans, resumed: true })
+    expect(full).toContain('Compare them with your own draft')
+    expect(resumed).toContain('Compare them with your last plan in this conversation')
+    expect(resumed).not.toContain('<task>')
+    expect(resumed).not.toContain('<own-plan>')
+    expect(resumed).toContain('<peer-plan author="Claude">\ntheirs\n</peer-plan>')
+
+    const final = { task: 'the task', plans: peerPlans, verdict: '{}' }
+    expect(finalPlanPrompt(final)).toContain('<task>\nthe task\n</task>')
+    const resumedFinal = finalPlanPrompt({ ...final, resumed: true })
+    expect(resumedFinal).not.toContain('<task>')
+    expect(resumedFinal).toContain('<revised-plan author="Claude">\ntheirs\n</revised-plan>')
+    expect(resumedFinal).toContain('<jev-verdict>\n{}\n</jev-verdict>')
+  })
 })

@@ -184,6 +184,14 @@ describe('main', () => {
     })
   })
 
+  it('resumes sessions by default, and not with --no-resume', async () => {
+    const h = harness()
+    await main(['task'], h.deps)
+    expect(h.planned()).not.toHaveProperty('resume')
+    await main(['--no-resume', 'task'], h.deps)
+    expect(h.planned()).toMatchObject({ resume: false })
+  })
+
   it('accepts the explicit defaults for finalizer and review rounds', async () => {
     const h = harness()
     await main(['--finalizer', 'auto', '--review-rounds', '2', 'task'], h.deps)

@@ -35,6 +35,7 @@ Options:
       --finalizer <id>        auto, or one of the agents (default: auto/Jev decides)
       --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
       --timeout <seconds>     Timeout for each agent call (default: 600)
+      --no-resume             Start each agent call afresh, not from its draft session
       --json                  Emit plan metadata as JSON
       --verbose               Stream each agent's work, then Jev's verdict, to stderr
       --rounds-dir <path>     Write every round's plans to round1/, round2/, …, final/
@@ -263,6 +264,7 @@ function parse(argv: readonly string[]) {
       finalizer: { type: 'string' },
       'review-rounds': { type: 'string' },
       timeout: { type: 'string' },
+      'no-resume': { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
       verbose: { type: 'boolean', default: false },
       'rounds-dir': { type: 'string' },
@@ -344,6 +346,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     ...(jevModel ? { jevModel } : {}),
     ...(finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
+    ...(values['no-resume'] ? { resume: false } : {}),
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
     },

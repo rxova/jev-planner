@@ -46,39 +46,46 @@ ${task}
 </task>`
 }
 
+/** The task, unless the agent is continuing a conversation that already has it. */
+function taskBlock(task: string, resumed: boolean | undefined): string {
+  return resumed ? '' : `Task:\n<task>\n${task}\n</task>\n\n`
+}
+
+/**
+ * `resumed` is for an agent continuing its own conversation, which already
+ * holds the task and its last plan: both are left out.
+ */
 export function revisionPrompt(input: {
   task: string
   ownPlan: string
   peerPlans: readonly AuthoredPlan[]
   feedback?: string
+  resumed?: boolean
 }): string {
   const peers = listLabels(input.peerPlans.map(({ label }) => label))
+  const ownPlan = input.resumed
+    ? ''
+    : `Your earlier draft:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`
   return `${planContract(CHECK_DISPUTES)}
 
-You are reviewing peer plans from ${peers}. Compare them with your own draft, correct weak assumptions,
+You are reviewing peer plans from ${peers}. Compare them with your ${
+    input.resumed ? 'last plan in this conversation' : 'own draft'
+  }, correct weak assumptions,
 adopt useful details, and return a revised standalone plan. Do not merely write a critique.
 
-Task:
-<task>
-${input.task}
-</task>
-
-Your earlier draft:
-<own-plan>
-${input.ownPlan}
-</own-plan>
-
-${planBlocks(input.peerPlans, 'peer-plan')}${
+${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, 'peer-plan')}${
     input.feedback
       ? `\n\nJev identified remaining uncertainty. Use this typed feedback to target the revision:\n<jev-feedback>\n${input.feedback}\n</jev-feedback>`
       : ''
   }`
 }
 
+/** `resumed` is for an agent continuing its own conversation: the task is left out. */
 export function finalPlanPrompt(input: {
   task: string
   plans: readonly AuthoredPlan[]
   verdict: string
+  resumed?: boolean
 }): string {
   return `${planContract(SETTLE_CONTRADICTIONS)}
 
@@ -86,12 +93,7 @@ Act as the final editor. Merge the best concrete parts of all the revised plans,
 Resolve contradictions explicitly. Return one self-contained execution plan—no discussion of the planning process,
 no winner announcement, and no Jev commentary.
 
-Task:
-<task>
-${input.task}
-</task>
-
-${planBlocks(input.plans, 'revised-plan')}
+${taskBlock(input.task, input.resumed)}${planBlocks(input.plans, 'revised-plan')}
 
 Jev verdict:
 <jev-verdict>
