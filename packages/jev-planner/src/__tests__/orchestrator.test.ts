@@ -20,6 +20,7 @@ const verdict: JevVerdict = {
 
 class FakeAgent implements PlanningAgent {
   readonly prompts: string[] = []
+  readonly requests: AgentRequest[] = []
 
   readonly label: string
 
@@ -32,6 +33,8 @@ class FakeAgent implements PlanningAgent {
 
   async generate(request: AgentRequest): Promise<string> {
     this.prompts.push(request.prompt)
+    this.requests.push(request)
+    request.onProgress?.(`working on call ${String(this.prompts.length)}`)
     const response = this.responses.shift()
     if (!response) throw new Error(`No fake ${this.name} response`)
     return response
@@ -311,6 +314,38 @@ describe('Planner', () => {
       { round: 4, stage: 'final', plans: { claude: 'final plan' }, verdict },
     ])
     expect(events.indexOf('round 1')).toBeLessThan(events.indexOf('Cross-reviewing the 2 drafts…'))
+  })
+
+  it("tags each agent's progress with its name, in every call, the final one included", async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+    const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+    const progress: string[] = []
+    await new Planner([codex, claude], new FakeJev()).plan({
+      task: 'Add caching',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+      onAgentProgress: (agent, line) => progress.push(`${agent}: ${line}`),
+    })
+    expect(progress.sort()).toEqual([
+      'claude: working on call 1',
+      'claude: working on call 2',
+      'claude: working on call 3',
+      'codex: working on call 1',
+      'codex: working on call 2',
+    ])
+  })
+
+  it('asks for no progress when nobody listens', async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+    const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+    await new Planner([codex, claude], new FakeJev()).plan({
+      task: 'Add caching',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+    })
+    for (const request of [...codex.requests, ...claude.requests]) {
+      expect(request.onProgress).toBeUndefined()
+    }
   })
 
   it('stops the run when a round report fails', async () => {

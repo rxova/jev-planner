@@ -57,14 +57,22 @@ export class Planner {
         ...(verdict ? { verdict } : {}),
       })
     }
-    const request = (prompt: string) => ({
+    const { onAgentProgress } = options
+    const request = (agent: PlanningAgent, prompt: string) => ({
       prompt,
       cwd: options.cwd,
       timeoutMs: options.timeoutMs,
+      ...(onAgentProgress
+        ? {
+            onProgress: (line: string) => {
+              onAgentProgress(agent.name, line)
+            },
+          }
+        : {}),
     })
     const generate = async (agent: PlanningAgent, prompt: string): Promise<Draft> => ({
       agent,
-      plan: await agent.generate(request(prompt)),
+      plan: await agent.generate(request(agent, prompt)),
     })
     const revise = (drafts: readonly Draft[], feedback?: string) =>
       Promise.all(
@@ -121,6 +129,7 @@ export class Planner {
 
     const finalPlan = await finalizer.generate(
       request(
+        finalizer,
         finalPlanPrompt({
           task: options.task,
           plans: revised.map(({ agent, plan }) => ({ label: agent.label, plan })),

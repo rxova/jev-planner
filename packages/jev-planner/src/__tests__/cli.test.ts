@@ -215,6 +215,27 @@ describe('main', () => {
     )
   })
 
+  it("streams each agent's work with --verbose, one prefixed line each", async () => {
+    const progressing = (): Partial<CliDeps> => ({
+      createPlanner: () => ({
+        plan: (options) => {
+          options.onAgentProgress?.('codex', '$ ls apps/docs')
+          options.onAgentProgress?.('claude', 'Read a.ts\nGrep deploy')
+          return Promise.resolve(result)
+        },
+      }),
+    })
+    const verbose = harness(progressing())
+    await expect(main(['--verbose', 'task'], verbose.deps)).resolves.toBe(0)
+    expect(verbose.stderr()).toContain(
+      '[codex] $ ls apps/docs\n[claude] Read a.ts\n[claude] Grep deploy\n',
+    )
+
+    const quiet = harness(progressing())
+    await expect(main(['task'], quiet.deps)).resolves.toBe(0)
+    expect(quiet.stderr()).not.toContain('[codex]')
+  })
+
   it('writes the plan to --output, relative to --cwd', async () => {
     const h = harness()
     await expect(main(['-o', 'PLAN.md', 'task'], h.deps)).resolves.toBe(0)

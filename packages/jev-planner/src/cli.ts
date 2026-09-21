@@ -36,7 +36,7 @@ Options:
       --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --json                  Emit plan metadata as JSON
-      --verbose               Print Jev's typed verdict to stderr
+      --verbose               Stream each agent's work, then Jev's verdict, to stderr
       --rounds-dir <path>     Write every round's plans to round1/, round2/, …, final/
       --allow-any-task        Plan the task even if it looks like a placeholder
   -h, --help                  Show help
@@ -268,6 +268,13 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
     },
+    ...(values.verbose
+      ? {
+          onAgentProgress: (agent: string, progress: string) => {
+            for (const line of progress.split('\n')) deps.stderr(`[${agent}] ${line}\n`)
+          },
+        }
+      : {}),
     ...(roundsDir === undefined
       ? {}
       : { onRound: (round: PlanRound) => writeRound(roundsDir, round) }),
