@@ -72,6 +72,7 @@ export class Planner {
       stageName: PlanRound['stage'],
       plans: Record<AgentName, string>,
       verdict?: JevVerdict,
+      selected?: true,
     ) => {
       round += 1
       const roundTimings = {
@@ -86,6 +87,7 @@ export class Planner {
         plans,
         ...(verdict ? { verdict } : {}),
         timings: roundTimings,
+        ...(selected ? { selected } : {}),
       })
       roundStart = performance.now()
       agentMs = {}
@@ -192,6 +194,23 @@ export class Planner {
       stage('Re-evaluating the revised plans with Jev…')
       verdict = await judge(revised)
       await report('review', byName(revised), verdict)
+    }
+
+    const stronger = options.selectStronger
+      ? revised.find(({ agent }) => agent.name === verdict.strongerPlan)
+      : undefined
+    if (stronger) {
+      stage(`Jev rated ${stronger.agent.label}'s plan stronger; using it without a synthesis…`)
+      await report('final', { [stronger.agent.name]: stronger.plan }, verdict, true)
+      timings.totalMs = performance.now() - runStart
+      return {
+        plan: stronger.plan,
+        verdict,
+        finalizer: stronger.agent.name,
+        selected: true,
+        drafts: byName(revised),
+        timings,
+      }
     }
 
     const finalizer = finalizerOverride ?? this.agent(verdict.finalizer)

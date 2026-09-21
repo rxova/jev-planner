@@ -136,6 +136,9 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
+- `--finalizer none` to skip the synthesis when Jev rates one revised plan stronger, and keep that
+  plan as it is. It saves the last agent call, at the cost of the merge; on a tie the finalizer
+  still runs.
 - `--review-rounds 1` to disable Jev's optional second review pass.
 - `--no-resume` to start every agent call afresh rather than continue its draft session
   ([Agents](#agents)).
@@ -169,7 +172,7 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
       jev-verdict.json
     round3/           only when Jev asked for a second review
     final/
-      plan.md         the merged plan, headed by the agent that merged it
+      plan.md         the merged plan, headed by the agent that merged it, or selected from
       jev-verdict.json  the verdict the merge followed
 ```
 
@@ -216,7 +219,8 @@ and in `PlanRound.timings` and `PlanResult.timings` from code.
 ## Cost and data flow
 
 With N agents, a normal run makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
-synthesis. If Jev requests another pass, it makes N more. With the default two agents that is five
+synthesis. If Jev requests another pass, it makes N more. `--finalizer none` drops the synthesis
+when Jev rates one plan stronger. With the default two agents that is five
 calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
 
 Each evaluation uses one TypeSafe API call; a second review pass causes one re-evaluation. Jev sees

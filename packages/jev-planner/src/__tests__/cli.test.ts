@@ -340,6 +340,34 @@ describe('main', () => {
       expect(JSON.parse(await read('final/timings.json'))).toEqual(rounds[2]?.timings)
     })
 
+    it('with --finalizer none, marks a selected plan as selected rather than merged', async () => {
+      const selected: PlanRound = {
+        round: 3,
+        stage: 'final',
+        plans: { codex: 'codex revised' },
+        verdict,
+        timings: { totalMs: 20, agents: {} },
+        selected: true,
+      }
+      const h = harness({
+        createPlanner: () => ({
+          plan: async (options) => {
+            expect(options).toMatchObject({ selectStronger: true })
+            expect(options).not.toHaveProperty('finalizer')
+            await options.onRound?.(selected)
+            return { ...result, selected: true }
+          },
+        }),
+      })
+      const args = ['--finalizer', 'none', '--rounds-dir', 'r', '--verbose', '--json', 'task']
+      await expect(main(args, h.deps)).resolves.toBe(0)
+      await expect(readFile(join(dir, 'r/final/plan.md'), 'utf8')).resolves.toBe(
+        '<!-- selected from codex -->\ncodex revised\n',
+      )
+      expect(h.stderr()).toContain('[jev-planner] Final plan: 0.0s\n')
+      expect(JSON.parse(h.stdout())).toMatchObject({ finalizer: 'codex', selected: true })
+    })
+
     it('prints how long each round and call took with --verbose, and writes nothing', async () => {
       const h = harness(replaying())
       await expect(main(['--verbose', 'task'], h.deps)).resolves.toBe(0)
@@ -550,7 +578,7 @@ describe('main', () => {
 
     it('rejects invalid option values', async () => {
       await expect(failure(['--finalizer', 'jev', 'task'])).resolves.toContain(
-        'Invalid --finalizer value: jev. Expected auto or one of codex, claude.',
+        'Invalid --finalizer value: jev. Expected auto, none or one of codex, claude.',
       )
       await expect(failure(['--finalizer', 'glm', 'task'])).resolves.toContain(
         'Invalid --finalizer value: glm',

@@ -34,7 +34,8 @@ Options:
       --review-effort <id>=<level>
                               The effort for its cross-review and synthesis only; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
-      --finalizer <id>        auto, or one of the agents (default: auto/Jev decides)
+      --finalizer <id>        auto, none, or one of the agents (default: auto/Jev decides);
+                              none skips the synthesis and keeps the plan Jev rates stronger
       --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --no-resume             Start each agent call afresh, not from its draft session
@@ -134,15 +135,16 @@ function parseOverrides(
   return overrides
 }
 
+/** `auto` gives `undefined`, `none` gives `'none'`, an agent gives its id. */
 function parseFinalizer(
   value: string | undefined,
   agents: readonly Provider[],
 ): string | undefined {
   if (value === undefined || value === 'auto') return undefined
   const id = value.toLowerCase()
-  if (agents.some((agent) => agent.id === id)) return id
+  if (id === 'none' || agents.some((agent) => agent.id === id)) return id
   throw new Error(
-    `Invalid --finalizer value: ${value}. Expected auto or one of ${agents.map((a) => a.id).join(', ')}.`,
+    `Invalid --finalizer value: ${value}. Expected auto, none or one of ${agents.map((a) => a.id).join(', ')}.`,
   )
 }
 
@@ -202,7 +204,7 @@ async function writeRound(dir: string, round: PlanRound): Promise<void> {
     round.stage === 'final'
       ? Object.entries(round.plans).map(([agent, plan]) => [
           'plan.md',
-          `<!-- merged by ${agent} -->\n${plan.trim()}\n`,
+          `<!-- ${round.selected ? 'selected from' : 'merged by'} ${agent} -->\n${plan.trim()}\n`,
         ])
       : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
   if (round.verdict) files.push(['jev-verdict.json', `${JSON.stringify(round.verdict, null, 2)}\n`])
@@ -233,7 +235,8 @@ function roundTimingLine(round: PlanRound, labels: ReadonlyMap<string, string>):
     ),
     ...(round.timings.jevMs === undefined ? [] : [`Jev ${formatDuration(round.timings.jevMs)}`]),
   ]
-  return `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)} (${calls.join(', ')})`
+  const line = `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)}`
+  return calls.length > 0 ? `${line} (${calls.join(', ')})` : line
 }
 
 function parseTimeout(value: string | undefined): number {
@@ -353,7 +356,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     timeoutMs: parseTimeout(values.timeout),
     maxReviewRounds: parseReviewRounds(values['review-rounds']),
     ...(jevModel ? { jevModel } : {}),
-    ...(finalizer ? { finalizer } : {}),
+    ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
     ...(Object.keys(reviewEfforts).length > 0 ? { reviewEfforts } : {}),
     ...(values['no-resume'] ? { resume: false } : {}),
@@ -388,6 +391,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
           plan: result.plan,
           verdict: result.verdict,
           finalizer: result.finalizer,
+          ...(result.selected ? { selected: true } : {}),
           timings: result.timings,
         },
         null,

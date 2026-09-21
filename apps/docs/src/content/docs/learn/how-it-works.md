@@ -26,7 +26,8 @@ evaluates again. `--review-rounds 1` disables that optional pass.
 ## 4. Synthesis
 
 The selected agent merges the revised drafts into one final implementation plan. `--finalizer <id>`
-overrides Jev's choice with one of the selected agents.
+overrides Jev's choice with one of the selected agents. `--finalizer none` skips this step when Jev
+rates one revised plan stronger, and returns that plan as it is; on a tie the finalizer still merges.
 
 ## Why Jev is the arbiter
 

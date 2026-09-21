@@ -174,6 +174,51 @@ describe('Planner', () => {
     await expect(run(2)).resolves.toEqual(['jev-custom', 'jev-custom'])
   })
 
+  describe('selectStronger', () => {
+    const options = { task: 'Add caching', cwd: '/tmp', timeoutMs: 1_000, selectStronger: true }
+
+    it('returns the stronger revised plan as it is, with no synthesis call', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised'])
+      const jev: JevJudge = { judge: async () => ({ ...verdict, strongerPlan: 'codex' }) }
+      const stages: string[] = []
+      const rounds: PlanRound[] = []
+      const result = await new Planner([codex, claude], jev).plan({
+        ...options,
+        onStage: (message) => stages.push(message),
+        onRound: (round) => {
+          rounds.push(round)
+        },
+      })
+      expect(result).toMatchObject({ plan: 'codex revised', finalizer: 'codex', selected: true })
+      expect(result.timings.rounds.map(({ stage }) => stage)).toEqual(['draft', 'review', 'final'])
+      expect(codex.prompts).toHaveLength(2)
+      expect(claude.prompts).toHaveLength(2)
+      expect(stages.at(-1)).toBe("Jev rated Codex's plan stronger; using it without a synthesis…")
+      expect(rounds.at(-1)).toMatchObject({
+        stage: 'final',
+        plans: { codex: 'codex revised' },
+        selected: true,
+        timings: { agents: {} },
+      })
+    })
+
+    it('still has the finalizer merge the plans on a tie', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+      const rounds: PlanRound[] = []
+      const result = await new Planner([codex, claude], new FakeJev()).plan({
+        ...options,
+        onRound: (round) => {
+          rounds.push(round)
+        },
+      })
+      expect(result).toMatchObject({ plan: 'final plan', finalizer: 'claude' })
+      expect(result).not.toHaveProperty('selected')
+      expect(rounds.at(-1)).not.toHaveProperty('selected')
+    })
+  })
+
   it('rejects a placeholder task before any agent or Jev call', async () => {
     const codex = new FakeAgent('codex', ['codex draft'])
     const claude = new FakeAgent('claude', ['claude draft'])

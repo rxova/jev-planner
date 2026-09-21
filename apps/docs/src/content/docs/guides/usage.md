@@ -44,6 +44,9 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
   job is editing plans rather than exploring the repository.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
+- `--finalizer none` to skip the synthesis when Jev rates one revised plan stronger, and keep that
+  plan as it is. It saves the last agent call, at the cost of the merge; on a tie the finalizer
+  still runs.
 - `--review-rounds 1` to disable Jev's optional second review pass.
 - `--no-resume` to start every agent call afresh rather than continue its draft session; the
   [agents reference](../reference/agents.md#sessions) says where sessions are kept.
@@ -119,7 +122,7 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
       jev-verdict.json
     round3/           only when Jev asked for a second review
     final/
-      plan.md         the merged plan, headed by the agent that merged it
+      plan.md         the merged plan, headed by the agent that merged it, or selected from
       jev-verdict.json  the verdict the merge followed
 ```
 
