@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" role="img" aria-labelledby="title">
+  <title id="title">jev-planner</title>
+  <g fill="none" stroke="#ea580c" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 8h23l12 12v33a5 5 0 0 1-5 5H18a5 5 0 0 1-5-5V13a5 5 0 0 1 5-5Z" stroke-width="4"/>
+    <path d="M40 8v13h13" stroke-width="4"/>
+    <path d="M5 29h27c5 0 7-6 3-9" stroke-width="4"/>
+    <path d="M8 38h31c6 0 8 8 3 11" stroke-width="4"/>
+    <path d="M4 47h24" stroke-width="4"/>
+  </g>
+  <text x="70" y="43" fill="#0f172a" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="31" font-weight="700" letter-spacing="-1">jev-planner</text>
+</svg>

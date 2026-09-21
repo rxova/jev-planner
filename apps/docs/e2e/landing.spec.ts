@@ -33,6 +33,14 @@ for (const theme of ['light', 'dark'] as const) {
   })
 }
 
+test('uses the logo for the home link', async ({ page }) => {
+  await page.goto(LANDING)
+
+  const home = page.getByRole('link', { name: 'jev-planner', exact: true })
+  await expect(home).toBeVisible()
+  await expect(home.locator('img:visible')).toHaveCount(1)
+})
+
 test('reaches the calls to action in reading order from the keyboard', async ({
   page,
 }, testInfo) => {
