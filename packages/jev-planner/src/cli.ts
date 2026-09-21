@@ -189,7 +189,8 @@ async function newRunDir(cwd: string, now: Date): Promise<string> {
 
 /**
  * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
- * `jev-verdict.json` beside a judged round's plans, and `final/plan.md` last.
+ * `jev-verdict.json` beside a judged round's plans, `timings.json` in every
+ * round, and `final/plan.md` last.
  */
 async function writeRound(dir: string, round: PlanRound): Promise<void> {
   const folder = join(dir, round.stage === 'final' ? 'final' : `round${String(round.round)}`)
@@ -202,7 +203,34 @@ async function writeRound(dir: string, round: PlanRound): Promise<void> {
         ])
       : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
   if (round.verdict) files.push(['jev-verdict.json', `${JSON.stringify(round.verdict, null, 2)}\n`])
+  files.push(['timings.json', `${JSON.stringify(round.timings, null, 2)}\n`])
   await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
+}
+
+/** `4m12s`, `51s` or `0.8s`: minutes once a minute has passed, tenths below ten seconds. */
+export function formatDuration(ms: number): string {
+  const seconds = ms / 1_000
+  if (seconds < 10) return `${seconds.toFixed(1)}s`
+  const whole = Math.round(seconds)
+  if (whole < 60) return `${String(whole)}s`
+  return `${String(Math.floor(whole / 60))}m${String(whole % 60).padStart(2, '0')}s`
+}
+
+const STAGE_NAMES: Record<PlanRound['stage'], string> = {
+  draft: 'Drafts',
+  review: 'Review',
+  final: 'Final plan',
+}
+
+/** One line per round for `--verbose`: the round, then each agent call and Jev's. */
+function roundTimingLine(round: PlanRound, labels: ReadonlyMap<string, string>): string {
+  const calls = [
+    ...Object.entries(round.timings.agents).map(
+      ([agent, ms]) => `${labels.get(agent) ?? agent} ${formatDuration(ms)}`,
+    ),
+    ...(round.timings.jevMs === undefined ? [] : [`Jev ${formatDuration(round.timings.jevMs)}`]),
+  ]
+  return `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)} (${calls.join(', ')})`
 }
 
 function parseTimeout(value: string | undefined): number {
@@ -307,6 +335,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   }
   if (roundsDir !== undefined) deps.stderr(`[jev-planner] Writing rounds to ${roundsDir}\n`)
   const planner = deps.createPlanner({ agents, models, efforts })
+  const labels = new Map(agents.map(({ id, label }) => [id, label]))
   const result = await planner.plan({
     task,
     cwd,
@@ -325,18 +354,29 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
           },
         }
       : {}),
-    ...(roundsDir === undefined
+    ...(roundsDir === undefined && !values.verbose
       ? {}
-      : { onRound: (round: PlanRound) => writeRound(roundsDir, round) }),
+      : {
+          onRound: async (round: PlanRound) => {
+            if (values.verbose) deps.stderr(`[jev-planner] ${roundTimingLine(round, labels)}\n`)
+            if (roundsDir !== undefined) await writeRound(roundsDir, round)
+          },
+        }),
   })
 
   if (values.verbose) {
+    deps.stderr(`[jev-planner] Total: ${formatDuration(result.timings.totalMs)}\n`)
     deps.stderr(`[jev-planner] Jev verdict:\n${JSON.stringify(result.verdict, null, 2)}\n`)
   }
 
   const rendered = values.json
     ? `${JSON.stringify(
-        { plan: result.plan, verdict: result.verdict, finalizer: result.finalizer },
+        {
+          plan: result.plan,
+          verdict: result.verdict,
+          finalizer: result.finalizer,
+          timings: result.timings,
+        },
         null,
         2,
       )}\n`

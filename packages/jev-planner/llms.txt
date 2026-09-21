@@ -76,8 +76,10 @@ const { plan, verdict, finalizer } = await planner.plan({
 | `JevJudge`                 | type     | `{ judge({ task, plans, model? }) }`, returns a `JevVerdict`                                                             |
 | `JevVerdict`               | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer                                          |
 | `PlanOptions`              | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, allowAnyTask?, onStage?, onAgentProgress?, onRound? }` |
-| `PlanResult`               | type     | `{ plan, verdict, finalizer, drafts }`; `drafts` maps agent name to revised plan                                         |
-| `PlanRound`                | type     | `{ round, stage, plans, verdict? }`, one round's plans as `onRound` receives them                                        |
+| `PlanResult`               | type     | `{ plan, verdict, finalizer, drafts, timings }`; `drafts` maps agent name to revised plan                                |
+| `PlanRound`                | type     | `{ round, stage, plans, verdict?, timings }`, one round's plans as `onRound` receives them                               |
+| `RoundTimings`             | type     | `{ totalMs, agents, jevMs? }`: one round, and each agent call and Jev call in it, in ms                                  |
+| `RunTimings`               | type     | `{ totalMs, rounds }`: the whole run, and each round's `RoundTimings` with its `round` and `stage`                       |
 
 ## Mistakes to avoid
 

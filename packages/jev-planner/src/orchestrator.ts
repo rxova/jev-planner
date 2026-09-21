@@ -8,6 +8,7 @@ import type {
   PlanResult,
   PlanRound,
   PlanningAgent,
+  RunTimings,
 } from './types.js'
 
 /** One agent's current plan. */
@@ -43,6 +44,21 @@ export class Planner {
       options.finalizer === undefined ? undefined : this.agent(options.finalizer)
 
     const stage = options.onStage ?? (() => undefined)
+
+    // Each round is timed from the end of the last one's report to its own, so
+    // the time spent writing a round out is counted in neither.
+    const runStart = performance.now()
+    const timings: RunTimings = { totalMs: 0, rounds: [] }
+    let roundStart = runStart
+    let agentMs: Record<AgentName, number> = {}
+    let jevMs: number | undefined
+    const timed = async <T>(work: () => Promise<T>, record: (ms: number) => void): Promise<T> => {
+      const start = performance.now()
+      const result = await work()
+      record(performance.now() - start)
+      return result
+    }
+
     let round = 0
     const report = async (
       stageName: PlanRound['stage'],
@@ -50,12 +66,22 @@ export class Planner {
       verdict?: JevVerdict,
     ) => {
       round += 1
+      const roundTimings = {
+        totalMs: performance.now() - roundStart,
+        agents: agentMs,
+        ...(jevMs === undefined ? {} : { jevMs }),
+      }
+      timings.rounds.push({ round, stage: stageName, ...roundTimings })
       await options.onRound?.({
         round,
         stage: stageName,
         plans,
         ...(verdict ? { verdict } : {}),
+        timings: roundTimings,
       })
+      roundStart = performance.now()
+      agentMs = {}
+      jevMs = undefined
     }
     const { onAgentProgress } = options
     const request = (agent: PlanningAgent, prompt: string) => ({
@@ -70,9 +96,16 @@ export class Planner {
           }
         : {}),
     })
+    const call = (agent: PlanningAgent, prompt: string) =>
+      timed(
+        () => agent.generate(request(agent, prompt)),
+        (ms) => {
+          agentMs[agent.name] = ms
+        },
+      )
     const generate = async (agent: PlanningAgent, prompt: string): Promise<Draft> => ({
       agent,
-      plan: await agent.generate(request(agent, prompt)),
+      plan: await call(agent, prompt),
     })
     const revise = (drafts: readonly Draft[], feedback?: string) =>
       Promise.all(
@@ -91,11 +124,21 @@ export class Planner {
         ),
       )
     const judge = (drafts: readonly Draft[]) =>
-      this.jev.judge({
-        task: options.task,
-        plans: drafts.map(({ agent, plan }) => ({ agent: agent.name, label: agent.label, plan })),
-        ...(options.jevModel ? { model: options.jevModel } : {}),
-      })
+      timed(
+        () =>
+          this.jev.judge({
+            task: options.task,
+            plans: drafts.map(({ agent, plan }) => ({
+              agent: agent.name,
+              label: agent.label,
+              plan,
+            })),
+            ...(options.jevModel ? { model: options.jevModel } : {}),
+          }),
+        (ms) => {
+          jevMs = ms
+        },
+      )
 
     stage(`Drafting independent plans with ${listLabels(labelsOf(this.agents))}…`)
     const drafts = await Promise.all(
@@ -127,24 +170,24 @@ export class Planner {
     const finalizer = finalizerOverride ?? this.agent(verdict.finalizer)
     stage(`Synthesizing the final plan with ${finalizer.label}…`)
 
-    const finalPlan = await finalizer.generate(
-      request(
-        finalizer,
-        finalPlanPrompt({
-          task: options.task,
-          plans: revised.map(({ agent, plan }) => ({ label: agent.label, plan })),
-          verdict: JSON.stringify(verdict, null, 2),
-        }),
-      ),
+    const finalPlan = await call(
+      finalizer,
+      finalPlanPrompt({
+        task: options.task,
+        plans: revised.map(({ agent, plan }) => ({ label: agent.label, plan })),
+        verdict: JSON.stringify(verdict, null, 2),
+      }),
     )
 
     await report('final', { [finalizer.name]: finalPlan }, verdict)
+    timings.totalMs = performance.now() - runStart
 
     return {
       plan: finalPlan,
       verdict,
       finalizer: finalizer.name,
       drafts: byName(revised),
+      timings,
     }
   }
 

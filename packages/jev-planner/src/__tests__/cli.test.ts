@@ -35,6 +35,7 @@ const result: PlanResult = {
   verdict,
   finalizer: 'codex',
   drafts: { codex: 'codex draft', claude: 'claude draft' },
+  timings: { totalMs: 312_000, rounds: [] },
 }
 
 interface Harness {
@@ -216,6 +217,7 @@ describe('main', () => {
       plan: result.plan,
       verdict,
       finalizer: 'codex',
+      timings: result.timings,
     })
     expect(h.stderr()).toContain(
       `[jev-planner] Jev verdict:\n${JSON.stringify(verdict, null, 2)}\n`,
@@ -267,9 +269,26 @@ describe('main', () => {
 
   describe('--rounds-dir', () => {
     const rounds: PlanRound[] = [
-      { round: 1, stage: 'draft', plans: { codex: ' codex draft ', claude: 'claude draft' } },
-      { round: 2, stage: 'review', plans: { codex: 'codex revised', claude: 'x' }, verdict },
-      { round: 3, stage: 'final', plans: { codex: 'merged\n' }, verdict },
+      {
+        round: 1,
+        stage: 'draft',
+        plans: { codex: ' codex draft ', claude: 'claude draft' },
+        timings: { totalMs: 252_000, agents: { codex: 252_000, claude: 171_400 } },
+      },
+      {
+        round: 2,
+        stage: 'review',
+        plans: { codex: 'codex revised', claude: 'x' },
+        verdict,
+        timings: { totalMs: 65_000, agents: { codex: 58_000, claude: 41_000 }, jevMs: 7_000 },
+      },
+      {
+        round: 3,
+        stage: 'final',
+        plans: { codex: 'merged\n' },
+        verdict,
+        timings: { totalMs: 9_000, agents: { codex: 9_000 } },
+      },
     ]
     const replaying = (): Partial<CliDeps> => ({
       createPlanner: () => ({
@@ -287,11 +306,28 @@ describe('main', () => {
       const read = (path: string) => readFile(join(out, path), 'utf8')
       await expect(read('round1/codex.md')).resolves.toBe('codex draft\n')
       await expect(read('round1/claude.md')).resolves.toBe('claude draft\n')
-      await expect(readdir(join(out, 'round1'))).resolves.toHaveLength(2)
+      await expect(readdir(join(out, 'round1'))).resolves.toHaveLength(3)
+      expect(JSON.parse(await read('round1/timings.json'))).toEqual(rounds[0]?.timings)
       await expect(read('round2/codex.md')).resolves.toBe('codex revised\n')
       expect(JSON.parse(await read('round2/jev-verdict.json'))).toEqual(verdict)
       await expect(read('final/plan.md')).resolves.toBe('<!-- merged by codex -->\nmerged\n')
       await expect(read('final/jev-verdict.json')).resolves.toContain('"finalizer": "codex"')
+      expect(JSON.parse(await read('final/timings.json'))).toEqual(rounds[2]?.timings)
+    })
+
+    it('prints how long each round and call took with --verbose, and writes nothing', async () => {
+      const h = harness(replaying())
+      await expect(main(['--verbose', 'task'], h.deps)).resolves.toBe(0)
+      expect(h.stderr()).toContain(
+        [
+          '[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)',
+          '[jev-planner] Review: 1m05s (Codex 58s, Claude 41s, Jev 7.0s)',
+          '[jev-planner] Final plan: 9.0s (Codex 9.0s)',
+          '[jev-planner] Total: 5m12s',
+          '[jev-planner] Jev verdict:',
+        ].join('\n'),
+      )
+      await expect(readdir(dir)).resolves.toEqual([])
     })
 
     it('says where the rounds go', async () => {

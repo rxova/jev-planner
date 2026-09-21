@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Planner } from '../orchestrator.js'
 import { TaskValidationError } from '../task.js'
 import type { AgentRequest, JevJudge, JevVerdict, PlanRound, PlanningAgent } from '../types.js'
@@ -297,21 +297,39 @@ describe('Planner', () => {
       },
     })
 
+    const timed = (agents: string[], judged: boolean) => ({
+      totalMs: expect.any(Number) as number,
+      agents: Object.fromEntries(agents.map((agent) => [agent, expect.any(Number) as number])),
+      ...(judged ? { jevMs: expect.any(Number) as number } : {}),
+    })
     expect(rounds).toEqual([
-      { round: 1, stage: 'draft', plans: { codex: 'codex draft', claude: 'claude draft' } },
+      {
+        round: 1,
+        stage: 'draft',
+        plans: { codex: 'codex draft', claude: 'claude draft' },
+        timings: timed(['codex', 'claude'], false),
+      },
       {
         round: 2,
         stage: 'review',
         plans: { codex: 'codex revised', claude: 'claude revised' },
         verdict: { ...verdict, needsAnotherPassProbability: 0.9 },
+        timings: timed(['codex', 'claude'], true),
       },
       {
         round: 3,
         stage: 'review',
         plans: { codex: 'codex refined', claude: 'claude refined' },
         verdict,
+        timings: timed(['codex', 'claude'], true),
       },
-      { round: 4, stage: 'final', plans: { claude: 'final plan' }, verdict },
+      {
+        round: 4,
+        stage: 'final',
+        plans: { claude: 'final plan' },
+        verdict,
+        timings: timed(['claude'], false),
+      },
     ])
     expect(events.indexOf('round 1')).toBeLessThan(events.indexOf('Cross-reviewing the 2 drafts…'))
   })
@@ -361,5 +379,73 @@ describe('Planner', () => {
       }),
     ).rejects.toThrow('disk full')
     expect(codex.prompts).toHaveLength(1)
+  })
+
+  describe('timings', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Answers after `ms` of fake time, one delay per call. */
+    const slow = (name: string, calls: [string, number][]): PlanningAgent => ({
+      name,
+      label: name,
+      generate: async () => {
+        const [plan, ms] = calls.shift() ?? ['', 0]
+        await new Promise((done) => setTimeout(done, ms))
+        return plan
+      },
+    })
+
+    it('times each round, each agent call and each Jev call, and the whole run', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'performance'] })
+      const codex = slow('codex', [
+        ['codex draft', 5_000],
+        ['codex revised', 2_000],
+        ['final', 1_500],
+      ])
+      const claude = slow('claude', [
+        ['claude draft', 3_000],
+        ['claude revised', 2_500],
+      ])
+      const jev: JevJudge = {
+        judge: async () => {
+          await new Promise((done) => setTimeout(done, 400))
+          return { ...verdict, finalizer: 'codex' }
+        },
+      }
+      const onRound = vi.fn<(round: PlanRound) => Promise<void>>(async () => {
+        // Time spent reporting a round is counted in no round.
+        await new Promise((done) => setTimeout(done, 10_000))
+      })
+      const running = new Planner([codex, claude], jev).plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+        onRound,
+      })
+      await vi.runAllTimersAsync()
+      const { timings } = await running
+
+      expect(onRound.mock.calls.map(([round]) => round.timings)).toEqual([
+        { totalMs: 5_000, agents: { codex: 5_000, claude: 3_000 } },
+        { totalMs: 2_900, agents: { codex: 2_000, claude: 2_500 }, jevMs: 400 },
+        { totalMs: 1_500, agents: { codex: 1_500 } },
+      ])
+      expect(timings).toEqual({
+        totalMs: 5_000 + 2_900 + 1_500 + 3 * 10_000,
+        rounds: [
+          { round: 1, stage: 'draft', totalMs: 5_000, agents: { codex: 5_000, claude: 3_000 } },
+          {
+            round: 2,
+            stage: 'review',
+            totalMs: 2_900,
+            agents: { codex: 2_000, claude: 2_500 },
+            jevMs: 400,
+          },
+          { round: 3, stage: 'final', totalMs: 1_500, agents: { codex: 1_500 } },
+        ],
+      })
+    })
   })
 })
