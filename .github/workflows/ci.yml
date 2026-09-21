@@ -89,10 +89,10 @@ jobs:
         run: pnpm run check:llms
       - name: Typecheck
         run: pnpm exec turbo run typecheck
-      # The docs site is excluded on purpose: docs.yml builds it at the base path
-      # rxova.org mounts it on, and that is the build whose output ships.
-      # Building it here as well would spend every pull request re-checking a
-      # dist nobody publishes.
+      # The docs site is excluded on purpose: docs.yml builds it for
+      # jev-planner.com, runs its browser tests against that dist and deploys
+      # it. Building it here as well would spend every pull request re-checking
+      # a dist that job already checks.
       - name: Build
         run: pnpm exec turbo run build --filter='!@repo/docs'
 

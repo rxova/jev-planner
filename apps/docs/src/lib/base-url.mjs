@@ -1,10 +1,10 @@
 /**
  * Prefixes a site-root-relative URL with the site's `base`.
  *
- * Astro emits a root-relative URL verbatim, so under the rxova.org aggregator
- * (`DOCS_BASE_URL=/packages/jev-planner/`) a link written as
- * `/guides/serialization`
- * points one directory above where these docs are mounted. Everything that
+ * Astro emits a root-relative URL verbatim, so when the site is served from a
+ * sub-path (`DOCS_BASE_URL=/jev-planner/`, as on `rxova.github.io` without the
+ * custom domain) a link written as `/guides/usage/` points one directory above
+ * where the site is mounted. Everything that
  * writes a link into the agent-facing surfaces goes through here.
  *
  * Left alone: protocol-relative (`//host`) and absolute URLs, and anything that

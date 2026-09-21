@@ -5,9 +5,9 @@
     "build": {
       "outputs": ["dist/**"],
       // These decide the mount and therefore every emitted URL, so they belong
-      // in the cache key: without them a root-base build could replay for the
-      // /packages/overlock/ build in CI, and nothing would notice until
-      // rxova.org served it.
+      // in the cache key: without them a local sub-path build could replay for
+      // the production build in CI, and nothing would notice until
+      // jev-planner.com served it.
       //
       // Declared here rather than on the root task so that setting them does not
       // also invalidate the package build, which never reads them.

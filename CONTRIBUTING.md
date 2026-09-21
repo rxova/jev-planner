@@ -50,15 +50,21 @@ pnpm --filter ts-extended-errors exec vitest run src/__tests__/serialize.test.ts
 
 ## The docs site
 
-`apps/docs` is an Astro + Starlight site, published as part of
-[rxova.org](https://rxova.org/packages/ts-extended-errors/) rather than from this
-repository — `docs.yml` builds the dist and hands it to the aggregator.
+`apps/docs` is an Astro + Starlight site — the landing page and the
+documentation — deployed to GitHub Pages at
+[jev-planner.com](https://jev-planner.com/) by `docs.yml` on every push to `main`.
 
 ```bash
 pnpm --filter @repo/docs dev    # localhost, served at the root
-pnpm --filter @repo/docs build  # build, validate links, check the .md twins
-pnpm --filter @repo/docs test   # the markdown normalizer and the llms.txt builders
+pnpm --filter @repo/docs build     # build, validate links, check the .md twins and the budgets
+pnpm --filter @repo/docs test      # the markdown normalizer, the llms.txt builders, the build checks
+pnpm --filter @repo/docs test:e2e  # Playwright + axe against the built dist (build first)
+pnpm --filter @repo/docs og        # regenerate public/og.png, the social card
 ```
+
+`scripts/check-site-build.mjs` also runs as part of the build: it holds the landing page to its
+size budget and fails on any link that skips the site's base. To check a sub-path deploy, build
+and test with `DOCS_BASE_URL=/jev-planner/`.
 
 Every page is also served as raw markdown at `<route>.md`, and `llms.txt` /
 `llms-full.txt` are generated from the same page enumeration. `scripts/check-md-routes.mjs`

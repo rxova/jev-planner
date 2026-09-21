@@ -1,7 +1,7 @@
 # jev-planner
 
-> A CLI that writes a coding plan with two agents and a judge: Codex and Claude
-> Code draft and cross-review, and Jev picks the finalizer. One package,
+> A CLI that writes a coding plan with two or more AI agents and a judge: Codex
+> and Claude Code by default draft and cross-review, and Jev picks the finalizer. One package,
 > `jev-planner`, published to npm. Node >= 20.19. MIT. Ships ESM and CommonJS.
 
 This file is an index. It points to the files that document the package and
@@ -18,11 +18,11 @@ be read from `node_modules/jev-planner/llms.txt` with no network access.
 
 ## Docs
 
-The documentation site is published as part of rxova.org. Every page there also
-exists as raw markdown — add `.md` to any URL.
+The documentation site is https://jev-planner.com. Every page there also exists
+as raw markdown — add `.md` to any URL — and https://jev-planner.com/llms.txt
+indexes them for an agent.
 
-- [Documentation](https://rxova.org/packages/jev-planner/): guides and
-  reference.
+- [Documentation](https://jev-planner.com/): guides and reference.
 - [README](packages/jev-planner/README.md): usage and options. Also in the
   tarball.
 - [npm](https://www.npmjs.com/package/jev-planner): the published versions.

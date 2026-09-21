@@ -21,9 +21,9 @@ describe('STEPS', () => {
     expect(STEPS.some(([, command]) => command.includes('audit'))).toBe(false)
   })
 
-  // docs.yml builds the site at the base path rxova.org mounts it on, and that
-  // is the build whose output ships. Building it again here, at a base nothing
-  // serves, would put an Astro build in front of every push to prove nothing.
+  // docs.yml builds the site for jev-planner.com, browser-tests that dist and
+  // deploys it. Building it again here would put an Astro build in front of
+  // every push to re-prove what that job proves on the output that ships.
   it('leaves the docs site out of the build step', () => {
     const build = STEPS.find(([name]) => name === 'build')?.[1] ?? ''
 
