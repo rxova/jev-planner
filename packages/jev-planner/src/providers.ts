@@ -132,6 +132,9 @@ export const PROVIDERS: readonly Provider[] = [
       '--verbose',
       '--tools',
       'Read,Glob,Grep',
+      // `--tools` does not reach MCP servers: without this, every server in the
+      // user's configuration starts with each call and its tools are callable.
+      '--strict-mcp-config',
       ...(model ? ['--model', model] : []),
       ...(effort ? ['--effort', effort] : []),
     ],
