@@ -10,16 +10,17 @@ import { rehypeMdLinks } from './src/lib/rehype-md-links.mjs'
 
 /**
  * The defaults are production: GitHub Pages serves this repository's site at
- * `https://rxova.github.io/jev-planner/`, so a plain `pnpm build` is deployable
- * and `astro dev` serves under `/jev-planner/` too. docs.yml sets both anyway,
- * and these two are the one place to change if the site moves to a domain.
+ * the custom domain `https://jev-planner.com/`, so a plain `pnpm build` is
+ * deployable. docs.yml sets both anyway, and these two are the one place to
+ * change if the site moves.
  *
- * Every emitted URL depends on `base`. An absolute reference that only resolves
- * at a domain root looks fine in a root build and 404s under `/jev-planner/`,
- * which is why the default is the real mount rather than `/`.
+ * Every emitted URL still goes through `base`. Written that way, the site keeps
+ * working if it is ever served from a sub-path again — `rxova.github.io/jev-planner/`
+ * is what Pages falls back to without the domain — and check-site-build rejects
+ * a root-relative link that skips it.
  */
-const site = process.env.DOCS_URL ?? 'https://rxova.github.io'
-const base = process.env.DOCS_BASE_URL ?? '/jev-planner/'
+const site = process.env.DOCS_URL ?? 'https://jev-planner.com'
+const base = process.env.DOCS_BASE_URL ?? '/'
 
 /**
  * The social card, absolute: a crawler resolves nothing against the page it
@@ -47,10 +48,9 @@ export default defineConfig({
   },
 
   integrations: [
-    // Emitted at the mount: GitHub Pages serves a project site under
-    // `/jev-planner/`, so the file lands at <base>sitemap-index.xml and lists
-    // only URLs beneath that prefix. No robots.txt can point at it — crawlers
-    // only read one at the host root — so each page links it from <head>.
+    // Emitted at <base>sitemap-index.xml and linked from every page's <head>,
+    // which is where Starlight looks for it. At the domain root a robots.txt
+    // could point at it too; the <head> link works at any base.
     sitemap({
       // The canonical HTML pages only. Every one of them also has a `.md` twin,
       // and llms.txt is built from the same enumeration, so listing those here

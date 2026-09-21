@@ -9,7 +9,7 @@
    whether the plans need one more cross-review.
 4. The selected agent merges the revised drafts into one final implementation plan.
 
-**[Documentation →](https://rxova.github.io/jev-planner/)**
+**[Documentation →](https://jev-planner.com/)**
 
 ## Agents
 
