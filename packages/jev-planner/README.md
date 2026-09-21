@@ -9,6 +9,8 @@
    whether the plans need one more cross-review.
 4. The selected agent merges the revised drafts into one final implementation plan.
 
+**[Documentation →](https://rxova.github.io/jev-planner/)**
+
 ## Agents
 
 Pick the agents with `--agents`, two or more, comma-separated:
@@ -45,14 +47,22 @@ an agent never sees another provider's credentials.
 The implementation uses the official [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript)
 and defaults to the SDK's `jev-latest` model alias.
 
-## Install locally
+## Install
+
+```sh
+npm install -g jev-planner
+export TYPESAFE_API_KEY="your-key"
+jev-planner doctor
+```
+
+Or run it without installing: `npx jev-planner "<coding task>"`.
+
+To run it from a clone of this repository instead:
 
 ```sh
 npm install
 npm run build
 npm link
-export TYPESAFE_API_KEY="your-key"
-jev-planner doctor
 ```
 
 `doctor` checks the selected agents — each CLI is installed and logged in, each API key is set —
