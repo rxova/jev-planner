@@ -1,0 +1,37 @@
+/*
+ * Space Grotesk, the brand face, as small as it gets: Latin only, two weights.
+ * Starlight's 400 body text resolves to 500 and its 600 headings to 700, which
+ * is how CSS picks the nearest face, so no weight is synthesised.
+ *
+ * Code stays in the system monospace stack; IBM Plex Mono is not loaded.
+ *
+ * `optional`, as in @rxova/brand's own fonts.css: the browser waits ~100 ms,
+ * uses the face if it has it (from the HTTP cache on every page after the
+ * first) and otherwise keeps the fallback for that page — no reflow after paint.
+ *
+ * check-site-build allows exactly these two files and holds them to a budget.
+ * The unicode-range is fontsource's Latin subset; re-check it when bumping
+ * @fontsource/space-grotesk.
+ */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: optional;
+  src: url('@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: optional;
+  src: url('@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}

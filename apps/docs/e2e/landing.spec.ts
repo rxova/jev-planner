@@ -59,6 +59,26 @@ test('wears the rxova brand', async ({ page }) => {
   expect(accent).toBe(primary)
 })
 
+test('paints the text in the brand face on the first visit', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'reads the painted font over the Chrome DevTools Protocol')
+  // `font-display: optional` drops a face that arrives late, and a loaded face
+  // is not proof of a painted one — so ask the renderer what it drew with.
+  const cdp = await page.context().newCDPSession(page)
+  for (const path of [LANDING, DOCS]) {
+    await page.goto(path)
+    await page.waitForLoadState('networkidle')
+    await cdp.send('DOM.enable')
+    await cdp.send('CSS.enable')
+    const { root } = await cdp.send('DOM.getDocument')
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: 'h1' })
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId })
+    expect(
+      fonts.map((f) => f.familyName),
+      path,
+    ).toEqual([expect.stringMatching(/^Space Grotesk/)])
+  }
+})
+
 test('reaches the calls to action in reading order from the keyboard', async ({
   page,
 }, testInfo) => {

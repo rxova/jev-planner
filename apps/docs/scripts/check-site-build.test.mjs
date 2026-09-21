@@ -175,6 +175,44 @@ describe('checkSiteBuild', () => {
     expect(failures.some((f) => f.startsWith('landing allJs'))).toBe(true)
   })
 
+  it('allows the brand subset by name and measures it', async () => {
+    const { failures, sizes } = await checkSiteBuild(
+      await dist({
+        ...good(),
+        '_astro/space-grotesk-latin-500-normal.B7xQ-1aZ.woff2': 'x'.repeat(1000),
+        '_astro/space-grotesk-latin-700-normal.Dk2f_9sE.woff2': 'x'.repeat(500),
+      }),
+    )
+    expect(failures).toEqual([])
+    expect(sizes.fonts).toBe(1500)
+  })
+
+  it('fails any other weight, subset or family', async () => {
+    const { failures } = await checkSiteBuild(
+      await dist({
+        ...good(),
+        '_astro/space-grotesk-latin-600-normal.a1.woff2': 'x',
+        '_astro/space-grotesk-latin-ext-500-normal.a1.woff2': 'x',
+        '_astro/space-grotesk-latin-500-normal.a1.woff': 'x',
+      }),
+    )
+    expect(failures).toEqual([
+      'ships font files: _astro/space-grotesk-latin-500-normal.a1.woff, ' +
+        '_astro/space-grotesk-latin-600-normal.a1.woff2, ' +
+        '_astro/space-grotesk-latin-ext-500-normal.a1.woff2',
+    ])
+  })
+
+  it('fails fonts over budget', async () => {
+    const { failures } = await checkSiteBuild(
+      await dist({
+        ...good(),
+        '_astro/space-grotesk-latin-500-normal.a1.woff2': 'x'.repeat(BUDGETS.fonts + 1),
+      }),
+    )
+    expect(failures).toEqual(['fonts are 30.0 kB, over the 30.0 kB budget'])
+  })
+
   it('fails a wrongly sized social card, font files and a link that skips the base', async () => {
     const { failures } = await checkSiteBuild(
       await dist({

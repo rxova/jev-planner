@@ -26,7 +26,7 @@ import { collect } from './check-md-routes.mjs'
 
 export const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 
-/** Budgets in bytes. HTML, CSS and JS are gzip sizes; og.png is on disk. */
+/** Budgets in bytes. HTML, CSS and JS are gzip sizes; og.png and fonts are on disk. */
 export const BUDGETS = {
   html: 30 * 1024,
   css: 25 * 1024,
@@ -35,7 +35,20 @@ export const BUDGETS = {
   // Raise it deliberately, with the reason in the commit, never to make a build pass.
   allJs: 5.5 * 1024,
   og: 150 * 1024,
+  // The two Space Grotesk files below measured 25.5 kB when this was set.
+  fonts: 30 * 1024,
 }
+
+/**
+ * The only font files the site may ship: Space Grotesk, the rxova brand face,
+ * Latin subset, weights 500 and 700 (src/styles/fonts.css). Allowed by name so
+ * that another weight, another subset or another family still fails the build
+ * — a webfont is the easiest 100 kB to add without noticing.
+ */
+export const ALLOWED_FONTS = [
+  /^_astro\/space-grotesk-latin-500-normal\.[\w-]+\.woff2$/,
+  /^_astro\/space-grotesk-latin-700-normal\.[\w-]+\.woff2$/,
+]
 
 export const OG_SIZE = { width: 1200, height: 630 }
 
@@ -224,10 +237,14 @@ export async function checkSiteBuild(distDir = DEFAULT_DIST) {
     )
   }
 
-  // No fonts: the site uses the system stack, and a webfont is the easiest
-  // 100 kB to add without noticing.
   const fonts = (await collect(distDir, '')).filter((f) => /\.(?:woff2?|ttf|otf)$/.test(f))
-  if (fonts.length > 0) failures.push(`ships font files: ${fonts.slice(0, 3).join(', ')}`)
+  const unknown = fonts.filter((f) => !ALLOWED_FONTS.some((allowed) => allowed.test(f)))
+  if (unknown.length > 0) failures.push(`ships font files: ${unknown.slice(0, 3).join(', ')}`)
+  sizes.fonts = 0
+  for (const f of fonts) sizes.fonts += (await read(f)).length
+  if (sizes.fonts > BUDGETS.fonts) {
+    failures.push(`fonts are ${kB(sizes.fonts)}, over the ${kB(BUDGETS.fonts)} budget`)
+  }
 
   // --- Base-path safety, on every page -----------------------------------
   for (const html of await collect(distDir, '.html')) {
