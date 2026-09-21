@@ -77,6 +77,25 @@ export interface PlanRound {
   plans: Record<AgentName, string>
   /** Jev's verdict on a `review` round's plans, and the one the final plan followed. */
   verdict?: JevVerdict
+  /** How long the round took. */
+  timings: RoundTimings
+}
+
+/** How long one round of a run took, in milliseconds. */
+export interface RoundTimings {
+  /** The whole round: its agent calls, then Jev on a `review` round. */
+  totalMs: number
+  /** Each agent call in the round, by agent name. */
+  agents: Record<AgentName, number>
+  /** Jev judging a `review` round's plans. */
+  jevMs?: number
+}
+
+/** How long a whole run took, in milliseconds. */
+export interface RunTimings {
+  totalMs: number
+  /** One entry per round, in the order `onRound` receives them. */
+  rounds: (RoundTimings & Pick<PlanRound, 'round' | 'stage'>)[]
 }
 
 export interface PlanResult {
@@ -85,4 +104,5 @@ export interface PlanResult {
   finalizer: AgentName
   /** Each agent's last revised plan, by agent name. */
   drafts: Record<AgentName, string>
+  timings: RunTimings
 }

@@ -82,6 +82,19 @@ Codex and Claude run with JSON event output (`codex exec --json`, `claude --outp
 stream-json`), so every message, command and file read is shown as the agent reaches it. A chat API
 agent answers in one response, so it shows only which model it is waiting on.
 
+After each round, `--verbose` prints how long it took and how long each call in it took, and a
+total at the end:
+
+```text
+[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)
+[jev-planner] Review: 1m05s (Codex 58s, Claude 41s, Jev 7.0s)
+[jev-planner] Final plan: 49s (Claude 49s)
+[jev-planner] Total: 6m06s
+```
+
+The same numbers, in milliseconds, are in each round's `timings.json`, in `--json`'s `timings`,
+and in `PlanRound.timings` and `PlanResult.timings` from code.
+
 ## Following a run round by round
 
 Every run writes each round's plans as soon as the round ends, to a new folder under
@@ -94,6 +107,7 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
+      timings.json    how long the round and each call in it took, in milliseconds
     round2/           the cross-reviewed plans, and Jev's verdict on them
       codex.md
       claude.md

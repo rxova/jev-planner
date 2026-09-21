@@ -18,4 +18,6 @@ export type {
   PlanOptions,
   PlanResult,
   PlanRound,
+  RoundTimings,
+  RunTimings,
 } from './types.js'
