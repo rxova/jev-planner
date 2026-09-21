@@ -102,7 +102,7 @@ jev-planner \
 - Every draft, review, and Jev verdict is saved under `.jev-planner/<run>/`; `--rounds-dir <path>`
   moves it, `--no-rounds` skips it.
 - `--json` emits structured output for another tool.
-- `--finalizer <agent>` overrides Jev's finalizer choice.
+- `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
 - `--review-rounds 1` disables the optional second cross-review.
 
 ```text

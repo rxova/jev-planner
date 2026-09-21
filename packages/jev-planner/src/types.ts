@@ -83,6 +83,12 @@ export interface PlanOptions {
    */
   allowAnyTask?: boolean
   /**
+   * Skip the synthesis when Jev rates one revised plan stronger, and return
+   * that plan as it is. Saves the last agent call at some cost in quality; on
+   * a tie the finalizer still merges the plans. `false` by default.
+   */
+  selectStronger?: boolean
+  /**
    * A reasoning effort for the cross-review and synthesis calls, by agent name:
    * lower effort where the job is editing a plan rather than exploring. An
    * agent not listed uses the effort it was created with in every stage.
@@ -116,6 +122,8 @@ export interface PlanRound {
   verdict?: JevVerdict
   /** How long the round took. */
   timings: RoundTimings
+  /** On the `final` round: the plan is an agent's revised plan, chosen by `selectStronger`, not a merge. */
+  selected?: true
 }
 
 /** How long one round of a run took, in milliseconds. */
@@ -138,7 +146,10 @@ export interface RunTimings {
 export interface PlanResult {
   plan: string
   verdict: JevVerdict
+  /** The agent that merged the plan, or whose plan was selected. */
   finalizer: AgentName
+  /** The plan is `finalizer`'s revised plan, chosen by `selectStronger`, not a merge. */
+  selected?: true
   /** Each agent's last revised plan, by agent name. */
   drafts: Record<AgentName, string>
   timings: RunTimings
