@@ -6,11 +6,13 @@
   "description": "The jev-planner landing page and documentation, deployed to GitHub Pages at jev-planner.com.",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node ./scripts/check-md-routes.mjs",
+    "build": "astro build && node ./scripts/check-md-routes.mjs && node ./scripts/check-site-build.mjs",
     "og": "node ./scripts/make-og.mjs",
     "preview": "astro preview",
+    "serve:dist": "node ./e2e/serve.mjs",
     "typecheck": "astro check",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.0",
@@ -22,6 +24,8 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
     "typescript": "6.0.3",
     "vitest": "^5.0.1"
   },
