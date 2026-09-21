@@ -1,4 +1,5 @@
 import { finalPlanPrompt, initialPlanPrompt, revisionPrompt } from './prompts.js'
+import { validateTask } from './task.js'
 import type { JevJudge, PlanOptions, PlanResult, PlanningAgent } from './types.js'
 
 export class Planner {
@@ -9,6 +10,9 @@ export class Planner {
   ) {}
 
   async plan(options: PlanOptions): Promise<PlanResult> {
+    // Before any agent call: a placeholder task would otherwise buy a full,
+    // billed run that plans nothing.
+    if (!options.allowAnyTask) validateTask(options.task)
     const stage = options.onStage ?? (() => undefined)
     const request = (prompt: string) => ({
       prompt,

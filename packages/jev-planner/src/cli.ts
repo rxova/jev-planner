@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import packageJson from '../package.json' with { type: 'json' }
 import type { CheckResult } from './doctor.js'
+import { requireNonEmptyTask, validateTask } from './task.js'
 import type { AgentName, PlanOptions, PlanResult } from './types.js'
 
 export const VERSION: string = packageJson.version
@@ -25,6 +26,7 @@ Options:
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --json                  Emit plan metadata as JSON
       --verbose               Print Jev's typed verdict to stderr
+      --allow-any-task        Plan the task even if it looks like a placeholder
   -h, --help                  Show help
   -v, --version               Show version
 
@@ -96,6 +98,7 @@ function parse(argv: readonly string[]) {
       timeout: { type: 'string' },
       json: { type: 'boolean', default: false },
       verbose: { type: 'boolean', default: false },
+      'allow-any-task': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -136,9 +139,10 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     task = (await readFile(resolve(deps.cwd(), values.file), 'utf8')).trim()
   }
   if (!task) task = (await deps.readStdin()) ?? ''
-  if (!task) {
-    throw new Error('Missing coding task. Pass it as an argument, with --file, or on stdin.')
-  }
+  // Before the API-key check, so a placeholder is reported first and nothing
+  // billable is set up for it.
+  const allowAnyTask = values['allow-any-task']
+  task = allowAnyTask ? requireNonEmptyTask(task) : validateTask(task)
   if (!deps.env.TYPESAFE_API_KEY?.trim()) {
     throw new Error(
       'TYPESAFE_API_KEY is not set. Create a key at https://console.typesafe.ai/keys and export it first.',
@@ -158,6 +162,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     maxReviewRounds: parseReviewRounds(values['review-rounds']),
     ...(jevModel ? { jevModel } : {}),
     ...(finalizer ? { finalizer } : {}),
+    ...(allowAnyTask ? { allowAnyTask } : {}),
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
     },

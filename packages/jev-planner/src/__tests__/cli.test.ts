@@ -112,6 +112,7 @@ describe('main', () => {
     })
     expect(h.planned()).not.toHaveProperty('jevModel')
     expect(h.planned()).not.toHaveProperty('finalizer')
+    expect(h.planned()).not.toHaveProperty('allowAnyTask')
     expect(h.models()).toEqual({})
     expect(h.stdout()).toBe('# The plan\n')
     expect(h.stderr()).toBe('[jev-planner] Drafting…\n')
@@ -196,6 +197,20 @@ describe('main', () => {
     expect(h.stderr()).toContain(`[jev-planner] Wrote ${join(dir, 'PLAN.md')}\n`)
   })
 
+  it('plans a placeholder task with --allow-any-task', async () => {
+    const h = harness()
+    await expect(main(['--allow-any-task', 'TODO'], h.deps)).resolves.toBe(0)
+    expect(h.planned()).toMatchObject({ task: 'TODO', allowAnyTask: true })
+  })
+
+  it('still rejects an empty task with --allow-any-task, before the TypeSafe key', async () => {
+    const h = harness({ env: {} })
+    await expect(main(['--allow-any-task'], h.deps)).resolves.toBe(1)
+    expect(h.stderr()).toBe(
+      'jev-planner: Missing coding task. Pass it as an argument, with --file, or on stdin.\n',
+    )
+  })
+
   describe('doctor', () => {
     const check = (ok: boolean): CheckResult => ({ name: 'Codex CLI', ok, detail: 'detail' })
 
@@ -244,6 +259,16 @@ describe('main', () => {
       await expect(failure([], { readStdin: () => Promise.resolve('') })).resolves.toContain(
         'Missing coding task',
       )
+    })
+
+    it('rejects a placeholder task before checking the TypeSafe key', async () => {
+      const placeholder = 'Describe the coding change you want to plan'
+      await expect(failure([placeholder], { env: {} })).resolves.toContain(
+        'looks like a placeholder',
+      )
+      await expect(
+        failure([], { env: {}, readStdin: () => Promise.resolve('TODO') }),
+      ).resolves.toContain('--allow-any-task')
     })
 
     it('rejects a missing TypeSafe key', async () => {

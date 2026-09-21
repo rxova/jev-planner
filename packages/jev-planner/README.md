@@ -70,6 +70,13 @@ See every option with `jev-planner --help`. Useful controls include:
 - `--finalizer codex|claude` to override Jev's routing decision.
 - `--review-rounds 1` to disable Jev's optional second review pass.
 - `--verbose` to print Jev's typed verdict to stderr.
+- `--allow-any-task` to plan text that looks like a placeholder.
+
+A task that is empty or a near-certain placeholder — the text `TODO`, `TBD` or `<coding task>`,
+an unfilled `<…>`, `{{…}}` or `[…]` slot, or text with no letters — is rejected before any paid
+call. Only the whole text is compared, so a brief that quotes a placeholder, or a short real task
+such as `Add caching`, is planned as usual. `Planner.plan` runs the same check and throws
+`TaskValidationError`; set `allowAnyTask: true` in its options to skip it.
 
 ## Cost and data flow
 
