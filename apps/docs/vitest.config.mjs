@@ -9,6 +9,9 @@ import { defineConfig } from 'vitest/config'
  * These four modules get unit tests because their failure mode is silent. A
  * mis-sectioned page or an unresolved link still produces a document that reads
  * as complete, and the reader who would notice is a model that cannot ask.
+ *
+ * brand-tokens is here for the same reason: a token it misreads still renders
+ * a social card, just not a brand one.
  */
 export default defineConfig({
   test: {
