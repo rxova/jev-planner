@@ -23,6 +23,11 @@ export interface AgentRequest {
   resumePrompt?: string
   /** Continue this conversation, when the agent can; see `AgentSession`. */
   session?: AgentSession
+  /**
+   * A reasoning effort for this call only, over the one the agent was created
+   * with. An agent that takes no effort ignores it.
+   */
+  effort?: string
   cwd: string
   timeoutMs: number
   /** Called with a line about the agent's work as it happens: a message, a command, a file read. */
@@ -77,6 +82,12 @@ export interface PlanOptions {
    * task is still passed through unchecked, as before the check existed.
    */
   allowAnyTask?: boolean
+  /**
+   * A reasoning effort for the cross-review and synthesis calls, by agent name:
+   * lower effort where the job is editing a plan rather than exploring. An
+   * agent not listed uses the effort it was created with in every stage.
+   */
+  reviewEfforts?: Readonly<Record<AgentName, string>>
   /**
    * Keep each agent's conversation from its draft to its later calls, so the
    * cross-review and synthesis continue with what it already read. `true` by

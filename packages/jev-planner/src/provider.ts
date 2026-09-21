@@ -106,9 +106,10 @@ export function cliProvider(config: CliProviderConfig): Provider {
       name: config.id,
       label: config.label,
       generate: async (request: AgentRequest) => {
+        const callEffort = config.effort ? (request.effort ?? effort) : effort
         const overrides = {
           ...(model === undefined ? {} : { model }),
-          ...(effort === undefined ? {} : { effort }),
+          ...(callEffort === undefined ? {} : { effort: callEffort }),
         }
         const { events, sessions } = config
         const read = (line: string, stream: 'stdout' | 'stderr') => {

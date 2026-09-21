@@ -122,6 +122,9 @@ See every option with `jev-planner --help`. Useful controls include:
 - `--model <id>=<model>`, repeatable, to override one agent's model.
 - `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
+- `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
+  and synthesis only, while its draft keeps `--effort`. A lower one shortens the later stages, whose
+  job is editing plans rather than exploring the repository.
 
 Model and effort overrides win over the CLIs' local configuration, such as `model` and
 `model_reasoning_effort` in `~/.codex/config.toml`, for that run only. Codex on GPT-5.6-Terra at low
