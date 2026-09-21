@@ -1,0 +1,83 @@
+# jev-planner
+
+> A CLI, and the library behind it, that writes a coding plan with two agents
+> and a judge. Codex and Claude Code each draft a plan for the same task in the
+> repository, review each other's draft, and Jev — TypeSafe's typed judge —
+> picks the stronger plan and the agent that writes the final version. Every
+> agent runs read-only. Node >= 20.19. MIT. Ships ESM and CommonJS with type
+> declarations.
+
+## Install
+
+    npm install -g jev-planner
+
+or, without installing, `npx jev-planner "<coding task>"`. It needs the
+`codex` and `claude` CLIs installed and logged in, and `TYPESAFE_API_KEY` set
+for Jev. `jev-planner doctor` checks all three.
+
+## Minimal working example
+
+```sh
+jev-planner doctor
+jev-planner "Add rate limiting to the public API" -o PLAN.md
+```
+
+The plan goes to stdout, or to the file given with `-o`; progress goes to
+stderr. `--json` prints `{ plan, verdict, finalizer }` instead.
+
+The same flow from code:
+
+```ts
+import { ClaudeAgent, CodexAgent, Planner, TypeSafeJevJudge } from 'jev-planner'
+
+const planner = new Planner(new CodexAgent(), new ClaudeAgent(), new TypeSafeJevJudge())
+const { plan, verdict, finalizer } = await planner.plan({
+  task: 'Add rate limiting to the public API',
+  cwd: process.cwd(),
+  timeoutMs: 600_000,
+})
+```
+
+## API
+
+| Export             | Kind     | What it does                                                                      |
+| ------------------ | -------- | --------------------------------------------------------------------------------- |
+| `Planner`          | class    | `new Planner(codex, claude, jev).plan(options)`: drafts, cross-reviews, finalizes |
+| `CodexAgent`       | class    | A `PlanningAgent` that runs `codex exec` in a read-only sandbox                   |
+| `ClaudeAgent`      | class    | A `PlanningAgent` that runs `claude -p` in plan mode                              |
+| `TypeSafeJevJudge` | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`               |
+| `runDoctor`        | function | `runDoctor(cwd)` checks the CLIs, the API key and the directory                   |
+| `ProcessError`     | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                  |
+| `ProcessResult`    | type     | `{ stdout, stderr }` of a finished agent process                                  |
+| `CheckResult`      | type     | `{ name, ok, detail }`, one `runDoctor` check                                     |
+| `AgentName`        | type     | `'codex' \| 'claude'`                                                             |
+| `AgentRequest`     | type     | `{ prompt, cwd, timeoutMs }`, what a `PlanningAgent` is given                     |
+| `PlanningAgent`    | type     | `{ name, generate(request) }`, the agent interface `Planner` drives               |
+| `JevJudge`         | type     | `{ judge({ task, codexPlan, claudePlan, model? }) }`, returns a `JevVerdict`      |
+| `JevVerdict`       | type     | Scores and confidences for both plans, and the chosen finalizer                   |
+| `PlanOptions`      | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, onStage? }`     |
+| `PlanResult`       | type     | `{ plan, verdict, finalizer, drafts: { codex, claude } }`                         |
+
+## Mistakes to avoid
+
+- **Treating a run as free.** One plan is 5 or 7 agent calls and 1 or 2 Jev
+  calls, each billed to the account it runs under. Run `jev-planner doctor`
+  first rather than a real task to check the setup.
+- **Giving the task two ways.** The task comes from the arguments, from `-f`,
+  or from stdin — passing both arguments and `-f` is an error.
+- **Expecting the agents to edit code.** Both run read-only; the output is a
+  plan, not a change.
+- **A short `--timeout`.** It applies to each agent call, not the whole run,
+  and defaults to 600 seconds; a large repository needs most of it.
+
+## Docs
+
+- Documentation site: https://rxova.org/packages/jev-planner/ — every page is
+  also raw markdown at the same URL plus `.md`
+- Index for an agent: https://rxova.org/packages/jev-planner/llms.txt, and
+  https://rxova.org/packages/jev-planner/llms-full.txt for every page in one
+  fetch
+- README: `node_modules/jev-planner/README.md`, or
+  https://github.com/rxova/jev-planner/tree/main/packages/jev-planner#readme
+- Package: https://www.npmjs.com/package/jev-planner
+- Source: https://github.com/rxova/jev-planner
