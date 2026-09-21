@@ -24,3 +24,4 @@ apps/docs/.astro/
 test-results/
 playwright-report/
 blob-report/
+.lighthouseci/
