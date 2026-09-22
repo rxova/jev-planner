@@ -53,6 +53,18 @@ describe('cliProvider', () => {
     expect(args.mock.calls).toEqual([[{}], [{ model: 'm', effort: 'low' }]])
   })
 
+  it('passes an abort signal on to the process, and nothing when there is none', async () => {
+    run.mockResolvedValue({ stdout: 'plan', stderr: '', exitCode: 0 })
+    const agent = cliProvider(config).create({ omitEnv: [], env: {} })
+    const signal = AbortSignal.timeout(5_000)
+
+    await agent.generate({ ...request, signal })
+    await agent.generate(request)
+
+    expect(run.mock.calls[0]?.[2]).toMatchObject({ signal })
+    expect(run.mock.calls[1]?.[2]).not.toHaveProperty('signal')
+  })
+
   it('reads events from stdout: progress as it comes, the last result as the answer', async () => {
     run.mockImplementation((_command, _args, options) => {
       for (const line of ['{"say":"step"}', '{"answer":"first"}', 'plain', '{"answer":"final"}']) {
@@ -209,6 +221,19 @@ describe('openAICompatibleProvider', () => {
     await expect(
       agentWith(() => Promise.reject(new TypeError('fetch failed'))).generate(request),
     ).rejects.toThrow('fetch failed')
+  })
+
+  it('ends the request when the run stops needing the answer', async () => {
+    const controller = new AbortController()
+    const send = vi.fn<typeof fetch>(async (_url, init) => {
+      controller.abort()
+      init?.signal?.throwIfAborted()
+      return completion('plan')
+    })
+
+    await expect(
+      agentWith(send).generate({ ...request, signal: controller.signal }),
+    ).rejects.toThrow('Acme was stopped: the run no longer needs it')
   })
 
   it('uses the global fetch by default', async () => {

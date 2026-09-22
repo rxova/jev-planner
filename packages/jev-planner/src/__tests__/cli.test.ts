@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import packageJson from '../../package.json' with { type: 'json' }
-import { HELP, main, VERSION } from '../cli.js'
+import { costLine, HELP, main, VERSION } from '../cli.js'
 import type { CliDeps } from '../cli.js'
 import type { CheckResult } from '../doctor.js'
 import { PROVIDERS } from '../providers.js'
-import type { JevVerdict, PlanOptions, PlanResult, PlanRound } from '../types.js'
+import type { JevVerdict, PlanCost, PlanOptions, PlanResult, PlanRound } from '../types.js'
 
 /** A rejection with a non-Error reason: what the `String(error)` fallback is for. */
 function rejectWith(reason: unknown): Promise<never> {
@@ -27,7 +27,17 @@ const verdict: JevVerdict = {
   riskCoverage: 2,
   riskCoverageConfidence: 0.8,
   needsAnotherPassProbability: 0.1,
+  standsAloneProbability: 0.2,
   model: 'jev-test',
+}
+
+const cost: PlanCost = {
+  mode: 'fast',
+  reviewRounds: 0,
+  synthesized: true,
+  agentCalls: 3,
+  jevCalls: 1,
+  dropped: [],
 }
 
 const result: PlanResult = {
@@ -35,6 +45,7 @@ const result: PlanResult = {
   verdict,
   finalizer: 'codex',
   drafts: { codex: 'codex draft', claude: 'claude draft' },
+  cost,
 }
 
 interface Harness {
@@ -124,14 +135,16 @@ describe('main', () => {
       task: 'Add caching',
       cwd: dir,
       timeoutMs: 600_000,
+      mode: 'fast',
       maxReviewRounds: 2,
     })
     expect(h.planned()).not.toHaveProperty('jevModel')
     expect(h.planned()).not.toHaveProperty('finalizer')
     expect(h.planned()).not.toHaveProperty('allowAnyTask')
+    expect(h.planned()).not.toHaveProperty('stragglerGraceMs')
     expect(h.setup()).toEqual({ agents: ['codex', 'claude'], models: {}, efforts: {} })
     expect(h.stdout()).toBe('# The plan\n')
-    expect(h.stderr()).toBe('[jev-planner] Drafting…\n')
+    expect(h.stderr()).toBe(`[jev-planner] Drafting…\n[jev-planner] ${costLine(cost)}\n`)
   })
 
   it('passes every option through to the planner', async () => {
@@ -153,8 +166,12 @@ describe('main', () => {
         'jev-custom',
         '--finalizer',
         'claude',
+        '--mode',
+        'fast',
         '--review-rounds',
         '1',
+        '--straggler-grace',
+        '30',
         '--timeout',
         '1.5',
         'Add caching',
@@ -170,7 +187,9 @@ describe('main', () => {
     expect(h.planned()).toMatchObject({
       task: 'Add caching',
       timeoutMs: 1_500,
+      mode: 'fast',
       maxReviewRounds: 1,
+      stragglerGraceMs: 30_000,
       jevModel: 'jev-custom',
       finalizer: 'claude',
     })
@@ -181,6 +200,31 @@ describe('main', () => {
     await main(['--finalizer', 'auto', '--review-rounds', '2', 'task'], h.deps)
     expect(h.planned()).toMatchObject({ maxReviewRounds: 2 })
     expect(h.planned()).not.toHaveProperty('finalizer')
+  })
+
+  it('runs the full pipeline with --mode ultra, which takes no straggler grace', async () => {
+    const h = harness()
+    await expect(main(['--mode', 'ultra', 'task'], h.deps)).resolves.toBe(0)
+    expect(h.planned()).toMatchObject({ mode: 'ultra' })
+    expect(h.planned()).not.toHaveProperty('stragglerGraceMs')
+  })
+
+  it('reports what the run cost on stderr, singular and plural', () => {
+    expect(costLine(cost)).toBe(
+      'fast mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
+    )
+    expect(
+      costLine({
+        mode: 'ultra',
+        reviewRounds: 1,
+        synthesized: false,
+        agentCalls: 1,
+        jevCalls: 2,
+        dropped: ['glm'],
+      }),
+    ).toBe(
+      'ultra mode, 1 agent call, 2 Jev calls, 1 cross-review round, adopted whole, not waited for: glm',
+    )
   })
 
   it('reads the task from a file, relative to the working directory', async () => {
@@ -209,6 +253,7 @@ describe('main', () => {
       plan: result.plan,
       verdict,
       finalizer: 'codex',
+      cost,
     })
     expect(h.stderr()).toContain(
       `[jev-planner] Jev verdict:\n${JSON.stringify(verdict, null, 2)}\n`,
@@ -395,7 +440,7 @@ describe('main', () => {
         'Invalid --finalizer value: glm',
       )
       await expect(failure(['--review-rounds', '3', 'task'])).resolves.toContain(
-        '--review-rounds must be 1 or 2',
+        '--review-rounds must be 0, 1 or 2',
       )
       await expect(failure(['--timeout', '0', 'task'])).resolves.toContain(
         '--timeout must be a positive number',
@@ -403,6 +448,18 @@ describe('main', () => {
       await expect(failure(['--timeout', 'soon', 'task'])).resolves.toContain(
         '--timeout must be a positive number',
       )
+      await expect(failure(['--mode', 'turbo', 'task'])).resolves.toContain(
+        'Invalid --mode value: turbo. Expected fast or ultra.',
+      )
+      await expect(failure(['--straggler-grace=-1', 'task'])).resolves.toContain(
+        '--straggler-grace must be a number of seconds, 0 or more',
+      )
+      await expect(failure(['--straggler-grace', 'soon', 'task'])).resolves.toContain(
+        '--straggler-grace must be a number of seconds, 0 or more',
+      )
+      await expect(
+        failure(['--mode', 'ultra', '--straggler-grace', '30', 'task']),
+      ).resolves.toContain('--straggler-grace is for --mode fast')
     })
 
     it('rejects an invalid agent list', async () => {
