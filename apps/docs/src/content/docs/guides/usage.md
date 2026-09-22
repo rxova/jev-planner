@@ -41,7 +41,6 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
-- `--review-rounds 1` to disable Jev's optional second review pass.
 
 Plan with three agents, and pin one's model:
 
@@ -55,6 +54,30 @@ effort, with Claude at its defaults:
 
 ```sh
 jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the search endpoint"
+```
+
+## How much of the pipeline to run
+
+A run's wall clock is the number of rounds, not the number of agent calls: the agents in a round run
+in parallel, and each round waits for the one before it. `--mode` decides how many rounds a run may
+spend — see [how it works](../learn/how-it-works.md#why-the-mode-matters).
+
+- `--mode fast` (the default) lets Jev skip the rounds a plan does not need: the cross-review when
+  the drafts already agree, and the merge when one cross-reviewed plan is final as it stands.
+- `--mode ultra` always cross-reviews and always merges — 2N + 1 agent calls with N agents, or
+  3N + 1 when Jev asks for a second pass.
+- `--review-rounds <0|1|2>` caps the cross-review rounds either mode may run (default: 2).
+- `--straggler-grace <seconds>` sets how long a `fast` round waits for the agents still working once
+  half have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
+
+```sh
+jev-planner --mode ultra "Migrate the persistence layer from SQLite to Postgres"
+```
+
+Every run reports what it spent on stderr:
+
+```text
+[jev-planner] fast mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged
 ```
 
 ## JSON output
