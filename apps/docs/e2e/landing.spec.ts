@@ -176,6 +176,18 @@ test('shows the whole transcript at once under reduced motion', async ({ page })
   expect(new Set(opacities)).toEqual(new Set(['1']))
 })
 
+test('keeps the header in view while the page scrolls', async ({ page }) => {
+  for (const path of [LANDING, DIAGRAMS[0]]) {
+    await page.goto(path)
+    await page.evaluate(() => {
+      window.scrollTo(0, 1500)
+    })
+    await expect.poll(() => page.evaluate(() => window.scrollY), path).toBeGreaterThan(0)
+    const top = await page.locator('header.header').evaluate((h) => h.getBoundingClientRect().top)
+    expect(top, path).toBe(0)
+  }
+})
+
 test('does not scroll sideways', async ({ page }) => {
   for (const path of [LANDING, DOCS, ...DIAGRAMS]) {
     await page.goto(path)
