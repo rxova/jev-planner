@@ -32,7 +32,7 @@ const verdict: JevVerdict = {
 }
 
 const cost: PlanCost = {
-  mode: 'fast',
+  mode: 'balanced',
   reviewRounds: 0,
   synthesized: true,
   agentCalls: 3,
@@ -141,7 +141,7 @@ describe('main', () => {
       task: 'Add caching',
       cwd: dir,
       timeoutMs: 600_000,
-      mode: 'fast',
+      mode: 'balanced',
       maxReviewRounds: 2,
     })
     expect(h.planned()).not.toHaveProperty('jevModel')
@@ -175,7 +175,7 @@ describe('main', () => {
         '--finalizer',
         'claude',
         '--mode',
-        'fast',
+        'balanced',
         '--review-rounds',
         '1',
         '--straggler-grace',
@@ -195,7 +195,7 @@ describe('main', () => {
     expect(h.planned()).toMatchObject({
       task: 'Add caching',
       timeoutMs: 1_500,
-      mode: 'fast',
+      mode: 'balanced',
       maxReviewRounds: 1,
       stragglerGraceMs: 30_000,
       jevModel: 'jev-custom',
@@ -244,7 +244,7 @@ describe('main', () => {
 
   it('reports what the run cost on stderr, singular and plural', () => {
     expect(costLine(cost)).toBe(
-      'fast mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
+      'balanced mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
     )
     expect(
       costLine({
@@ -649,7 +649,7 @@ describe('main', () => {
         '--timeout must be a positive number',
       )
       await expect(failure(['--mode', 'turbo', 'task'])).resolves.toContain(
-        'Invalid --mode value: turbo. Expected fast or ultra.',
+        'Invalid --mode value: turbo. Expected balanced or ultra.',
       )
       await expect(failure(['--straggler-grace=-1', 'task'])).resolves.toContain(
         '--straggler-grace must be a number of seconds, 0 or more',
@@ -659,7 +659,7 @@ describe('main', () => {
       )
       await expect(
         failure(['--mode', 'ultra', '--straggler-grace', '30', 'task']),
-      ).resolves.toContain('--straggler-grace is for --mode fast')
+      ).resolves.toContain('--straggler-grace is for --mode balanced')
     })
 
     it('rejects an invalid agent list', async () => {
