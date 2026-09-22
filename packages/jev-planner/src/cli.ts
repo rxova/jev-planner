@@ -2,13 +2,22 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import packageJson from '../package.json' with { type: 'json' }
-import { CONFIG_FILE, findConfig } from './config.js'
+import { CONFIG_FILE, findConfig, validateAgentName } from './config.js'
 import type { ConfigValues } from './config.js'
 import type { CheckResult } from './doctor.js'
-import type { Provider } from './provider.js'
+import { agentLabel } from './provider.js'
+import type { AgentSetup, Provider } from './provider.js'
 import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
 import { requireNonEmptyTask, STDIN_CONFLICT_MESSAGE, validateTask } from './task.js'
-import type { PlanCost, PlanMode, PlanOptions, PlanResult, PlanRound, ReviewMode } from './types.js'
+import type {
+  PlanCost,
+  PlanMode,
+  PlanningAgent,
+  PlanOptions,
+  PlanResult,
+  PlanRound,
+  ReviewMode,
+} from './types.js'
 
 export const VERSION: string = packageJson.version
 
@@ -20,11 +29,11 @@ function agentLine(provider: Provider): string {
   return `  ${provider.id.padEnd(26)}${provider.label}: ${access}`
 }
 
-export const HELP = `jev-planner — collaborative coding plans from several AIs, judged by Jev
+export const HELP = `jev-planner — collaborative coding plans from two or more agents, judged by Jev
 
 Usage:
   jev-planner [plan] [options] "<coding task>"
-  jev-planner doctor [--agents <ids>] [--cwd <directory>]
+  jev-planner doctor [--agents <agents>] [--cwd <directory>]
 
 Options:
   -c, --config <path>         Read the run's settings from this JSON file
@@ -33,13 +42,16 @@ Options:
   -C, --cwd <directory>       Repository to inspect (default: current directory)
   -f, --file <path>           Read the coding task from a UTF-8 file
   -o, --output <path>         Write the final plan to a file instead of stdout
-  -a, --agents <ids>          Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')})
-  -m, --model <id>=<model>    Override one agent's model; repeatable
-  -e, --effort <id>=<level>   Override one agent's reasoning effort; repeatable
-      --review-effort <id>=<level>
+  -a, --agents <provider[:name],…>
+                              Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')});
+                              a provider can appear twice under different names,
+                              as codex:sol,codex:terra
+  -m, --model <name>=<model>  Override one agent's model; repeatable
+  -e, --effort <name>=<level> Override one agent's reasoning effort; repeatable
+      --review-effort <name>=<level>
                               The effort for its cross-review and synthesis only; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
-      --finalizer <id>        auto, none, or one of the agents (default: auto/Jev decides);
+      --finalizer <name>      auto, none, or one of the agents (default: auto/Jev decides);
                               none keeps a cross-reviewed plan Jev rates stronger, unmerged
       --mode <fast|balanced|ultra>
                               fast: answer with the first draft Jev accepts alone
@@ -78,16 +90,41 @@ export interface PlanRunner {
   plan(options: PlanOptions): Promise<PlanResult>
 }
 
+/** One of the run's agents: a provider under a name, its id unless `--agents` named it. */
+export interface AgentSpec {
+  name: string
+  label: string
+  provider: Provider
+}
+
 /**
  * The run's agents and model overrides, from the flags and `jev-planner.json`,
  * handed to the planner factory.
  */
 export interface PlannerSetup {
-  agents: readonly Provider[]
-  /** `--model` overrides, or a config agent's `model`, by provider id. */
+  agents: readonly AgentSpec[]
+  /** `--model` overrides, or a config agent's `model`, by agent name. */
   models: Readonly<Record<string, string>>
-  /** `--effort` overrides, or a config agent's `effort`, by provider id. */
+  /** `--effort` overrides, or a config agent's `effort`, by agent name. */
   efforts: Readonly<Record<string, string>>
+}
+
+/** The planner's agents for `setup`: each spec's provider, built under the spec's name and label. */
+export function createAgents(
+  setup: PlannerSetup,
+  env: AgentSetup['env'],
+  omitEnv: readonly string[],
+): PlanningAgent[] {
+  return setup.agents.map(({ name, label, provider }) =>
+    provider.create({
+      name,
+      label,
+      ...(setup.models[name] === undefined ? {} : { model: setup.models[name] }),
+      ...(setup.efforts[name] === undefined ? {} : { effort: setup.efforts[name] }),
+      omitEnv,
+      env,
+    }),
+  )
 }
 
 /** Everything `main` touches outside its arguments, so tests can replace it. */
@@ -120,53 +157,87 @@ function provider(id: string, flag: string): Provider {
   return found
 }
 
-function parseAgents(value: string | undefined): Provider[] {
-  const ids = (value ?? DEFAULT_AGENTS.join(','))
+/** `<provider>[:<name>]`, as `--agents` and the config's `agents` list it. */
+function agentSpec(entry: string): AgentSpec {
+  const [id = '', name, ...rest] = entry.split(':').map((part) => part.trim().toLowerCase())
+  if (rest.length > 0) {
+    throw new Error(`Invalid agent in --agents: ${entry}. Expected <provider>[:<name>].`)
+  }
+  const found = provider(id, '--agents')
+  const resolved = name === undefined ? found.id : validateAgentName(name, found.id)
+  return { name: resolved, label: agentLabel(found, resolved), provider: found }
+}
+
+function parseAgents(value: string | undefined): AgentSpec[] {
+  const agents = (value ?? DEFAULT_AGENTS.join(','))
     .split(',')
-    .map((id) => id.trim().toLowerCase())
+    .map((entry) => entry.trim())
     .filter(Boolean)
-  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index)
-  if (duplicate !== undefined) throw new Error(`--agents lists ${duplicate} more than once`)
-  const agents = ids.map((id) => provider(id, '--agents'))
+    .map(agentSpec)
+  const names = agents.map(({ name }) => name)
+  const duplicate = names.find((name, index) => names.indexOf(name) !== index)
+  if (duplicate !== undefined) {
+    const hint = PROVIDERS.some(({ id }) => id === duplicate)
+      ? `; name each instance: ${duplicate}:a,${duplicate}:b`
+      : ''
+    throw new Error(`--agents lists ${duplicate} more than once${hint}`)
+  }
   if (agents.length < 2) throw new Error('--agents needs at least two agents')
   return agents
 }
 
-/** Repeated `<id>=<value>` flags, by agent id; each id must be one of the run's agents. */
+/** The run's agent `name` sets, or an error that says what `name` is instead. */
+function agentNamed(name: string, flag: string, agents: readonly AgentSpec[]): AgentSpec {
+  const found = agents.find((agent) => agent.name === name)
+  if (found) return found
+  const instances = agents.filter((agent) => agent.provider.id === name)
+  const first = instances[0]
+  if (first) {
+    throw new Error(
+      `${flag} ${name}: the run's ${first.provider.label} agents are ${instances.map((agent) => agent.name).join(', ')}; name one`,
+    )
+  }
+  if (PROVIDERS.some(({ id }) => id === name)) {
+    throw new Error(`${flag} sets ${name}, which is not one of the --agents`)
+  }
+  throw new Error(
+    `Unknown agent in ${flag}: ${name}. Expected one of ${agents.map((agent) => agent.name).join(', ')}.`,
+  )
+}
+
+/** Repeated `<name>=<value>` flags, by agent name; each must be one of the run's agents. */
 function parseOverrides(
   flag: string,
   values: readonly string[],
-  agents: readonly Provider[],
-  accepts: (agent: Provider) => boolean = () => true,
+  agents: readonly AgentSpec[],
+  accepts: (provider: Provider) => boolean = () => true,
 ): Record<string, string> {
   const overrides: Record<string, string> = {}
   const placeholder = flag.slice(2)
   for (const value of values) {
     const separator = value.indexOf('=')
-    const id = value.slice(0, separator).trim().toLowerCase()
+    const name = value.slice(0, separator).trim().toLowerCase()
     const setting = value.slice(separator + 1).trim()
-    if (separator < 0 || !id || !setting) {
+    if (separator < 0 || !name || !setting) {
       throw new Error(`Invalid ${flag} value: ${value}. Expected <agent>=<${placeholder}>.`)
     }
-    const agent = provider(id, flag)
-    if (!agents.includes(agent))
-      throw new Error(`${flag} sets ${id}, which is not one of the --agents`)
-    if (!accepts(agent)) throw new Error(`${agent.label} does not take ${flag}`)
-    overrides[id] = setting
+    const agent = agentNamed(name, flag, agents)
+    if (!accepts(agent.provider)) throw new Error(`${agent.provider.label} does not take ${flag}`)
+    overrides[name] = setting
   }
   return overrides
 }
 
-/** `auto` gives `undefined`, `none` gives `'none'`, an agent gives its id. */
+/** `auto` gives `undefined`, `none` gives `'none'`, an agent gives its name. */
 function parseFinalizer(
   value: string | undefined,
-  agents: readonly Provider[],
+  agents: readonly AgentSpec[],
 ): string | undefined {
   if (value === undefined || value === 'auto') return undefined
-  const id = value.toLowerCase()
-  if (id === 'none' || agents.some((agent) => agent.id === id)) return id
+  const name = value.toLowerCase()
+  if (name === 'none' || agents.some((agent) => agent.name === name)) return name
   throw new Error(
-    `Invalid --finalizer value: ${value}. Expected auto, none or one of ${agents.map((a) => a.id).join(', ')}.`,
+    `Invalid --finalizer value: ${value}. Expected auto, none or one of ${agents.map((a) => a.name).join(', ')}.`,
   )
 }
 
@@ -386,16 +457,55 @@ function toggle(on: boolean | undefined, off: boolean | undefined, name: string)
   return on ? true : off ? false : undefined
 }
 
-/** The config's per-agent `<id>=<value>` entries for the run's agents only, then the flags', which win. */
+/**
+ * The config's per-agent `<name>=<value>` entries for the run's agents only,
+ * then the flags', which win. An entry is kept only where the run's agent of
+ * that name has the provider the config gave it, so a Codex model set for
+ * `sol` never reaches `--agents claude:sol`.
+ */
 function withConfig(
   configured: readonly string[],
   given: readonly string[],
-  agents: readonly Provider[],
+  agents: readonly AgentSpec[],
+  configAgents: string | undefined,
 ): string[] {
+  const providerOf = new Map(
+    (configAgents ?? '').split(',').map((entry) => {
+      const [id = '', name = id] = entry.split(':')
+      return [name, id]
+    }),
+  )
   return [
-    ...configured.filter((entry) => agents.some(({ id }) => entry.startsWith(`${id}=`))),
+    ...configured.filter((entry) => {
+      const name = entry.slice(0, entry.indexOf('='))
+      return agents.some(
+        (agent) => agent.name === name && agent.provider.id === providerOf.get(name),
+      )
+    }),
     ...given,
   ]
+}
+
+/**
+ * A warning for agents of one provider with the same model and draft effort,
+ * whose drafts may barely differ; `undefined` when every agent differs.
+ */
+function identicalWarning(
+  agents: readonly AgentSpec[],
+  models: Readonly<Record<string, string>>,
+  efforts: Readonly<Record<string, string>>,
+): string | undefined {
+  const groups = new Map<string, AgentSpec[]>()
+  for (const agent of agents) {
+    const key = JSON.stringify([agent.provider.id, models[agent.name], efforts[agent.name]])
+    groups.set(key, [...(groups.get(key) ?? []), agent])
+  }
+  const same = [...groups.values()].find((group) => group.length > 1)
+  if (!same) return undefined
+  const names = same.map(({ name }) => name)
+  const list = `${names.slice(0, -1).join(', ')} and ${String(names.at(-1))}`
+  const [first] = same
+  return `${list} are ${same.length > 2 ? 'all' : 'both'} ${String(first?.provider.label)} with the same model and effort; their drafts may barely differ. Vary --model or --effort.`
 }
 
 const NO_CONFIG: ConfigValues = { model: [], effort: [], 'review-effort': [] }
@@ -472,7 +582,8 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const agents = parseAgents(values.agents ?? configured.agents)
   if (positionals[0] === 'doctor') {
     if (positionals.length > 1) throw new Error('doctor does not accept a task')
-    const checks = await deps.doctor(cwd, agents)
+    const providers = [...new Set(agents.map(({ provider }) => provider))]
+    const checks = await deps.doctor(cwd, providers)
     for (const check of checks) {
       deps.stdout(`${check.ok ? '✓' : '✗'} ${check.name}: ${check.detail}\n`)
     }
@@ -515,20 +626,20 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
 
   const models = parseOverrides(
     '--model',
-    withConfig(configured.model, values.model, agents),
+    withConfig(configured.model, values.model, agents, configured.agents),
     agents,
   )
   const efforts = parseOverrides(
     '--effort',
-    withConfig(configured.effort, values.effort, agents),
+    withConfig(configured.effort, values.effort, agents, configured.agents),
     agents,
-    (agent) => agent.effort,
+    (provider) => provider.effort,
   )
   const reviewEfforts = parseOverrides(
     '--review-effort',
-    withConfig(configured['review-effort'], values['review-effort'], agents),
+    withConfig(configured['review-effort'], values['review-effort'], agents, configured.agents),
     agents,
-    (agent) => agent.effort,
+    (provider) => provider.effort,
   )
   const finalizer = parseFinalizer(values.finalizer ?? configured.finalizer, agents)
   const jevModel = values['jev-model'] ?? configured['jev-model']
@@ -564,8 +675,11 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     roundsDir = await newRunDir(configured.runsDir ?? join(cwd, RUNS_DIR), deps.now())
   }
   if (roundsDir !== undefined) deps.stderr(`[jev-planner] Writing rounds to ${roundsDir}\n`)
+  // Before the planner and any paid call, so it is read while there is time to stop.
+  const warning = identicalWarning(agents, models, efforts)
+  if (warning !== undefined) deps.stderr(`[jev-planner] ${warning}\n`)
   const planner = deps.createPlanner({ agents, models, efforts })
-  const labels = new Map(agents.map(({ id, label }) => [id, label]))
+  const labels = new Map(agents.map(({ name, label }) => [name, label]))
   const result = await planner.plan({
     task,
     cwd,

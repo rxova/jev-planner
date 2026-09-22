@@ -104,7 +104,7 @@ quality for time.
 
 ## 4. Synthesis
 
-The selected agent merges the plans into one final implementation plan. `--finalizer <id>` overrides
+The selected agent merges the plans into one final implementation plan. `--finalizer <name>` overrides
 Jev's choice with one of the selected agents. `--finalizer none` skips this step when Jev
 rates one cross-reviewed plan stronger, and returns that plan as it is; on a tie the finalizer
 still merges.
@@ -115,7 +115,7 @@ there. `balanced` never adopts a plan that has not been cross-reviewed this way 
 the merge is the only place the agents' material comes together, so it runs. `fast` is the
 exception, and that is its trade.
 
-`--finalizer <id>` turns this off: naming the agent that merges means the merge runs.
+`--finalizer <name>` turns this off: naming the agent that merges means the merge runs.
 
 ## Fast, balanced or ultra, in short
 

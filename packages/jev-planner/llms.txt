@@ -25,6 +25,7 @@ jev-planner doctor
 jev-planner "Add rate limiting to the public API" -o PLAN.md
 jev-planner --agents claude,deepseek,glm --model glm=glm-4.6 "Add a CSV export"
 jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add a CSV export"
+jev-planner --agents codex:sol,codex:terra --model terra=gpt-5.6-terra "Add a CSV export"
 ```
 
 The plan goes to stdout, or to the file given with `-o`; progress goes to
@@ -98,12 +99,12 @@ const { plan, verdict, finalizer } = await planner.plan({
 | `ProcessError`               | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                                                                                                                                        |
 | `TaskValidationError`        | class    | Thrown by `plan` before any call when the task is empty or a placeholder                                                                                                                                                |
 | `Provider`                   | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                                                                                                                                       |
-| `AgentSetup`                 | type     | `{ model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given                                                                                                                                            |
+| `AgentSetup`                 | type     | `{ name?, label?, model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given; `name` defaults to the id                                                                                                  |
 | `CliProviderConfig`          | type     | `{ id, label, command, args({ model?, effort? }), effort?, events?, sessions?, auth? }`, `cliProvider`'s input                                                                                                          |
 | `OpenAICompatibleConfig`     | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                                                                                                                                          |
 | `ProcessResult`              | type     | `{ stdout, stderr }` of a finished agent process                                                                                                                                                                        |
 | `CheckResult`                | type     | `{ name, ok, detail }`, one `runDoctor` check                                                                                                                                                                           |
-| `AgentName`                  | type     | `string`: a provider id                                                                                                                                                                                                 |
+| `AgentName`                  | type     | `string`: a provider id, or a name given to one (`codex:sol` is `sol`)                                                                                                                                                  |
 | `AgentRequest`               | type     | `{ prompt, resumePrompt?, session?, effort?, cwd, timeoutMs, onProgress?, signal? }`, what a `PlanningAgent` is given                                                                                                   |
 | `AgentSession`               | type     | `{ id? }`: one agent's conversation, carried from its draft to its later calls in a run                                                                                                                                 |
 | `PlanningAgent`              | type     | `{ name, label, readsRepository?, generate(request) }`, the agent interface `Planner` drives                                                                                                                            |
@@ -169,8 +170,16 @@ const { plan, verdict, finalizer } = await planner.plan({
   agent for a task that depends on code.
 - **Passing `--model`, `--effort`, `--review-effort` or `--finalizer` for an
   agent not in `--agents`.** All are rejected; name the agent in `--agents`
-  too. `--effort` and `--review-effort` are for the agent CLIs only (`codex`,
+  too. They take the agent's name: with `--agents codex:sol,codex:terra`,
+  `--model codex=…` is rejected and `--model sol=…` is right. `--effort` and `--review-effort` are for the agent CLIs only (`codex`,
   `claude`); the chat APIs reject them.
+- **Listing a provider twice without names.** `--agents codex,codex` is
+  rejected; write `codex:sol,codex:terra`. Two named agents with the same
+  model and effort get a warning, as their drafts may barely differ. They
+  share one quota and call it at once, and a rate limit (429) fails the run.
+- **Hand-building two agents of one provider without names.** Pass `name` to
+  `Provider.create`, and keep every agent's `label` unique: the peer reviews
+  and Jev tell the plans apart by label.
 - **Hand-building agents without `omitEnv`.** `Provider.create` needs the
   variables to strip from agent subprocesses; pass every provider's
   `secretEnv` and `TYPESAFE_API_KEY`, as the CLI does.
