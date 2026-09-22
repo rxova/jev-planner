@@ -15,13 +15,16 @@
 4. The selected agent merges the plans into one final implementation plan, unless Jev judges one
    cross-reviewed plan final as it stands.
 
-Steps 3 and 4 are the ones a run can skip, and skipping them is most of the wall clock: every agent
-call is minutes, and they happen in sequence. See [Modes](#modes).
+Steps 3 and 4 are the ones a run can skip, and skipping them is most of the wall clock: the agents
+in a step run in parallel, but each step waits for the one before, and a step waits for its slowest
+agent. In the runs on [Modes compared](https://jev-planner.com/learn/modes-compared/) a step took
+from under a minute to four. See [Modes](#modes).
 
-The cross-review is where a run gains the most. Drafts are written blind; reading each other's
-plans, the agents correct each other's facts about the repository, drop the ideas that do not
-survive a second opinion, take the other plan's strengths, and name the questions they still
-disagree on. Compare `round1/` with `round2/` in a run folder to see it.
+The cross-review is what those steps buy. Drafts are written blind; reading each other's plans, the
+agents can correct each other's facts about the repository, drop the ideas that do not survive a
+second opinion, take the other plan's strengths, and name the questions they still disagree on. In
+the debate run on Modes compared, 7 of the 10 objections were about the repository, and all 10 were
+accepted. Compare `round1/` with `round2/` in a run folder to see it in yours.
 [How the cross-review improves a plan →](https://jev-planner.com/learn/how-it-works/#what-the-cross-review-improves)
 
 **[Documentation →](https://jev-planner.com/)**
@@ -65,7 +68,7 @@ an agent never sees another provider's credentials.
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 20.19 or newer
 - For each agent CLI you select: the CLI, already logged in
 - For each chat API you select: its API key in the environment
 - A TypeSafe API key from <https://console.typesafe.ai/keys>
@@ -86,9 +89,10 @@ Or run it without installing: `npx jev-planner "<coding task>"`.
 To run it from a clone of this repository instead:
 
 ```sh
-npm install
-npm run build
-npm link
+corepack enable
+pnpm install
+pnpm build
+node packages/jev-planner/dist/bin.mjs --help
 ```
 
 `doctor` checks the selected agents — each CLI is installed and logged in, each API key is set —
@@ -134,8 +138,8 @@ See every option with `jev-planner --help`. Useful controls include:
 - `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
 - `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
-  and synthesis only, while its draft keeps `--effort`. A lower one shortens the later stages, whose
-  job is editing plans rather than exploring the repository.
+  and synthesis only, while its draft keeps `--effort`. The later stages edit plans rather than
+  explore the repository, so a lower effort is meant to make them quicker; that is not measured.
 
 Model and effort overrides win over the CLIs' local configuration, such as `model` and
 `model_reasoning_effort` in `~/.codex/config.toml`, for that run only. Codex on GPT-5.6-Terra at low
@@ -150,8 +154,8 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 - `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
   merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
   ran, the finalizer still runs.
-- `--mode ultra` to buy every round rather than let Jev skip one, or `--mode fast` to answer with
-  the first draft Jev accepts on its own (below).
+- `--mode ultra` to always run the first cross-review rather than let Jev skip it, or `--mode fast`
+  to answer with the first draft Jev accepts on its own (below).
 - `--review-rounds 0` to skip the cross-review entirely, or `1` to allow only one.
 - `--straggler-grace <seconds>` to change how long a `balanced` or `fast` round waits for a slow
   agent.
@@ -176,31 +180,33 @@ A run's wall clock is not the number of agent calls — the agents in a round ru
 the number of rounds, because each one waits for the round before it. `--mode` decides how many a
 run is allowed to spend.
 
-| `--mode`             | Cross-review                     | Final merge                         | Agent calls, N agents | Rounds |
-| -------------------- | -------------------------------- | ----------------------------------- | --------------------- | ------ |
-| `fast`               | Never                            | Skipped when one draft stands alone | N … N + 1             | 1 or 2 |
-| `balanced` (default) | Only when Jev asks for one       | Skipped when one plan stands alone  | N + 1 … 3N + 1        | 2 … 4  |
-| `ultra`              | Always, plus Jev's optional pass | Always                              | 2N + 1, or 3N + 1     | 3 or 4 |
+| `--mode`             | Cross-review                     | Final merge                               | Agent calls, N agents | Rounds |
+| -------------------- | -------------------------------- | ----------------------------------------- | --------------------- | ------ |
+| `fast`               | Never                            | Skipped when one draft stands alone       | N … N + 1             | 1 or 2 |
+| `balanced` (default) | Only when Jev asks for one       | Skipped when a reviewed plan stands alone | N + 1 … 3N + 1        | 2 … 4  |
+| `ultra`              | Always, plus Jev's optional pass | Always, unless `--finalizer none`         | 2N + 1, or 3N + 1     | 3 or 4 |
 
-With the default two agents, that is three agent calls in two rounds where `ultra` spends
-five in three.
+At best, with the default two agents, `balanced` spends three agent calls in two rounds where `ultra`
+spends five in three. When Jev asks for both reviews, it spends what `ultra` does.
 
 `balanced` puts Jev's typed judgment in front of each round instead of after it:
 
 - **The cross-review is Jev's to order.** It judges the drafts first, and the agents only revise
-  against each other when Jev answers that another pass would materially improve the plan. When the
-  drafts already agree, that is a whole round of agent calls a run does not make.
+  against each other when Jev rates the chance that another pass would materially improve the plan
+  at 0.65 or more. Below that, it is a whole round of agent calls the run does not make.
 - **The merge is Jev's to waive.** After a cross-review every plan already answers the others, so
   when Jev judges the strongest one final as it stands, the run answers with it rather than paying
   an agent to rewrite it. A plan that has _not_ been cross-reviewed is never adopted this way: the
   merge is the only place the agents' material comes together, so it always runs.
-- **A round stops waiting for a straggler.** Once half the agents have answered, the rest get
+- **A round stops waiting for a straggler.** Once half the agents (rounded up) have answered, the rest get
   `--straggler-grace` seconds (90 by default) before the round goes on without them, and their calls
   are aborted rather than left running. A round never drops below two plans, so with two agents a
   draft is always waited for; an agent dropped from a cross-review keeps its previous plan.
 
-`ultra` runs every step, every time: every agent drafts, every agent reviews every other, Jev may ask
-for one more pass, and the finalizer always merges. Use it when the plan matters more than the wait.
+`ultra` always runs the first cross-review: every agent drafts, and every agent reviews every other,
+whatever the drafts turned out to be. Jev may ask for one more pass, and the finalizer merges, unless
+`--finalizer none` keeps the reviewed plan Jev rates stronger. `--review-rounds 0` removes the review.
+Use it when the plan matters more than the wait.
 
 `fast` spends the fewest rounds, and pays for it in scrutiny:
 
@@ -238,8 +244,8 @@ stopped:
 
 ### Debate review (experimental)
 
-`--review-mode debate` replaces the first cross-review with an exchange Jev can rule on. Either mode
-runs it where it would run a cross-review:
+`--review-mode debate` replaces the first cross-review with an exchange Jev can rule on. `balanced`
+and `ultra` run it where they would run a cross-review; `fast` has none, and rejects it:
 
 1. **Critiques.** Each agent lists numbered objections to every other plan, at most five per plan,
    and tags the ones that make a claim about the repository `[repo]`. It writes no plan.
@@ -285,6 +291,10 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
       jev-verdict.json  the verdict the merge followed
 ```
 
+In `fast` mode, `round1/jev-verdict.json` is the verdict that decided the run: the accepted draft's,
+or the one Jev gave the drafts together. The verdicts of drafts it turned down alone are not saved.
+A debate names its rounds' files differently ([Debate review](#debate-review-experimental)).
+
 `--rounds-dir <path>` writes them somewhere else instead, relative to `--cwd`; that folder must be
 new or empty, so two runs never mix. `--no-rounds` writes nothing.
 
@@ -313,13 +323,13 @@ agent answers in one response, so it shows only which model it is waiting on. Fr
 `onAgentProgress` in `Planner.plan`'s options.
 
 After each round, `--verbose` prints how long it took and how long each call in it took, and a
-total at the end:
+total at the end. These are the rounds of the `ultra` run on Modes compared:
 
 ```text
-[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)
-[jev-planner] Review: 1m05s (Codex 58s, Claude 41s, Jev 7.0s)
-[jev-planner] Final plan: 49s (Claude 49s)
-[jev-planner] Total: 6m06s
+[jev-planner] Drafts: 2m58s (Claude 1m18s, Codex 2m58s)
+[jev-planner] Review: 1m20s (Claude 1m01s, Codex 1m18s, Jev 1.4s)
+[jev-planner] Review: 1m25s (Claude 1m04s, Codex 1m24s, Jev 1.2s)
+[jev-planner] Final plan: 54s (Claude 54s)
 ```
 
 The same numbers, in milliseconds, are in each round's `timings.json`, in `--json`'s `timings`,
@@ -338,16 +348,18 @@ them; chat APIs bill the key they are given.
 Each evaluation uses one TypeSafe API call, and `balanced` spends one extra to judge the drafts;
 `fast` spends one per draft it judges alone, plus one to judge them together when it accepts none. Jev sees
 the task and the agents' plan text, not a direct repository snapshot. Chat APIs see the snapshot
-described under [Agents](#agents), and every agent sees the other agents' plans, which may contain
-file names or code details. Do not run this on material you are not allowed to send to every
+described under [Agents](#agents). Every agent that cross-reviews, checks a claim or merges sees the
+other agents' plans, which may contain file names or code details; a draft `fast` accepts is read by
+no other agent. Do not run this on material you are not allowed to send to every
 provider you select.
 
 ## Adding a new AI
 
 Every agent comes from one list, `PROVIDERS` in `src/providers.ts`. The CLI flags, `--help`,
-`doctor`, the prompts and Jev's choices are all built from it, so adding an AI is one entry there.
+`doctor`, the prompts and Jev's choices are all built from it, so wiring up a new AI is one entry
+there.
 
-An OpenAI-compatible chat API — most are — is one `openAICompatibleProvider` call:
+An OpenAI-compatible chat API is one `openAICompatibleProvider` call:
 
 ```ts
 openAICompatibleProvider({
@@ -389,12 +401,12 @@ pass them to `Planner`.
 ## Development
 
 ```sh
-npm run check
-npm run build
-node dist/bin.mjs --help
+pnpm --filter jev-planner test
+pnpm run verify
 ```
 
 The orchestration tests use fake agents and make no model calls.
+[CONTRIBUTING.md](https://github.com/rxova/jev-planner/blob/main/CONTRIBUTING.md) has the rest.
 
 ## Why Jev is the arbiter
 
