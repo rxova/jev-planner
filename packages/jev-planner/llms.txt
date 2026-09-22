@@ -28,20 +28,23 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add a CSV export"
 ```
 
 The plan goes to stdout, or to the file given with `-o`; progress goes to
-stderr. `--json` prints `{ plan, verdict, finalizer, selected?, timings, cost }`
+stderr. `--json` prints `{ plan, verdict, finalizer, selected?, debate?, timings, cost }`
 instead. Every round's plans are also written as the run goes, to `round1/`,
 `round2/`, …, `final/` in a new `.jev-planner/<UTC start time>/` folder in
 the repository (git-ignored by its own `.gitignore`). `--rounds-dir <path>`
 writes them there instead; `--no-rounds` writes none.
 
-`--mode balanced` (the default) lets Jev skip a round the plan does not need: the
-cross-review when the drafts already agree, and the merge when one
-cross-reviewed plan is final as it stands. `--mode ultra` always cross-reviews
-and always merges. `--mode fast` has Jev judge each draft alone as it arrives and
-answers with the first it accepts, stopping the other agents; when it accepts
-none, the drafts are merged with no cross-review. `--straggler-grace <seconds>`
-is how long a balanced or fast round waits for the agents still working once
-half have answered.
+`--mode balanced` (the default) lets Jev skip a round the plan does not need: a
+cross-review runs only while Jev rates the chance that one would materially
+improve the plan at 0.65 or more, and the merge is skipped when Jev rates one
+cross-reviewed plan 0.7 or more to stand alone. `--mode ultra` always runs the
+first cross-review, runs a second when Jev asks, and merges unless
+`--finalizer none` keeps the reviewed plan Jev rates stronger. `--mode fast` has
+Jev judge each draft alone as it arrives and answers with the first it rates 0.5
+or more, stopping the other agents; when it accepts none, the drafts are merged
+with no cross-review. `--straggler-grace <seconds>` is how long a balanced or
+fast round waits for the agents still working once half (rounded up) have
+answered.
 
 `--review-mode debate` (experimental) runs the first review as critiques and
 replies: each agent lists numbered objections to every other plan, each author
@@ -93,7 +96,7 @@ const { plan, verdict, finalizer } = await planner.plan({
 | `JudgedPlan`                 | type     | `{ agent, label, plan }`, one plan as Jev sees it                                                                                                                                                                       |
 | `JevJudge`                   | type     | `{ judge({ task, plans, stage, disputes?, model? }) }`, returns a `JevVerdict`; `stage` is `'solo'`, `'draft'` or `'review'`                                                                                            |
 | `JevVerdict`                 | type     | Scores and confidences, the stronger plan (an agent or `tie`), the finalizer, and `disputes?` rulings                                                                                                                   |
-| `PlanMode`                   | type     | `'fast'` (the first draft Jev accepts alone), `'balanced'` (Jev skips the rounds a plan does not need) or `'ultra'` (every round)                                                                                       |
+| `PlanMode`                   | type     | `'fast'` (the first draft Jev accepts alone), `'balanced'` (Jev skips the rounds a plan does not need) or `'ultra'` (always cross-reviews)                                                                              |
 | `PlanOptions`                | type     | `{ task, cwd, timeoutMs, mode?, maxReviewRounds?, reviewMode?, claimChecks?, stragglerGraceMs?, jevModel?, finalizer?, selectStronger?, allowAnyTask?, resume?, reviewEfforts?, onStage?, onAgentProgress?, onRound? }` |
 | `PlanResult`                 | type     | `{ plan, verdict, finalizer, selected?, drafts, debate?, timings, cost }`; `drafts` maps agent name to its last plan                                                                                                    |
 | `PlanCost`                   | type     | `{ mode, reviewMode, reviewRounds, synthesized, agentCalls, jevCalls, dropped }`, what the run spent                                                                                                                    |
@@ -111,8 +114,9 @@ const { plan, verdict, finalizer } = await planner.plan({
 ## Mistakes to avoid
 
 - **Treating a run as free.** With N agents one plan is N + 1 to 3N + 1 agent
-  calls — `--mode ultra` always spends 2N + 1, or 3N + 1 with a second review,
-  and `--mode fast` N or N + 1 — and one Jev call per judged round (in fast
+  calls — `--mode ultra` spends 2N + 1, or 3N + 1 with a second review (2N or
+  3N with `--finalizer none` when Jev names a stronger plan), and `--mode fast`
+  N or N + 1 — and one Jev call per judged round (in fast
   mode, per draft judged alone), each billed to the account or key it runs
   under. Run `jev-planner doctor` first rather than a real task to check the
   setup.
@@ -134,7 +138,8 @@ const { plan, verdict, finalizer } = await planner.plan({
 - **Giving the task two ways.** The task comes from the arguments, from `-f`,
   or from stdin — passing both arguments and `-f` is an error.
 - **Expecting the agents to edit code.** All run read-only; the output is a
-  plan, not a change.
+  plan, not a change. The CLI itself writes only the rounds folder
+  (`.jev-planner/` unless `--rounds-dir` or `--no-rounds`) and `-o`'s file.
 - **Expecting a chat API agent to see the whole repository.** `deepseek`,
   `kimi` and `glm` get only the tracked file list and the top-level docs and
   manifests; the agent CLIs read the code itself. Pair an API agent with a CLI

@@ -39,7 +39,7 @@ Options:
       --mode <fast|balanced|ultra>
                               fast: answer with the first draft Jev accepts alone
                               balanced: Jev skips the rounds a run does not need
-                              ultra: always cross-review, always merge (default: balanced)
+                              ultra: always cross-review, then merge (default: balanced)
       --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
       --review-mode <standard|debate>
                               debate: agents critique each other, authors answer,
