@@ -12,7 +12,7 @@ synthesis. If Jev requests another pass, it makes N more. `--finalizer none` dro
 when Jev rates one cross-reviewed plan stronger. With the default two agents that is five
 calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
 
-`--mode fast`, the default, makes as few as N + 1 — the drafts and the merge, when Jev asks for no
+`--mode balanced`, the default, makes as few as N + 1 — the drafts and the merge, when Jev asks for no
 cross-review — and never more than `ultra` would:
 
 | What Jev decides                             | Agent calls | Rounds |
@@ -22,11 +22,11 @@ cross-review — and never more than `ultra` would:
 | One cross-review, then a merge               | 2N + 1      | 3      |
 | Two cross-reviews, then a merge              | 3N + 1      | 4      |
 
-Each evaluation uses one TypeSafe API call; `fast` spends one extra to judge the drafts, and each
+Each evaluation uses one TypeSafe API call; `balanced` spends one extra to judge the drafts, and each
 further review round causes one re-evaluation. Every run reports its own totals on stderr, and
 `--json` includes them as `cost`.
 
-A `fast` round also stops waiting for a slow agent once half the others have answered, and aborts
+A `balanced` round also stops waiting for a slow agent once half the others have answered, and aborts
 its call rather than leave it running, so a dropped call stops billing where the provider bills by
 use.
 

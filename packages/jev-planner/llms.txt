@@ -34,10 +34,10 @@ instead. Every round's plans are also written as the run goes, to `round1/`,
 the repository (git-ignored by its own `.gitignore`). `--rounds-dir <path>`
 writes them there instead; `--no-rounds` writes none.
 
-`--mode fast` (the default) lets Jev skip a round the plan does not need: the
+`--mode balanced` (the default) lets Jev skip a round the plan does not need: the
 cross-review when the drafts already agree, and the merge when one
 cross-reviewed plan is final as it stands. `--mode ultra` always cross-reviews
-and always merges. `--straggler-grace <seconds>` is how long a fast round waits
+and always merges. `--straggler-grace <seconds>` is how long a balanced round waits
 for the agents still working once half have answered.
 
 The same flow from code:
@@ -62,7 +62,7 @@ const { plan, verdict, finalizer } = await planner.plan({
 | Export                       | Kind     | What it does                                                                                                                                                                                 |
 | ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Planner`                    | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize                                                                                                   |
-| `DEFAULT_STRAGGLER_GRACE_MS` | const    | 90_000: what a `fast` round waits for a straggler before going on without it                                                                                                                 |
+| `DEFAULT_STRAGGLER_GRACE_MS` | const    | 90_000: what a `balanced` round waits for a straggler before going on without it                                                                                                             |
 | `TypeSafeJevJudge`           | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                                                                                                                          |
 | `PROVIDERS`                  | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                                                                                                      |
 | `DEFAULT_AGENTS`             | const    | The ids used without `--agents`: `['codex', 'claude']`                                                                                                                                       |
@@ -84,7 +84,7 @@ const { plan, verdict, finalizer } = await planner.plan({
 | `JudgedPlan`                 | type     | `{ agent, label, plan }`, one plan as Jev sees it                                                                                                                                            |
 | `JevJudge`                   | type     | `{ judge({ task, plans, stage, model? }) }`, returns a `JevVerdict`                                                                                                                          |
 | `JevVerdict`                 | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer                                                                                                              |
-| `PlanMode`                   | type     | `'fast'` (Jev skips the rounds a plan does not need) or `'ultra'` (every round, always)                                                                                                      |
+| `PlanMode`                   | type     | `'balanced'` (Jev skips the rounds a plan does not need) or `'ultra'` (every round, always)                                                                                                  |
 | `PlanOptions`                | type     | `{ task, cwd, timeoutMs, mode?, maxReviewRounds?, stragglerGraceMs?, jevModel?, finalizer?, selectStronger?, allowAnyTask?, resume?, reviewEfforts?, onStage?, onAgentProgress?, onRound? }` |
 | `PlanResult`                 | type     | `{ plan, verdict, finalizer, selected?, drafts, timings, cost }`; `drafts` maps agent name to its last plan                                                                                  |
 | `PlanCost`                   | type     | `{ mode, reviewRounds, synthesized, agentCalls, jevCalls, dropped }`, what the run spent                                                                                                     |
@@ -100,7 +100,7 @@ const { plan, verdict, finalizer } = await planner.plan({
   under. Run `jev-planner doctor` first rather than a real task to check the
   setup.
 - **Reaching for `--mode ultra` to make a plan better.** It buys every round
-  whether or not it changes the plan. `fast` runs the same rounds whenever Jev
+  whether or not it changes the plan. `balanced` runs the same rounds whenever Jev
   says they would help, so `ultra` mostly buys the ones it says would not.
 - **Sending a template as the task.** A placeholder — `TODO`, `<coding task>`,
   `{{task}}`, text with no letters — is rejected with `TaskValidationError`
