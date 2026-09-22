@@ -21,7 +21,8 @@
 A single AI can produce a confident but incomplete plan. `jev-planner` builds disagreement into the
 process before implementation starts:
 
-1. Two or more agents inspect the repository and draft plans independently.
+1. Two or more agents draft plans independently; agent CLIs inspect the repository, chat APIs get a
+   snapshot of it.
 2. Jev scores completeness, feasibility, and risk coverage, and decides whether a cross-review
    would improve the plans.
 3. When it would, the agents review one another's work and revise their own plans, correcting
@@ -40,6 +41,9 @@ TASK + REPOSITORY ───────┤                    ├─► JEV EVAL
                                                      ▼
                                                ONE FINAL PLAN
 ```
+
+`--mode fast` short-cuts this: Jev judges each draft alone as it arrives, and the first it accepts is
+the plan.
 
 Codex and Claude are the defaults. DeepSeek, Kimi, and GLM are supported too.
 
@@ -103,11 +107,11 @@ jev-planner \
 ## Useful controls
 
 - `--verbose` streams agent messages, commands, and file reads as they happen.
-- Every draft, review, and Jev verdict is saved under `.jev-planner/<run>/`; `--rounds-dir <path>`
-  moves it, `--no-rounds` skips it.
+- Every round's plans and Jev's verdicts are saved under `.jev-planner/<run>/` (fast mode keeps
+  only the verdict that decided it); `--rounds-dir <path>` moves it, `--no-rounds` skips it.
 - `--json` emits structured output for another tool.
-- `--mode ultra` runs every round, every time; the default `balanced` lets Jev skip the ones a plan
-  does not need; `--mode fast` answers with the first draft Jev accepts alone ([the three modes](https://jev-planner.com/learn/how-it-works/#fast-balanced-or-ultra-in-short)).
+- `--mode ultra` always runs the first cross-review; the default `balanced` lets Jev skip the rounds
+  a plan does not need; `--mode fast` answers with the first draft Jev accepts alone ([the three modes](https://jev-planner.com/learn/how-it-works/#fast-balanced-or-ultra-in-short)).
 - `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
 - `--review-rounds <0|1|2>` caps the cross-reviews; `0` skips them.
 - `--review-mode debate` (experimental) turns the cross-review into critiques, replies and Jev's
