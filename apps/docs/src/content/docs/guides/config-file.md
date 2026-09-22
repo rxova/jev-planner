@@ -40,21 +40,36 @@ A run that uses a config says so on stderr: `[jev-planner] Using config <path>`.
 
 Each key stands for the flag of the same name.
 
-| Key                                              | Flag                                        | Value                                                           |
-| ------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------- |
-| `agents`                                         | `--agents`                                  | Two or more agents, in order; `{}` selects one with no settings |
-| `agents.<id>.model`                              | `--model <id>=…`                            | A model name                                                    |
-| `agents.<id>.effort`, `agents.<id>.reviewEffort` | `--effort <id>=…`, `--review-effort <id>=…` | A level; only for `codex` and `claude`                          |
-| `mode`, `reviewMode`                             | `--mode`, `--review-mode`                   | `fast`, `balanced` or `ultra`; `standard` or `debate`           |
-| `reviewRounds`                                   | `--review-rounds`                           | `0`, `1` or `2`                                                 |
-| `finalizer`, `jevModel`                          | `--finalizer`, `--jev-model`                | As the flags take them                                          |
-| `timeout`, `stragglerGrace`                      | `--timeout`, `--straggler-grace`            | Seconds                                                         |
-| `claimChecks`, `json`, `verbose`, `allowAnyTask` | The flags of those names                    | `true` or `false`                                               |
-| `resume`, `rounds`                               | `--no-resume`, `--no-rounds`                | `false` turns them off                                          |
-| `runsDir`                                        | —                                           | A folder in which each run gets its own timestamped folder      |
-| `output`                                         | `--output`                                  | A path                                                          |
-| `task` or `taskFile`                             | The task, or `--file`                       | The task to plan when none is given; set one, not both          |
-| `cwd`                                            | `--cwd`                                     | Only in a file passed with `--config`                           |
+| Key                                                  | Flag                                            | Value                                                           |
+| ---------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| `agents`                                             | `--agents`                                      | Two or more agents, in order; `{}` selects one with no settings |
+| `agents.<name>.provider`                             | `--agents <provider>:<name>`                    | Only under a name that is not a provider's id                   |
+| `agents.<name>.model`                                | `--model <name>=…`                              | A model name                                                    |
+| `agents.<name>.effort`, `agents.<name>.reviewEffort` | `--effort <name>=…`, `--review-effort <name>=…` | A level; only for `codex` and `claude`                          |
+| `mode`, `reviewMode`                                 | `--mode`, `--review-mode`                       | `fast`, `balanced` or `ultra`; `standard` or `debate`           |
+| `reviewRounds`                                       | `--review-rounds`                               | `0`, `1` or `2`                                                 |
+| `finalizer`, `jevModel`                              | `--finalizer`, `--jev-model`                    | As the flags take them                                          |
+| `timeout`, `stragglerGrace`                          | `--timeout`, `--straggler-grace`                | Seconds                                                         |
+| `claimChecks`, `json`, `verbose`, `allowAnyTask`     | The flags of those names                        | `true` or `false`                                               |
+| `resume`, `rounds`                                   | `--no-resume`, `--no-rounds`                    | `false` turns them off                                          |
+| `runsDir`                                            | —                                               | A folder in which each run gets its own timestamped folder      |
+| `output`                                             | `--output`                                      | A path                                                          |
+| `task` or `taskFile`                                 | The task, or `--file`                           | The task to plan when none is given; set one, not both          |
+| `cwd`                                                | `--cwd`                                         | Only in a file passed with `--config`                           |
+
+A key that is a provider's id is that provider. Any other key names an agent, and says which provider
+it runs on, so one provider can be two agents:
+
+```json
+{
+  "agents": {
+    "sol": { "provider": "codex", "model": "gpt-5.6-sol" },
+    "terra": { "provider": "codex", "model": "gpt-5.6-terra", "effort": "low" }
+  }
+}
+```
+
+The [agents reference](../reference/agents.md#one-provider-several-agents) has the rules for names.
 
 Paths in the file are relative to the file. An unknown key is an error, and so is a wrong type:
 `jev-planner.json: agents.deepseek.effort: DeepSeek does not take effort`. The file is plain JSON,
@@ -72,7 +87,8 @@ A flag on the command line beats the config, setting by setting:
 
 - `--mode fast` beats `"mode": "ultra"`, and `--model codex=gpt-x` beats the config's model for
   Codex only.
-- `--agents` picks the agents; the config's settings for the others are dropped.
+- `--agents` picks the agents; the config's settings for the others are dropped, and so are those
+  for a name `--agents` gives another provider.
 - Every boolean has both forms: `--json` and `--no-json`, `--verbose` and `--no-verbose`,
   `--claim-checks` and `--no-claim-checks`, `--allow-any-task` and `--no-allow-any-task`, and
   `--resume` and `--rounds` beside `--no-resume` and `--no-rounds`.

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProcessError, runProcess } from '../process.js'
 import type * as processModule from '../process.js'
 import {
+  agentLabel,
   API_AGENT_SYSTEM_PROMPT,
   brief,
   cliProvider,
@@ -34,6 +35,14 @@ describe('brief', () => {
   })
 })
 
+describe('agentLabel', () => {
+  it("is the provider's label for its own id, and names any other agent in brackets", () => {
+    const codex = { id: 'codex', label: 'Codex' }
+    expect(agentLabel(codex, 'codex')).toBe('Codex')
+    expect(agentLabel(codex, 'sol')).toBe('Codex (sol)')
+  })
+})
+
 describe('cliProvider', () => {
   const config = { id: 'tool', label: 'Tool', command: 'tool', args: () => ['run'] }
 
@@ -46,6 +55,42 @@ describe('cliProvider', () => {
       effort: false,
     })
     expect(cliProvider({ ...config, effort: true }).effort).toBe(true)
+  })
+
+  it('names an agent after the provider unless told otherwise', () => {
+    const tool = cliProvider(config)
+    expect(tool.create({ omitEnv: [], env: {} })).toMatchObject({ name: 'tool', label: 'Tool' })
+    expect(tool.create({ name: 'sol', omitEnv: [], env: {} })).toMatchObject({
+      name: 'sol',
+      label: 'Tool (sol)',
+    })
+    expect(tool.create({ name: 'sol', label: 'Sol', omitEnv: [], env: {} }).label).toBe('Sol')
+  })
+
+  it('gives two agents of one provider their own sessions, with the same secrets withheld', async () => {
+    run.mockResolvedValue({ stdout: 'plan', stderr: '', exitCode: 0 })
+    const sessions = {
+      start: (_overrides: object, id: string) => ['start', id],
+      resume: (_overrides: object, id: string) => ['resume', id],
+    }
+    const tool = cliProvider({ ...config, sessions })
+    const [sol, terra] = ['sol', 'terra'].map((name) =>
+      tool.create({ name, omitEnv: ['SECRET'], env: {} }),
+    )
+    const first: { id?: string } = {}
+    const second: { id?: string } = {}
+    await sol?.generate({ ...request, session: first })
+    await terra?.generate({ ...request, session: second })
+    expect(first.id).toBeDefined()
+    expect(second.id).toBeDefined()
+    expect(first.id).not.toBe(second.id)
+    expect(run.mock.calls.map(([, , options]) => options.omitEnv)).toEqual([['SECRET'], ['SECRET']])
+  })
+
+  it('names the agent, not just the provider, when a call fails', async () => {
+    run.mockResolvedValue({ stdout: '  ', stderr: '', exitCode: 0 })
+    const agent = cliProvider(config).create({ name: 'sol', omitEnv: [], env: {} })
+    await expect(agent.generate(request)).rejects.toThrow('Tool (sol)')
   })
 
   it('makes agents that read the repository, so they can check a claim', () => {
@@ -281,6 +326,18 @@ describe('openAICompatibleProvider', () => {
       secretEnv: ['ACME_API_KEY'],
       effort: false,
     })
+  })
+
+  it('names an agent after the provider unless told otherwise, and in its errors', async () => {
+    expect(agentWith(fetch)).toMatchObject({ name: 'acme', label: 'Acme' })
+    const chat = provider.create({
+      name: 'chat',
+      env,
+      omitEnv: [],
+      fetch: () => Promise.resolve(completion(null)),
+    })
+    expect(chat).toMatchObject({ name: 'chat', label: 'Acme (chat)' })
+    await expect(chat.generate(request)).rejects.toThrow('Acme (chat) returned an empty response')
   })
 
   it('makes agents that see only a snapshot, which cannot check a claim', () => {

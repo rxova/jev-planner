@@ -31,7 +31,8 @@ accepted. Compare `round1/` with `round2/` in a run folder to see it in yours.
 
 ## Agents
 
-Pick the agents with `--agents`, two or more, comma-separated:
+Pick the agents with `--agents`, two or more, comma-separated. One provider can be two of them,
+under different names; see [one provider, several agents](#one-provider-several-agents).
 
 | Id         | AI                                                                            | Kind      | Needs              |
 | ---------- | ----------------------------------------------------------------------------- | --------- | ------------------ |
@@ -58,6 +59,29 @@ cross-review and the final synthesis (`codex exec resume`, `claude --resume`), s
 with what it already read instead of exploring the repository again; a resumed Codex keeps its
 read-only sandbox. A chat API is sent its earlier messages, so the repository snapshot goes once.
 If a session cannot be continued, the call starts afresh with the whole prompt.
+
+## One provider, several agents
+
+An agent is a provider under a name. `--agents codex` is short for `codex:codex`, and
+`--agents codex:sol,codex:terra` runs Codex twice, as two agents named `sol` and `terra`. Each has
+its own session, draft and round files (`round1/sol.md`), and the overrides take the name:
+
+```sh
+jev-planner --agents codex:sol,codex:terra \
+  --model sol=gpt-5.6-sol --model terra=gpt-5.6-terra "Add caching to the search endpoint"
+```
+
+- **Names** are a letter, then letters, digits or `-`, at most 24 characters, read lowercased. A
+  name cannot be `auto`, `none`, `tie`, a Windows device name (`con`, `nul`, …) or another
+  provider's id.
+- **Labels** tell them apart: the output, the peer reviews and Jev see `Codex (sol)` and
+  `Codex (terra)`.
+- **Vary them.** Two agents with the same provider, model and effort get a warning on stderr, since
+  their drafts may barely differ; the run still goes ahead.
+- **Name the one you mean.** Once a provider's agents are named, `--model codex=…` is an error that
+  lists them.
+- **One quota.** Both draw on the same subscription or key, at the same time. A rate limit (HTTP 429) fails the call, and a failed call fails the run.
+- `doctor` checks each provider once.
 
 The CLIs keep those sessions as they keep any other: in `~/.codex/sessions` and
 `~/.claude/projects`, and Claude's appear in its `/resume` list. `--no-resume` starts every call
@@ -133,11 +157,11 @@ jev-planner --json "Make image uploads resumable" | jq '.verdict, .plan'
 
 See every option with `jev-planner --help`. Useful controls include:
 
-- `--agents <ids>` to choose two or more agents (default: `codex,claude`).
-- `--model <id>=<model>`, repeatable, to override one agent's model.
-- `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
+- `--agents <provider[:name],…>` to choose two or more agents (default: `codex,claude`).
+- `--model <name>=<model>`, repeatable, to override one agent's model.
+- `--effort <name>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
-- `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
+- `--review-effort <name>=<level>`, repeatable, to use another effort for that agent's cross-reviews
   and synthesis only, while its draft keeps `--effort`. The later stages edit plans rather than
   explore the repository, so a lower effort is meant to make them quicker; that is not measured.
 
@@ -150,7 +174,7 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 ```
 
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
-- `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
+- `--finalizer <name>` to override Jev's routing decision with one of the selected agents.
 - `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
   merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
   ran, the finalizer still runs.
@@ -191,7 +215,8 @@ from there. `--config <path>` reads another file, `--no-config` none. It is for 
 ```
 
 Each key stands for the flag of the same name: `agents` with each agent's `model`, `effort` and
-`reviewEffort`; `mode`, `reviewMode`, `reviewRounds`, `claimChecks`, `finalizer`, `jevModel`,
+`reviewEffort`, keyed by provider id or by a name that sets `provider`
+(`"sol": { "provider": "codex" }`); `mode`, `reviewMode`, `reviewRounds`, `claimChecks`, `finalizer`, `jevModel`,
 `stragglerGrace` and `timeout` (seconds); `resume`, `rounds`, `json`, `verbose` and
 `allowAnyTask`; `output`; `task` or `taskFile`; and `cwd`, only in a file passed with `--config`.
 `runsDir` is a folder in which each run gets its own timestamped folder. Paths are relative to the

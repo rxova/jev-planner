@@ -42,7 +42,8 @@ export interface LoadedConfig {
   values: ConfigValues
 }
 
-const PROVIDER_IDS = PROVIDERS.map(({ id }) => id).join(', ')
+const IDS = PROVIDERS.map(({ id }) => id)
+const PROVIDER_IDS = IDS.join(', ')
 
 /** Where the keys a config must never hold belong instead. */
 const SECRET_ENV = ['TYPESAFE_API_KEY', ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv)]
@@ -67,12 +68,14 @@ function boolean(at: string, value: unknown): boolean {
   return value
 }
 
+function notOneOf(at: string, options: readonly (string | number)[]): Error {
+  return new Error(
+    `${at}: must be one of ${options.map((option) => JSON.stringify(option)).join(', ')}`,
+  )
+}
+
 function choice<T extends string | number>(at: string, value: unknown, options: readonly T[]): T {
-  if (!options.includes(value as T)) {
-    throw new Error(
-      `${at}: must be one of ${options.map((option) => JSON.stringify(option)).join(', ')}`,
-    )
-  }
+  if (!options.includes(value as T)) throw notOneOf(at, options)
   return value as T
 }
 
@@ -103,24 +106,86 @@ const AGENT_FIELDS = {
   reviewEffort: 'review-effort',
 } as const
 
+const NAME = /^[a-z][a-z0-9-]{0,23}$/
+
+/** Taken by `--finalizer` (`auto`, `none`), by Jev's verdict (`tie`), or by Windows as a file name. */
+const RESERVED = new Set([
+  'auto',
+  'none',
+  'tie',
+  'con',
+  'prn',
+  'aux',
+  'nul',
+  ...Array.from({ length: 9 }, (_, index) => `com${String(index + 1)}`),
+  ...Array.from({ length: 9 }, (_, index) => `lpt${String(index + 1)}`),
+])
+
+/**
+ * The name of an agent of `provider`, lowercased, or an error: a letter, then
+ * letters, digits or `-`, 24 at most, so it fits an objection id
+ * (`sol:terra:C1`) and a file name (`sol.md`) on every system. It cannot be a
+ * word the run gives its own meaning, nor another provider's id.
+ */
+export function validateAgentName(name: string, provider: string): string {
+  const lower = name.trim().toLowerCase()
+  if (!NAME.test(lower)) {
+    throw new Error(
+      `${name}: an agent name is a letter, then letters, digits or -, at most 24 characters`,
+    )
+  }
+  if (RESERVED.has(lower)) throw new Error(`${lower}: a reserved word, not an agent name`)
+  if (lower !== provider && PROVIDERS.some(({ id }) => id === lower)) {
+    throw new Error(`${lower}: the name of another provider, not an agent name`)
+  }
+  return lower
+}
+
 function agents(value: unknown): Partial<ConfigValues> {
   const entries = Object.entries(object('agents', value))
   if (entries.length < 2) throw new Error('agents: needs at least two agents')
   const values = { model: [] as string[], effort: [] as string[], 'review-effort': [] as string[] }
-  for (const [id, settings] of entries) {
-    const provider = PROVIDERS.find((candidate) => candidate.id === id)
-    if (!provider) throw new Error(`agents.${id}: unknown agent. Expected one of ${PROVIDER_IDS}.`)
-    for (const [field, setting] of Object.entries(object(`agents.${id}`, settings))) {
-      const at = `agents.${id}.${field}`
-      if (!Object.hasOwn(AGENT_FIELDS, field)) throw unknownKey(at, Object.keys(AGENT_FIELDS))
+  const specs: string[] = []
+  const names = new Set<string>()
+  for (const [key, settings] of entries) {
+    const fields = object(`agents.${key}`, settings)
+    const own = PROVIDERS.find(({ id }) => id === key)
+    const named = own === undefined
+    if (!named && 'provider' in fields) {
+      throw new Error(
+        `agents.${key}.provider: a provider key names its own provider; use another key for an instance`,
+      )
+    }
+    if (named && !('provider' in fields)) {
+      throw new Error(
+        `agents.${key}: unknown agent. Expected one of ${PROVIDER_IDS}. A named agent sets "provider".`,
+      )
+    }
+    const provider = own ?? PROVIDERS.find(({ id }) => id === fields.provider)
+    if (!provider) throw notOneOf(`agents.${key}.provider`, IDS)
+    let name: string
+    try {
+      name = validateAgentName(key, provider.id)
+    } catch (error) {
+      throw new Error(`agents.${(error as Error).message}`, { cause: error })
+    }
+    if (names.has(name)) throw new Error(`agents.${key}: ${name} is listed more than once`)
+    names.add(name)
+    specs.push(named ? `${provider.id}:${name}` : name)
+    for (const [field, setting] of Object.entries(fields)) {
+      if (named && field === 'provider') continue
+      const at = `agents.${key}.${field}`
+      if (!Object.hasOwn(AGENT_FIELDS, field)) {
+        throw unknownKey(at, [...(named ? ['provider'] : []), ...Object.keys(AGENT_FIELDS)])
+      }
       const flag = AGENT_FIELDS[field as keyof typeof AGENT_FIELDS]
       if (flag !== 'model' && !provider.effort) {
         throw new Error(`${at}: ${provider.label} does not take effort`)
       }
-      values[flag].push(`${id}=${string(at, setting)}`)
+      values[flag].push(`${name}=${string(at, setting)}`)
     }
   }
-  return { agents: entries.map(([id]) => id).join(','), ...values }
+  return { agents: specs.join(','), ...values }
 }
 
 /** Every top-level key, what it becomes, and its check. The keys follow the flags' names. */

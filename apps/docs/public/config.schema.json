@@ -11,9 +11,41 @@
     },
     "agents": {
       "type": "object",
-      "description": "The run's agents, in order, with their settings; {} selects one with none. As --agents.",
+      "description": "The run's agents, in order, with their settings; {} selects one with none. As --agents. A provider's id selects that provider; any other key names another instance of one, with provider saying which.",
       "minProperties": 2,
-      "additionalProperties": false,
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$",
+        "not": {
+          "enum": [
+            "auto",
+            "none",
+            "tie",
+            "con",
+            "prn",
+            "aux",
+            "nul",
+            "com1",
+            "com2",
+            "com3",
+            "com4",
+            "com5",
+            "com6",
+            "com7",
+            "com8",
+            "com9",
+            "lpt1",
+            "lpt2",
+            "lpt3",
+            "lpt4",
+            "lpt5",
+            "lpt6",
+            "lpt7",
+            "lpt8",
+            "lpt9"
+          ]
+        },
+        "description": "An agent's name: a letter, then letters, digits or -, at most 24 characters, read lowercased; not a word the run reserves."
+      },
       "properties": {
         "codex": {
           "type": "object",
@@ -88,6 +120,46 @@
               "minLength": 1,
               "description": "The GLM model, as --model glm=<model> sets it."
             }
+          }
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "A named agent, as --agents <provider>:<name> sets it.",
+        "required": ["provider"],
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "enum": ["codex", "claude", "deepseek", "kimi", "glm"],
+            "description": "The provider this agent runs on."
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Its model, as --model <name>=<model> sets it."
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The reasoning effort, as --effort sets it; only for a provider that takes one."
+          },
+          "reviewEffort": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The effort for its cross-review and merge only, as --review-effort sets it."
+          }
+        },
+        "if": {
+          "properties": {
+            "provider": {
+              "enum": ["deepseek", "kimi", "glm"]
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "effort": false,
+            "reviewEffort": false
           }
         }
       }
