@@ -139,7 +139,10 @@ the plan depends on code the snapshot does not show.`
  * and later prompts can leave out what the conversation already holds.
  */
 export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provider {
-  const endpoint = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`
+  // A loop, not `/\/+$/`: that regex is quadratic on a long run of slashes.
+  let baseEnd = config.baseUrl.length
+  while (baseEnd > 0 && config.baseUrl.charAt(baseEnd - 1) === '/') baseEnd -= 1
+  const endpoint = `${config.baseUrl.slice(0, baseEnd)}/chat/completions`
   return {
     id: config.id,
     label: config.label,
