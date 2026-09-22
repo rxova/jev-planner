@@ -44,7 +44,7 @@
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "check:exports": "publint --strict && attw --pack .",
-    "pack:smoke": "node --import tsx ../tooling/src/pack-smoke.ts",
+    "pack:smoke": "node --import tsx ../tooling/src/pack-smoke/pack-smoke.ts",
     "prepack": "pnpm build"
   },
   "devDependencies": {

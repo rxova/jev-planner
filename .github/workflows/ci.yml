@@ -194,7 +194,7 @@ jobs:
         working-directory: packages/jev-planner
         run: |
           node --version
-          node --import tsx ../tooling/src/pack-smoke.ts
+          node --import tsx ../tooling/src/pack-smoke/pack-smoke.ts
 
   supply-chain:
     name: audit · dedupe
@@ -247,7 +247,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: node --import tsx ./packages/tooling/src/check-changeset.ts
+        run: node --import tsx ./packages/tooling/src/check-changeset/check-changeset.ts
 
   # The single context branch protection (and the org ruleset) requires.
   #
