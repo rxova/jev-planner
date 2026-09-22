@@ -5,8 +5,8 @@ sidebar:
   order: 1
 ---
 
-`jev-planner` writes an implementation plan for a coding task by having two or more AIs draft,
-cross-review and merge it, with TypeSafe Jev deciding between them. This page gets you from nothing
+`jev-planner` writes an implementation plan for a coding task by having two or more AIs draft it,
+cross-review it when that would help, and merge it, with TypeSafe Jev deciding each step. This page gets you from nothing
 to a first plan.
 
 ## Requirements

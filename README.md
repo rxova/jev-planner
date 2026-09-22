@@ -22,19 +22,21 @@ A single AI can produce a confident but incomplete plan. `jev-planner` builds di
 process before implementation starts:
 
 1. Two or more agents inspect the repository and draft plans independently.
-2. They review one another's work and revise their own plans.
-3. Jev scores completeness, feasibility, and risk coverage.
-4. Jev selects a finalizer, which merges the strongest ideas into one plan.
+2. Jev scores completeness, feasibility, and risk coverage, and decides whether a cross-review
+   would improve the plans.
+3. When it would, the agents review one another's work and revise their own plans.
+4. Jev selects a finalizer, which merges the strongest ideas into one plan — unless one reviewed
+   plan already stands alone.
 
 ```text
                          ┌─ Codex ──► draft ──┐
-TASK + REPOSITORY ───────┤                    ├─► CROSS-REVIEW
-                         └─ Claude ─► draft ──┘         │
-                                                       ▼
-                                                JEV EVALUATION
-                                                       │
-                                                       ▼
-                                                ONE FINAL PLAN
+TASK + REPOSITORY ───────┤                    ├─► JEV EVALUATION
+                         └─ Claude ─► draft ──┘      │        ▲
+                                                     │        │
+                                        only if Jev asks ─► CROSS-REVIEW
+                                                     │
+                                                     ▼
+                                               ONE FINAL PLAN
 ```
 
 Codex and Claude are the defaults. DeepSeek, Kimi, and GLM are supported too.
@@ -102,21 +104,24 @@ jev-planner \
 - Every draft, review, and Jev verdict is saved under `.jev-planner/<run>/`; `--rounds-dir <path>`
   moves it, `--no-rounds` skips it.
 - `--json` emits structured output for another tool.
+- `--mode ultra` runs every round, every time; the default `fast` lets Jev skip the ones a plan
+  does not need ([fast or ultra](https://jev-planner.com/learn/how-it-works/#fast-or-ultra-in-short)).
 - `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
-- `--review-rounds 1` disables the optional second cross-review.
+- `--review-rounds <0|1|2>` caps the cross-reviews; `0` skips them.
 
 ```text
 .jev-planner/20260921-230512/
-  round1/          independent drafts
-  round2/          cross-reviewed plans + Jev verdict
+  round1/          independent drafts (+ Jev verdict in fast mode)
+  round2/          cross-reviewed plans + Jev verdict, when a review ran
   round3/          optional second review
-  final/plan.md    merged implementation plan
+  final/plan.md    merged, or selected, implementation plan
 ```
 
 ## Cost and data flow
 
-With **N** agents, a normal run makes **2N + 1** agent calls: drafts, reviews, and final synthesis.
-If Jev requests another review, add **N**. Jev evaluation uses a separate TypeSafe call.
+With **N** agents, `--mode ultra` makes **2N + 1** agent calls: drafts, reviews, and final
+synthesis, plus **N** if Jev requests another review. The default `fast` makes as few as **N + 1**
+and never more than `ultra`. Each Jev evaluation is a separate TypeSafe call.
 
 Agent CLIs inspect the repository in read-only mode. Chat APIs receive a bounded snapshot of tracked
 filenames and top-level project docs. Ignored `.env` files are not read, and provider keys are

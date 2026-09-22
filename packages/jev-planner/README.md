@@ -171,7 +171,7 @@ run is allowed to spend.
 | `fast` (default) | Only when Jev asks for one       | Skipped when one plan stands alone | N + 1 … 3N + 1        | 2 … 4  |
 | `ultra`          | Always, plus Jev's optional pass | Always                             | 2N + 1, or 3N + 1     | 3 or 4 |
 
-With the default two agents, that is three agent calls in two rounds where today's pipeline spends
+With the default two agents, that is three agent calls in two rounds where `ultra` spends
 five in three.
 
 `fast` puts Jev's typed judgment in front of each round instead of after it:
@@ -188,7 +188,7 @@ five in three.
   are aborted rather than left running. A round never drops below two plans, so with two agents a
   draft is always waited for; an agent dropped from a cross-review keeps its previous plan.
 
-`ultra` is the pipeline as it was: every agent drafts, every agent reviews every other, Jev may ask
+`ultra` runs every step, every time: every agent drafts, every agent reviews every other, Jev may ask
 for one more pass, and the finalizer always merges. Use it when the plan matters more than the wait.
 
 Every run prints what it spent on stderr, and `--json` includes it as `cost`:
@@ -209,8 +209,9 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
+      jev-verdict.json  in fast mode; ultra judges only reviewed plans
       timings.json    how long the round and each call in it took, in milliseconds
-    round2/           the cross-reviewed plans, and Jev's verdict on them
+    round2/           only when a cross-review ran: the revised plans, and Jev's verdict
       codex.md
       claude.md
       jev-verdict.json
