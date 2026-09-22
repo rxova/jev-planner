@@ -40,6 +40,22 @@ as it stands: every plan has answered the others by then, so the merge would rew
 there. A plan that has not been cross-reviewed is never adopted this way — the merge is the only
 place the agents' material comes together, so it always runs.
 
+## Fast or ultra, in short
+
+Both modes start the same way: every agent writes its own plan, at the same time. They differ in
+what happens next.
+
+- **`ultra` runs every step, every time.** The agents always read each other's plans and improve
+  their own, Jev may ask for a second pass, and one agent always merges the plans. With two agents
+  that is five agent calls in three rounds, or seven in four. Nothing is skipped.
+- **`fast` asks Jev before each optional step.** When the drafts already agree and look solid, it
+  skips the cross-review and goes straight to the merge: three calls in two rounds. After a
+  cross-review, when one plan is already final, it answers with that plan and skips the merge. It
+  also stops waiting for a slow agent once the others have answered.
+
+`fast` is quicker because rounds, not calls, are what take the time. The price is trusting Jev's
+call on which steps a plan can do without. Use `ultra` when the plan matters more than the wait.
+
 ## Why the mode matters
 
 The agents in a round run in parallel, so a run's wall clock is not the number of agent calls but
