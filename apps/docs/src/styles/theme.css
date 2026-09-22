@@ -12,6 +12,12 @@
   --sl-color-gray-3: var(--rx-muted);
 }
 
+/* The sidebar's badges, such as Experimental. In the light theme Starlight
+   sets them white on accent-high, which the brand mixes light: about 2:1. */
+:root[data-theme='light'] {
+  --sl-badge-default-text: var(--rx-fg);
+}
+
 /* Text on an accent fill — the sidebar's current page. Starlight uses
    accent-low, which the brand mixes to 4.35:1 against the dark theme's violet;
    the page background clears 5:1 against the violet in either theme. */
@@ -25,11 +31,8 @@
 }
 
 /* The gradient's first placement: a hairline along the bottom of the header,
-   drawn over the neutral border the brand gives it. */
-header.header {
-  position: relative;
-}
-
+   drawn over the neutral border the brand gives it. Starlight fixes the header
+   in place, which already anchors the hairline; do not reposition it. */
 header.header::after {
   content: '';
   position: absolute;
