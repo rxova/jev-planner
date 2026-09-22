@@ -2,10 +2,12 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import packageJson from '../package.json' with { type: 'json' }
+import { CONFIG_FILE, findConfig } from './config.js'
+import type { ConfigValues } from './config.js'
 import type { CheckResult } from './doctor.js'
 import type { Provider } from './provider.js'
 import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
-import { requireNonEmptyTask, validateTask } from './task.js'
+import { requireNonEmptyTask, STDIN_CONFLICT_MESSAGE, validateTask } from './task.js'
 import type { PlanCost, PlanMode, PlanOptions, PlanResult, PlanRound, ReviewMode } from './types.js'
 
 export const VERSION: string = packageJson.version
@@ -25,6 +27,9 @@ Usage:
   jev-planner doctor [--agents <ids>] [--cwd <directory>]
 
 Options:
+  -c, --config <path>         Read the run's settings from this JSON file
+                              (default: ${CONFIG_FILE} in the repository, if there is one)
+      --no-config             Read no config file
   -C, --cwd <directory>       Repository to inspect (default: current directory)
   -f, --file <path>           Read the coding task from a UTF-8 file
   -o, --output <path>         Write the final plan to a file instead of stdout
@@ -63,20 +68,25 @@ Options:
 Agents:
 ${PROVIDERS.map(agentLine).join('\n')}
 
-The task can also be piped on stdin. Agent CLIs use their existing logins.
-Jev requires TYPESAFE_API_KEY.`
+The task can also be piped on stdin. A flag given here beats the config; --json,
+--verbose, --claim-checks and --allow-any-task each have a --no- form, and --resume
+and --rounds turn back on what the config turned off. Agent CLIs use their existing
+logins. Jev requires TYPESAFE_API_KEY, which the config never holds.`
 
 /** The planner surface the CLI drives; `Planner` in production, a fake in tests. */
 export interface PlanRunner {
   plan(options: PlanOptions): Promise<PlanResult>
 }
 
-/** The run's agents and model overrides from the command line, handed to the planner factory. */
+/**
+ * The run's agents and model overrides, from the flags and `jev-planner.json`,
+ * handed to the planner factory.
+ */
 export interface PlannerSetup {
   agents: readonly Provider[]
-  /** `--model` overrides, by provider id. */
+  /** `--model` overrides, or a config agent's `model`, by provider id. */
   models: Readonly<Record<string, string>>
-  /** `--effort` overrides, by provider id. */
+  /** `--effort` overrides, or a config agent's `effort`, by provider id. */
   efforts: Readonly<Record<string, string>>
 }
 
@@ -171,17 +181,16 @@ async function prepareRoundsDir(dir: string): Promise<void> {
 }
 
 /**
- * A new folder for this run under `<cwd>/.jev-planner/`, named by its UTC start
- * time with no `:` so it is a valid name on Windows too. A second run in the
+ * A new folder for this run under `home`, `<cwd>/.jev-planner/` unless the
+ * config names a `runsDir`, named by its UTC start time with no `:` so it is a valid name on Windows too. A second run in the
  * same second gets `-2`, and so on: `mkdir` without `recursive` fails on an
  * existing folder, so two runs can never claim the same one.
  *
- * The first run also writes `.jev-planner/.gitignore` with `*`, so the output
+ * The first run also writes `.gitignore` with `*` in `home`, so the output
  * never shows up as untracked in the repository being planned. One that is
  * already there is left alone.
  */
-async function newRunDir(cwd: string, now: Date): Promise<string> {
-  const home = join(cwd, RUNS_DIR)
+async function newRunDir(home: string, now: Date): Promise<string> {
   await mkdir(home, { recursive: true })
   await writeFile(
     join(home, '.gitignore'),
@@ -367,12 +376,38 @@ function parseStragglerGrace(value: string | undefined, mode: PlanMode): number 
   return Math.round(seconds * 1_000)
 }
 
+/**
+ * A boolean flag and its `--no-` form: `undefined` when neither was given, so
+ * the config decides. Written out rather than with `allowNegative`, which also
+ * takes `--no-cwd` and the like as `false`.
+ */
+function toggle(on: boolean | undefined, off: boolean | undefined, name: string) {
+  if (on && off) throw new Error(`Pass --${name} or --no-${name}, not both`)
+  return on ? true : off ? false : undefined
+}
+
+/** The config's per-agent `<id>=<value>` entries for the run's agents only, then the flags', which win. */
+function withConfig(
+  configured: readonly string[],
+  given: readonly string[],
+  agents: readonly Provider[],
+): string[] {
+  return [
+    ...configured.filter((entry) => agents.some(({ id }) => entry.startsWith(`${id}=`))),
+    ...given,
+  ]
+}
+
+const NO_CONFIG: ConfigValues = { model: [], effort: [], 'review-effort': [] }
+
 function parse(argv: readonly string[]) {
   return parseArgs({
     args: [...argv],
     allowPositionals: true,
     strict: true,
     options: {
+      config: { type: 'string', short: 'c' },
+      'no-config': { type: 'boolean' },
       cwd: { type: 'string', short: 'C' },
       file: { type: 'string', short: 'f' },
       output: { type: 'string', short: 'o' },
@@ -385,15 +420,21 @@ function parse(argv: readonly string[]) {
       mode: { type: 'string' },
       'review-rounds': { type: 'string' },
       'review-mode': { type: 'string' },
-      'claim-checks': { type: 'boolean', default: false },
+      'claim-checks': { type: 'boolean' },
+      'no-claim-checks': { type: 'boolean' },
       'straggler-grace': { type: 'string' },
       timeout: { type: 'string' },
-      'no-resume': { type: 'boolean', default: false },
-      json: { type: 'boolean', default: false },
-      verbose: { type: 'boolean', default: false },
+      resume: { type: 'boolean' },
+      'no-resume': { type: 'boolean' },
+      json: { type: 'boolean' },
+      'no-json': { type: 'boolean' },
+      verbose: { type: 'boolean' },
+      'no-verbose': { type: 'boolean' },
       'rounds-dir': { type: 'string' },
-      'no-rounds': { type: 'boolean', default: false },
-      'allow-any-task': { type: 'boolean', default: false },
+      rounds: { type: 'boolean' },
+      'no-rounds': { type: 'boolean' },
+      'allow-any-task': { type: 'boolean' },
+      'no-allow-any-task': { type: 'boolean' },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -412,10 +453,23 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     return 0
   }
 
-  const cwd = resolve(deps.cwd(), values.cwd ?? '.')
+  const invoked = deps.cwd()
+  if (values.config !== undefined && values['no-config']) {
+    throw new Error('Pass --config or --no-config, not both')
+  }
+  const config = values['no-config']
+    ? undefined
+    : await findConfig(
+        resolve(invoked, values.cwd ?? '.'),
+        values.config === undefined ? undefined : resolve(invoked, values.config),
+      )
+  if (config) deps.stderr(`[jev-planner] Using config ${config.path}\n`)
+  const configured = config?.values ?? NO_CONFIG
+
+  const cwd = values.cwd === undefined ? (configured.cwd ?? invoked) : resolve(invoked, values.cwd)
   await assertDirectory(cwd)
 
-  const agents = parseAgents(values.agents)
+  const agents = parseAgents(values.agents ?? configured.agents)
   if (positionals[0] === 'doctor') {
     if (positionals.length > 1) throw new Error('doctor does not accept a task')
     const checks = await deps.doctor(cwd, agents)
@@ -432,12 +486,26 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
 
   let task = taskPositionals.join(' ').trim()
   if (values.file !== undefined) {
-    task = (await readFile(resolve(deps.cwd(), values.file), 'utf8')).trim()
+    task = (await readFile(resolve(invoked, values.file), 'utf8')).trim()
   }
-  if (!task) task = (await deps.readStdin()) ?? ''
+  if (!task) {
+    // stdin is read even when the config has a task, so a pipe is never
+    // silently ignored in favour of a billable configured one.
+    const piped = (await deps.readStdin())?.trim() ?? ''
+    if (piped && (configured.task ?? configured.taskFile) !== undefined) {
+      throw new Error(STDIN_CONFLICT_MESSAGE)
+    }
+    if (configured.task !== undefined) task = configured.task
+    else if (configured.taskFile !== undefined) {
+      task = (await readFile(configured.taskFile, 'utf8')).trim()
+    } else task = piped
+  }
   // Before the API-key check, so a placeholder is reported first and nothing
   // billable is set up for it.
-  const allowAnyTask = values['allow-any-task']
+  const allowAnyTask =
+    toggle(values['allow-any-task'], values['no-allow-any-task'], 'allow-any-task') ??
+    configured['allow-any-task'] ??
+    false
   task = allowAnyTask ? requireNonEmptyTask(task) : validateTask(task)
   if (!deps.env.TYPESAFE_API_KEY?.trim()) {
     throw new Error(
@@ -445,30 +513,55 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     )
   }
 
-  const models = parseOverrides('--model', values.model, agents)
-  const efforts = parseOverrides('--effort', values.effort, agents, (agent) => agent.effort)
-  const reviewEfforts = parseOverrides(
-    '--review-effort',
-    values['review-effort'],
+  const models = parseOverrides(
+    '--model',
+    withConfig(configured.model, values.model, agents),
+    agents,
+  )
+  const efforts = parseOverrides(
+    '--effort',
+    withConfig(configured.effort, values.effort, agents),
     agents,
     (agent) => agent.effort,
   )
-  const finalizer = parseFinalizer(values.finalizer, agents)
-  const jevModel = values['jev-model']
-  const mode = parseMode(values.mode)
-  const stragglerGraceMs = parseStragglerGrace(values['straggler-grace'], mode)
-  const maxReviewRounds = parseReviewRounds(values['review-rounds'])
-  const claimChecks = values['claim-checks']
-  const reviewMode = parseReviewMode(values['review-mode'], claimChecks, maxReviewRounds, mode)
-  if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
+  const reviewEfforts = parseOverrides(
+    '--review-effort',
+    withConfig(configured['review-effort'], values['review-effort'], agents),
+    agents,
+    (agent) => agent.effort,
+  )
+  const finalizer = parseFinalizer(values.finalizer ?? configured.finalizer, agents)
+  const jevModel = values['jev-model'] ?? configured['jev-model']
+  const mode = parseMode(values.mode ?? configured.mode)
+  const stragglerGraceMs = parseStragglerGrace(
+    values['straggler-grace'] ?? configured['straggler-grace'],
+    mode,
+  )
+  const maxReviewRounds = parseReviewRounds(values['review-rounds'] ?? configured['review-rounds'])
+  const claimChecks =
+    toggle(values['claim-checks'], values['no-claim-checks'], 'claim-checks') ??
+    configured['claim-checks'] ??
+    false
+  const reviewMode = parseReviewMode(
+    values['review-mode'] ?? configured['review-mode'],
+    claimChecks,
+    maxReviewRounds,
+    mode,
+  )
+  const resume = toggle(values.resume, values['no-resume'], 'resume') ?? configured.resume ?? true
+  const asJson = toggle(values.json, values['no-json'], 'json') ?? configured.json ?? false
+  const verbose =
+    toggle(values.verbose, values['no-verbose'], 'verbose') ?? configured.verbose ?? false
+  const rounds = toggle(values.rounds, values['no-rounds'], 'rounds')
+  if (rounds === false && values['rounds-dir'] !== undefined) {
     throw new Error('Pass --rounds-dir or --no-rounds, not both')
   }
   let roundsDir: string | undefined
   if (values['rounds-dir'] !== undefined) {
     roundsDir = resolve(cwd, values['rounds-dir'])
     await prepareRoundsDir(roundsDir)
-  } else if (!values['no-rounds']) {
-    roundsDir = await newRunDir(cwd, deps.now())
+  } else if (rounds ?? configured.rounds ?? true) {
+    roundsDir = await newRunDir(configured.runsDir ?? join(cwd, RUNS_DIR), deps.now())
   }
   if (roundsDir !== undefined) deps.stderr(`[jev-planner] Writing rounds to ${roundsDir}\n`)
   const planner = deps.createPlanner({ agents, models, efforts })
@@ -476,7 +569,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const result = await planner.plan({
     task,
     cwd,
-    timeoutMs: parseTimeout(values.timeout),
+    timeoutMs: parseTimeout(values.timeout ?? configured.timeout),
     mode,
     maxReviewRounds,
     ...(reviewMode === 'debate' ? { reviewMode } : {}),
@@ -486,34 +579,34 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
     ...(Object.keys(reviewEfforts).length > 0 ? { reviewEfforts } : {}),
-    ...(values['no-resume'] ? { resume: false } : {}),
+    ...(resume ? {} : { resume: false }),
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
     },
-    ...(values.verbose
+    ...(verbose
       ? {
           onAgentProgress: (agent: string, progress: string) => {
             for (const line of progress.split('\n')) deps.stderr(`[${agent}] ${line}\n`)
           },
         }
       : {}),
-    ...(roundsDir === undefined && !values.verbose
+    ...(roundsDir === undefined && !verbose
       ? {}
       : {
           onRound: async (round: PlanRound) => {
-            if (values.verbose) deps.stderr(`[jev-planner] ${roundTimingLine(round, labels)}\n`)
+            if (verbose) deps.stderr(`[jev-planner] ${roundTimingLine(round, labels)}\n`)
             if (roundsDir !== undefined) await writeRound(roundsDir, round)
           },
         }),
   })
 
-  if (values.verbose) {
+  if (verbose) {
     deps.stderr(`[jev-planner] Total: ${formatDuration(result.timings.totalMs)}\n`)
     deps.stderr(`[jev-planner] Jev verdict:\n${JSON.stringify(result.verdict, null, 2)}\n`)
   }
   deps.stderr(`[jev-planner] ${costLine(result.cost)}\n`)
 
-  const rendered = values.json
+  const rendered = asJson
     ? `${JSON.stringify(
         {
           plan: result.plan,
@@ -529,10 +622,11 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
       )}\n`
     : `${result.plan.trim()}\n`
 
-  if (values.output === undefined) {
+  const output = values.output ?? configured.output
+  if (output === undefined) {
     deps.stdout(rendered)
   } else {
-    const outputPath = resolve(cwd, values.output)
+    const outputPath = resolve(cwd, output)
     await writeFile(outputPath, rendered, 'utf8')
     deps.stderr(`[jev-planner] Wrote ${outputPath}\n`)
   }

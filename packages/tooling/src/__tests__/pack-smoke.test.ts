@@ -85,7 +85,7 @@ describe('packSmoke', () => {
       { installed: ['dist', 'package.json', 'LICENSE'] },
     )
     expect(() => packSmoke({ pkgDir: '/pkg', sh: npm(), fs })).toThrow(
-      'the tarball does not contain README.md, llms.txt',
+      'the tarball does not contain README.md, llms.txt, config.schema.json',
     )
     expect(removed).toEqual([SCRATCH])
   })

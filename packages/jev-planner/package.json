@@ -23,7 +23,8 @@
   },
   "files": [
     "dist",
-    "llms.txt"
+    "llms.txt",
+    "config.schema.json"
   ],
   "exports": {
     ".": {
