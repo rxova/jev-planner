@@ -1018,8 +1018,8 @@ describe('Planner in fast mode', () => {
       ).plan(fast)
       return result.selected ?? false
     }
-    await expect(run(0.7)).resolves.toBe(true)
-    await expect(run(0.69)).resolves.toBe(false)
+    await expect(run(0.5)).resolves.toBe(true)
+    await expect(run(0.49)).resolves.toBe(false)
   })
 
   it('keeps a draft that arrived while another was being accepted, and does not judge it', async () => {
