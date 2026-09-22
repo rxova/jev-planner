@@ -12,7 +12,7 @@ export const TITLE = 'jev-planner'
 
 export const TAGLINE =
   'Implementation plans from two or more AIs — Codex and Claude by default — that draft ' +
-  "independently, review each other's work, and let TypeSafe Jev decide."
+  "independently, review each other's work when it helps, and let TypeSafe Jev decide."
 
 export const INSTALL = 'npm install -g jev-planner'
 
@@ -34,12 +34,11 @@ export const TRANSCRIPT = [
     text: 'jev-planner -o PLAN.md "Add per-user rate limiting to the public API"',
   },
   { kind: 'output', text: '[jev-planner] Drafting independent plans with Codex and Claude…' },
-  { kind: 'output', text: '[jev-planner] Cross-reviewing the 2 drafts…' },
   { kind: 'output', text: '[jev-planner] Asking Jev for typed quality and routing decisions…' },
-  { kind: 'note', text: '# only if Jev asks for another cross-review:' },
-  { kind: 'output', text: '[jev-planner] Jev requested another cross-review pass…' },
+  { kind: 'note', text: '# only if Jev asks for a cross-review:' },
+  { kind: 'output', text: '[jev-planner] Cross-reviewing the 2 drafts…' },
   { kind: 'output', text: '[jev-planner] Re-evaluating the revised plans with Jev…' },
-  { kind: 'note', text: '# then the agent Jev chose merges the plans' },
+  { kind: 'note', text: '# then the agent Jev chose merges the plans, unless one stands alone' },
   { kind: 'output', text: '[jev-planner] Wrote /home/you/my-app/PLAN.md' },
 ]
 
@@ -51,16 +50,18 @@ export const FEATURES = [
     href: '/learn/how-it-works/#1-independent-drafts',
   },
   {
-    title: 'Cross-review',
-    body: "Each agent sees every other agent's draft and returns a revised, standalone plan.",
-    href: '/learn/how-it-works/#2-cross-review',
-  },
-  {
     title: "Jev's typed verdict",
     body:
       'Jev scores completeness, feasibility, and risk coverage; chooses a finalizer; and decides ' +
-      'whether the plans need one more cross-review.',
-    href: '/learn/how-it-works/#3-jev-evaluates',
+      'whether a cross-review would materially improve the plan.',
+    href: '/learn/how-it-works/#2-jev-evaluates',
+  },
+  {
+    title: 'Cross-review',
+    body:
+      "When it would, each agent sees every other agent's plan and returns a revised, " +
+      'standalone plan.',
+    href: '/learn/how-it-works/#3-cross-review',
   },
   {
     title: 'Any AI, one entry',

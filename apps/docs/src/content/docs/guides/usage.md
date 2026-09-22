@@ -138,8 +138,9 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
+      jev-verdict.json  in fast mode; ultra judges only reviewed plans
       timings.json    how long the round and each call in it took, in milliseconds
-    round2/           the cross-reviewed plans, and Jev's verdict on them
+    round2/           only when a cross-review ran: the revised plans, and Jev's verdict
       codex.md
       claude.md
       jev-verdict.json
