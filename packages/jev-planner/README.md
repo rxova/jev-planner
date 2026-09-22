@@ -174,6 +174,40 @@ call. Only the whole text is compared, so a brief that quotes a placeholder, or 
 such as `Add caching`, is planned as usual. `Planner.plan` runs the same check and throws
 `TaskValidationError`; set `allowAnyTask: true` in its options to skip it.
 
+## Config file
+
+A `jev-planner.json` in the repository, the `--cwd` folder or the current one, sets up every run
+from there. `--config <path>` reads another file, `--no-config` none. It is for the CLI only;
+`Planner` never reads it.
+
+```json
+{
+  "$schema": "https://jev-planner.com/config.schema.json",
+  "agents": { "codex": { "model": "gpt-5.6-sol", "effort": "high" }, "claude": {} },
+  "mode": "ultra",
+  "runsDir": "planner-runs",
+  "output": "PLAN.md"
+}
+```
+
+Each key stands for the flag of the same name: `agents` with each agent's `model`, `effort` and
+`reviewEffort`; `mode`, `reviewMode`, `reviewRounds`, `claimChecks`, `finalizer`, `jevModel`,
+`stragglerGrace` and `timeout` (seconds); `resume`, `rounds`, `json`, `verbose` and
+`allowAnyTask`; `output`; `task` or `taskFile`; and `cwd`, only in a file passed with `--config`.
+`runsDir` is a folder in which each run gets its own timestamped folder. Paths are relative to the
+file, and an unknown key or a wrong type is an error that names the key.
+
+- **Flags win**, setting by setting. `--model codex=gpt-x` beats the config's model for Codex only,
+  `--agents` drops the config's settings for the agents it leaves out, and every boolean has both
+  forms: `--json` and `--no-json`, `--resume` and `--no-resume`, and so on.
+- **The task**: arguments or `--file` first, then the config's `task` or `taskFile`, then stdin. A
+  task piped while the config has one is an error, never silently ignored.
+- **No secrets.** The file is meant to be committed. A key such as `apiKey` or `token` is rejected
+  with the environment variable to set instead.
+
+The schema ships as `node_modules/jev-planner/config.schema.json` too. The
+[config file guide](https://jev-planner.com/guides/config-file/) has the full table.
+
 ## Modes
 
 A run's wall clock is not the number of agent calls — the agents in a round run in parallel — but
@@ -357,7 +391,8 @@ provider you select.
 
 Every agent comes from one list, `PROVIDERS` in `src/providers.ts`. The CLI flags, `--help`,
 `doctor`, the prompts and Jev's choices are all built from it, so wiring up a new AI is one entry
-there.
+there. Add the agent to `config.schema.json` too, and to its copy in `apps/docs/public/`: a test
+fails until both list it.
 
 An OpenAI-compatible chat API is one `openAICompatibleProvider` call:
 

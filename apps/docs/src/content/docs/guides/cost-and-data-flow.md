@@ -2,7 +2,7 @@
 title: Cost and data flow
 description: How many paid calls a run makes, and what each agent and Jev get to see.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 ## Calls per run

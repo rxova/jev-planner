@@ -359,7 +359,7 @@ describe('main', () => {
     const h = harness({ env: {} })
     await expect(main(['--allow-any-task'], h.deps)).resolves.toBe(1)
     expect(h.stderr()).toBe(
-      'jev-planner: Missing coding task. Pass it as an argument, with --file, or on stdin.\n',
+      'jev-planner: Missing coding task. Pass it as an argument, with --file, on stdin, or as task in jev-planner.json.\n',
     )
   })
 
@@ -939,5 +939,290 @@ describe('the debate review', () => {
       { claimChecks: 'skipped' },
     )
     expect(JSON.parse(h.stdout())).toMatchObject({ debate: { disputes: [dispute] } })
+  })
+})
+
+describe('the config file', () => {
+  /** Writes `settings` as `jev-planner.json` in `folder`, the harness's working directory by default. */
+  async function config(settings: unknown, folder = dir, name = 'jev-planner.json') {
+    await mkdir(folder, { recursive: true })
+    const path = join(folder, name)
+    await writeFile(path, JSON.stringify(settings))
+    return path
+  }
+
+  it('reads jev-planner.json from the working directory, and says so', async () => {
+    const path = await config({
+      agents: { codex: { model: 'gpt-x', effort: 'low', reviewEffort: 'high' }, glm: {} },
+      mode: 'ultra',
+      reviewMode: 'debate',
+      reviewRounds: 1,
+      claimChecks: true,
+      finalizer: 'none',
+      jevModel: 'jev-custom',
+      timeout: 1.5,
+      resume: false,
+      allowAnyTask: true,
+      task: 'TODO',
+    })
+    const h = harness()
+    await expect(main([], h.deps)).resolves.toBe(0)
+    expect(h.setup()).toEqual({
+      agents: ['codex', 'glm'],
+      models: { codex: 'gpt-x' },
+      efforts: { codex: 'low' },
+    })
+    expect(h.planned()).toMatchObject({
+      task: 'TODO',
+      mode: 'ultra',
+      maxReviewRounds: 1,
+      reviewMode: 'debate',
+      claimChecks: true,
+      selectStronger: true,
+      jevModel: 'jev-custom',
+      timeoutMs: 1_500,
+      resume: false,
+      allowAnyTask: true,
+      reviewEfforts: { codex: 'high' },
+    })
+    expect(h.stderr()).toMatch(new RegExp(`^\\[jev-planner\\] Using config ${path}\n`))
+  })
+
+  it('lets every flag given on the command line beat the config', async () => {
+    await config({
+      agents: { codex: { model: 'gpt-x', effort: 'low' }, claude: { model: 'opus' } },
+      mode: 'ultra',
+      finalizer: 'claude',
+      timeout: 5,
+      stragglerGrace: 10,
+      claimChecks: true,
+      resume: false,
+      json: true,
+      verbose: true,
+      allowAnyTask: true,
+    })
+    const h = harness()
+    const code = await main(
+      [
+        ...['--mode', 'balanced', '--finalizer', 'auto', '--timeout', '9', '-m', 'codex=gpt-y'],
+        ...['--no-claim-checks', '--resume', '--no-json', '--no-verbose', '--no-allow-any-task'],
+        'Add caching',
+      ],
+      h.deps,
+    )
+    expect(code).toBe(0)
+    expect(h.setup()).toEqual({
+      agents: ['codex', 'claude'],
+      models: { codex: 'gpt-y', claude: 'opus' },
+      efforts: { codex: 'low' },
+    })
+    expect(h.planned()).toMatchObject({
+      mode: 'balanced',
+      timeoutMs: 9_000,
+      stragglerGraceMs: 10_000,
+    })
+    for (const key of ['finalizer', 'claimChecks', 'resume', 'allowAnyTask', 'onAgentProgress']) {
+      expect(h.planned()).not.toHaveProperty(key)
+    }
+    expect(h.stdout()).toBe('# The plan\n')
+  })
+
+  it('turns on with a flag what the config leaves off', async () => {
+    await config({ json: false, verbose: false, claimChecks: false, allowAnyTask: false })
+    const h = harness()
+    await main(['--json', '--verbose', '--claim-checks', '--allow-any-task', 'TODO'], h.deps)
+    expect(h.planned()).toMatchObject({ claimChecks: true, allowAnyTask: true })
+    expect(h.planned()).toHaveProperty('onAgentProgress')
+    expect(JSON.parse(h.stdout())).toHaveProperty('plan')
+  })
+
+  it('drops the config’s settings for agents that --agents leaves out', async () => {
+    await config({ agents: { codex: { model: 'gpt-x' }, deepseek: { model: 'ds' } } })
+    const h = harness()
+    await main(['--agents', 'codex,claude', 'task'], h.deps)
+    expect(h.setup()).toEqual({
+      agents: ['codex', 'claude'],
+      models: { codex: 'gpt-x' },
+      efforts: {},
+    })
+  })
+
+  it('looks for the config in the --cwd repository', async () => {
+    const repo = join(dir, 'repo')
+    await config({ mode: 'fast' }, repo)
+    await config({ mode: 'ultra' })
+    const h = harness()
+    await main(['-C', 'repo', 'task'], h.deps)
+    expect(h.planned()).toMatchObject({ cwd: repo, mode: 'fast' })
+  })
+
+  it('reads --config relative to the working directory, and lets it set cwd', async () => {
+    const repo = join(dir, 'repo')
+    await mkdir(repo)
+    await config({ mode: 'ultra' })
+    await config({ cwd: '../repo', mode: 'fast', output: 'PLAN.md' }, join(dir, 'setup'), 'x.json')
+    const h = harness()
+    await expect(main(['--config', 'setup/x.json', 'task'], h.deps)).resolves.toBe(0)
+    expect(h.planned()).toMatchObject({ cwd: repo, mode: 'fast' })
+    await expect(readFile(join(dir, 'setup', 'PLAN.md'), 'utf8')).resolves.toBe('# The plan\n')
+    await main(['-c', 'setup/x.json', '-C', '.', 'task'], h.deps)
+    expect(h.planned()).toMatchObject({ cwd: dir })
+  })
+
+  it('reads no config with --no-config, even a broken one', async () => {
+    await writeFile(join(dir, 'jev-planner.json'), '{')
+    const h = harness()
+    await expect(main(['--no-config', 'task'], h.deps)).resolves.toBe(0)
+    expect(h.stderr()).not.toContain('Using config')
+  })
+
+  it('shows help and the version whatever the config holds', async () => {
+    await writeFile(join(dir, 'jev-planner.json'), '{')
+    await expect(main(['--help'], harness().deps)).resolves.toBe(0)
+    await expect(main(['--version'], harness().deps)).resolves.toBe(0)
+  })
+
+  it('takes the task from the config when none is given, and from its taskFile', async () => {
+    await config({ task: 'Add caching' })
+    const h = harness({ readStdin: () => Promise.resolve('') })
+    await main([], h.deps)
+    expect(h.planned()?.task).toBe('Add caching')
+    await mkdir(join(dir, 'setup'))
+    await writeFile(join(dir, 'setup', 'TASK.md'), ' Add a cache \n')
+    await config({ taskFile: 'TASK.md' }, join(dir, 'setup'))
+    await main(['-C', 'setup'], h.deps)
+    expect(h.planned()?.task).toBe('Add a cache')
+  })
+
+  it('lets a task on the command line beat the config’s, without reading stdin', async () => {
+    await config({ task: 'Add caching' })
+    const readStdin = vi.fn(() => Promise.resolve('piped'))
+    const h = harness({ readStdin })
+    await main(['plan', 'Add', 'paging'], h.deps)
+    expect(h.planned()?.task).toBe('Add paging')
+    await writeFile(join(dir, 'task.md'), 'Add search')
+    await main(['-f', 'task.md'], h.deps)
+    expect(h.planned()?.task).toBe('Add search')
+    expect(readStdin).not.toHaveBeenCalled()
+  })
+
+  it('rejects a piped task when the config has one too, before anything is billed', async () => {
+    await config({ task: 'Add caching' })
+    const createPlanner = vi.fn()
+    const h = harness({ readStdin: () => Promise.resolve(' Add paging\n'), createPlanner })
+    await expect(main([], h.deps)).resolves.toBe(1)
+    expect(h.stderr()).toContain(
+      "jev-planner: The task is piped on stdin and set in the config. Pass the task as an argument or with --file to override the config's task.\n",
+    )
+    expect(createPlanner).not.toHaveBeenCalled()
+  })
+
+  it('still takes a piped task when the config has none', async () => {
+    await config({ mode: 'fast' })
+    const h = harness({ readStdin: () => Promise.resolve('Add paging') })
+    await main([], h.deps)
+    expect(h.planned()?.task).toBe('Add paging')
+  })
+
+  it('reports a taskFile that is not there, with its path', async () => {
+    await config({ taskFile: 'TASK.md' })
+    const h = harness()
+    await expect(main([], h.deps)).resolves.toBe(1)
+    expect(h.stderr()).toContain(join(dir, 'TASK.md'))
+  })
+
+  it('gives each run its own folder under runsDir, so the second run works too', async () => {
+    await config({ runsDir: 'runs', task: 'Add caching' })
+    const h = harness()
+    await expect(main([], h.deps)).resolves.toBe(0)
+    await expect(main([], h.deps)).resolves.toBe(0)
+    expect((await readdir(join(dir, 'runs'))).sort()).toEqual(['.gitignore', RUN, `${RUN}-2`])
+    await expect(readdir(join(dir, '.jev-planner'))).rejects.toThrow('ENOENT')
+  })
+
+  it('lets --rounds-dir and --no-rounds beat runsDir, and --rounds beat rounds: false', async () => {
+    await config({ runsDir: 'runs' })
+    const h = harness()
+    await main(['--rounds-dir', 'exact', 'task'], h.deps)
+    await main(['--no-rounds', 'task'], h.deps)
+    await expect(readdir(join(dir, 'runs'))).rejects.toThrow('ENOENT')
+    await expect(readdir(join(dir, 'exact'))).resolves.toEqual([])
+
+    await config({ rounds: false })
+    await main(['task'], h.deps)
+    await expect(readdir(join(dir, '.jev-planner'))).rejects.toThrow('ENOENT')
+    await main(['--rounds', 'task'], h.deps)
+    await expect(readdir(join(dir, '.jev-planner'))).resolves.toContain(RUN)
+  })
+
+  it('runs doctor with the configured agents and repository, never reading stdin', async () => {
+    const repo = join(dir, 'repo')
+    await mkdir(repo)
+    const path = await config(
+      { cwd: repo, agents: { deepseek: {}, kimi: {} }, task: 'x' },
+      dir,
+      'x.json',
+    )
+    const doctor = vi.fn<CliDeps['doctor']>(() => Promise.resolve([]))
+    const readStdin = vi.fn(() => Promise.resolve('piped'))
+    await expect(
+      main(['doctor', '--config', path], harness({ doctor, readStdin }).deps),
+    ).resolves.toBe(0)
+    expect(doctor.mock.calls[0]?.[0]).toBe(repo)
+    expect(doctor.mock.calls[0]?.[1].map(({ id }) => id)).toEqual(['deepseek', 'kimi'])
+    expect(readStdin).not.toHaveBeenCalled()
+  })
+
+  describe('errors', () => {
+    async function failure(argv: string[]): Promise<string> {
+      const h = harness()
+      await expect(main(argv, h.deps)).resolves.toBe(1)
+      expect(h.planned()).toBeUndefined()
+      return h.stderr()
+    }
+
+    it('reports a config that is not valid, naming the file and the key', async () => {
+      const path = await config({ mode: 'slow' })
+      await expect(failure(['task'])).resolves.toBe(
+        `jev-planner: ${path}: mode: must be one of "fast", "balanced", "ultra"\n`,
+      )
+    })
+
+    it('reports a --config file that is not there', async () => {
+      await expect(failure(['--config', 'missing.json', 'task'])).resolves.toContain(
+        `Cannot read the config ${join(dir, 'missing.json')}`,
+      )
+    })
+
+    it('rejects --config with --no-config, and a flag with its --no- form', async () => {
+      await expect(failure(['--config', 'x.json', '--no-config', 'task'])).resolves.toBe(
+        'jev-planner: Pass --config or --no-config, not both\n',
+      )
+      for (const name of [
+        'json',
+        'verbose',
+        'resume',
+        'rounds',
+        'claim-checks',
+        'allow-any-task',
+      ]) {
+        await expect(failure([`--${name}`, `--no-${name}`, 'task'])).resolves.toBe(
+          `jev-planner: Pass --${name} or --no-${name}, not both\n`,
+        )
+      }
+    })
+
+    it('rejects --no- on a flag that takes a value', async () => {
+      await expect(failure(['--no-cwd', 'task'])).resolves.toContain("Unknown option '--no-cwd'")
+    })
+
+    it('checks the config’s values against each other and the flags, as flags', async () => {
+      await config({ mode: 'ultra', stragglerGrace: 5 })
+      await expect(failure(['task'])).resolves.toContain(
+        '--straggler-grace is for --mode balanced or fast',
+      )
+      await config({ agents: { codex: {}, claude: {} }, finalizer: 'glm' })
+      await expect(failure(['task'])).resolves.toContain('Invalid --finalizer value: glm')
+    })
   })
 })

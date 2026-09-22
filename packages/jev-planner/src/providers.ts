@@ -149,10 +149,12 @@ function claudeArgs(session: string[], { model, effort }: Overrides): string[] {
 }
 
 /**
- * Every AI jev-planner can plan with. To add one, add an entry here — that is
- * the whole change: the CLI, `doctor`, `--help`, the prompts and Jev all read
- * this list. An OpenAI-compatible chat API is one `openAICompatibleProvider`
- * call; an agent CLI that can run read-only is one `cliProvider` call.
+ * Every AI jev-planner can plan with. To add one, add an entry here, and the
+ * agent to `config.schema.json` and its copy in `apps/docs/public/`, which a
+ * test keeps in step: the CLI, `doctor`, `--help`, the config, the prompts and
+ * Jev all read this list. An OpenAI-compatible chat API is one
+ * `openAICompatibleProvider` call; an agent CLI that can run read-only is one
+ * `cliProvider` call.
  */
 export const PROVIDERS: readonly Provider[] = [
   cliProvider({

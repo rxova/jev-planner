@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jev-planner.com/config.schema.json",
+  "title": "jev-planner.json",
+  "description": "A jev-planner run's settings. A flag given on the command line beats the key here. Never put an API key in this file: it is meant to be committed.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "agents": {
+      "type": "object",
+      "description": "The run's agents, in order, with their settings; {} selects one with none. As --agents.",
+      "minProperties": 2,
+      "additionalProperties": false,
+      "properties": {
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The Codex model, as --model codex=<model> sets it."
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The reasoning effort, as --effort sets it."
+            },
+            "reviewEffort": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The effort for its cross-review and merge only, as --review-effort sets it."
+            }
+          }
+        },
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The Claude model, as --model claude=<model> sets it."
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The reasoning effort, as --effort sets it."
+            },
+            "reviewEffort": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The effort for its cross-review and merge only, as --review-effort sets it."
+            }
+          }
+        },
+        "deepseek": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The DeepSeek model, as --model deepseek=<model> sets it."
+            }
+          }
+        },
+        "kimi": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The Kimi model, as --model kimi=<model> sets it."
+            }
+          }
+        },
+        "glm": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The GLM model, as --model glm=<model> sets it."
+            }
+          }
+        }
+      }
+    },
+    "mode": {
+      "enum": ["fast", "balanced", "ultra"],
+      "description": "As --mode."
+    },
+    "reviewMode": {
+      "enum": ["standard", "debate"],
+      "description": "As --review-mode."
+    },
+    "reviewRounds": {
+      "enum": [0, 1, 2],
+      "description": "As --review-rounds."
+    },
+    "claimChecks": {
+      "type": "boolean",
+      "description": "As --claim-checks."
+    },
+    "finalizer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "auto, none or one of the agents. As --finalizer."
+    },
+    "jevModel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "As --jev-model."
+    },
+    "stragglerGrace": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Seconds. As --straggler-grace."
+    },
+    "timeout": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Seconds for each agent call. As --timeout."
+    },
+    "resume": {
+      "type": "boolean",
+      "description": "false as --no-resume."
+    },
+    "rounds": {
+      "type": "boolean",
+      "description": "false as --no-rounds."
+    },
+    "json": {
+      "type": "boolean",
+      "description": "As --json."
+    },
+    "verbose": {
+      "type": "boolean",
+      "description": "As --verbose."
+    },
+    "allowAnyTask": {
+      "type": "boolean",
+      "description": "As --allow-any-task."
+    },
+    "runsDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A folder in which each run gets its own timestamped folder. Relative to this file."
+    },
+    "output": {
+      "type": "string",
+      "minLength": 1,
+      "description": "As --output. Relative to this file."
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The repository to plan, as --cwd. Only in a file passed with --config. Relative to this file."
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The coding task, used when none is given on the command line."
+    },
+    "taskFile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A file holding the task, used when none is given on the command line. Relative to this file."
+    }
+  },
+  "not": {
+    "anyOf": [
+      {
+        "required": ["task", "taskFile"]
+      },
+      {
+        "required": ["runsDir", "rounds"],
+        "properties": {
+          "rounds": {
+            "const": false
+          }
+        }
+      }
+    ]
+  }
+}

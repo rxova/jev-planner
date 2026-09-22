@@ -110,6 +110,8 @@ jev-planner \
 - Every round's plans and Jev's verdicts are saved under `.jev-planner/<run>/` (fast mode keeps
   only the verdict that decided it); `--rounds-dir <path>` moves it, `--no-rounds` skips it.
 - `--json` emits structured output for another tool.
+- A `jev-planner.json` in the repository pins any of these for every run, flags still win, and it
+  never holds a key ([config file](https://jev-planner.com/guides/config-file/)).
 - `--mode ultra` always runs the first cross-review; the default `balanced` lets Jev skip the rounds
   a plan does not need; `--mode fast` answers with the first draft Jev accepts alone ([the three modes](https://jev-planner.com/learn/how-it-works/#fast-balanced-or-ultra-in-short)).
 - `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
