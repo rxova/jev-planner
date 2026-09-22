@@ -6,7 +6,7 @@ import type { CheckResult } from './doctor.js'
 import type { Provider } from './provider.js'
 import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
 import { requireNonEmptyTask, validateTask } from './task.js'
-import type { PlanCost, PlanMode, PlanOptions, PlanResult, PlanRound } from './types.js'
+import type { PlanCost, PlanMode, PlanOptions, PlanResult, PlanRound, ReviewMode } from './types.js'
 
 export const VERSION: string = packageJson.version
 
@@ -40,6 +40,11 @@ Options:
                               balanced: Jev skips the rounds a run does not need
                               ultra: always cross-review, always merge (default: balanced)
       --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
+      --review-mode <standard|debate>
+                              debate: agents critique each other, authors answer,
+                              Jev rules on the disagreements (experimental; default: standard)
+      --claim-checks          In a debate, have two agents that read the repository
+                              check the disputed claims about it; implies debate
       --straggler-grace <s>   In balanced mode, how long a round waits for the agents
                               still working once half have answered; 0 waits for
                               every agent (default: 90)
@@ -198,10 +203,23 @@ async function newRunDir(cwd: string, now: Date): Promise<string> {
   }
 }
 
+/** What a debate round's raw answers are saved as, beside its plans. */
+const ARTIFACT_SUFFIX: Partial<Record<PlanRound['stage'], string>> = {
+  critique: 'critique',
+  reply: 'reply',
+  review: 'reply',
+  check: 'check',
+}
+
+const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+
 /**
  * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
  * `jev-verdict.json` beside a judged round's plans, `timings.json` in every
- * round, and `final/plan.md` last.
+ * round, and `final/plan.md` last. A debate round adds each agent's raw answer
+ * as `<agent>.critique.md`, `.reply.md` or `.check.md`, and what was parsed
+ * from them as `objections.json`, `replies.json` and `disputes.json`; its
+ * critique and check rounds leave the plans unchanged, so write none.
  */
 async function writeRound(dir: string, round: PlanRound): Promise<void> {
   const folder = join(dir, round.stage === 'final' ? 'final' : `round${String(round.round)}`)
@@ -212,8 +230,36 @@ async function writeRound(dir: string, round: PlanRound): Promise<void> {
           'plan.md',
           `<!-- ${round.selected ? 'selected from' : 'merged by'} ${agent} -->\n${plan.trim()}\n`,
         ])
-      : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
-  if (round.verdict) files.push(['jev-verdict.json', `${JSON.stringify(round.verdict, null, 2)}\n`])
+      : round.stage === 'critique' || round.stage === 'check'
+        ? []
+        : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
+  const suffix = ARTIFACT_SUFFIX[round.stage]
+  if (round.artifacts && suffix !== undefined) {
+    for (const [agent, text] of Object.entries(round.artifacts)) {
+      files.push([`${agent}.${suffix}.md`, `${text.trim()}\n`])
+    }
+  }
+  const { debate } = round
+  if (debate) {
+    if (round.stage === 'critique') files.push(['objections.json', json(debate.objections)])
+    if (debate.replies) {
+      files.push([
+        'replies.json',
+        json({ replies: debate.replies, unanswered: debate.unanswered ?? [] }),
+      ])
+    }
+    if (debate.disputes) {
+      files.push([
+        'disputes.json',
+        json({
+          disputes: debate.disputes,
+          overflow: debate.overflow ?? [],
+          ...(debate.claimChecks ? { claimChecks: debate.claimChecks } : {}),
+        }),
+      ])
+    }
+  }
+  if (round.verdict) files.push(['jev-verdict.json', json(round.verdict)])
   files.push(['timings.json', `${JSON.stringify(round.timings, null, 2)}\n`])
   await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
 }
@@ -229,6 +275,9 @@ export function formatDuration(ms: number): string {
 
 const STAGE_NAMES: Record<PlanRound['stage'], string> = {
   draft: 'Drafts',
+  critique: 'Critiques',
+  reply: 'Replies',
+  check: 'Claim checks',
   review: 'Review',
   final: 'Final plan',
 }
@@ -251,6 +300,7 @@ export function costLine(cost: PlanCost): string {
     `${String(count)} ${thing}${count === 1 ? '' : 's'}`
   const parts = [
     `${cost.mode} mode`,
+    ...(cost.reviewMode === 'debate' ? ['debate review'] : []),
     plural(cost.agentCalls, 'agent call'),
     plural(cost.jevCalls, 'Jev call'),
     plural(cost.reviewRounds, 'cross-review round'),
@@ -281,6 +331,24 @@ function parseMode(value: string | undefined): PlanMode {
   throw new Error(`Invalid --mode value: ${value}. Expected balanced or ultra.`)
 }
 
+function parseReviewMode(
+  value: string | undefined,
+  claimChecks: boolean,
+  reviewRounds: number,
+): ReviewMode {
+  let mode: ReviewMode
+  if (value === undefined) mode = claimChecks ? 'debate' : 'standard'
+  else if (value === 'standard' || value === 'debate') mode = value
+  else throw new Error(`Invalid --review-mode value: ${value}. Expected standard or debate.`)
+  if (claimChecks && mode !== 'debate') {
+    throw new Error('--claim-checks runs in the debate review; drop --review-mode standard')
+  }
+  if (mode === 'debate' && reviewRounds === 0) {
+    throw new Error('--review-mode debate is a review round; it needs --review-rounds 1 or 2')
+  }
+  return mode
+}
+
 function parseStragglerGrace(value: string | undefined, mode: PlanMode): number | undefined {
   if (value === undefined) return undefined
   if (mode === 'ultra')
@@ -309,6 +377,8 @@ function parse(argv: readonly string[]) {
       finalizer: { type: 'string' },
       mode: { type: 'string' },
       'review-rounds': { type: 'string' },
+      'review-mode': { type: 'string' },
+      'claim-checks': { type: 'boolean', default: false },
       'straggler-grace': { type: 'string' },
       timeout: { type: 'string' },
       'no-resume': { type: 'boolean', default: false },
@@ -380,6 +450,9 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const jevModel = values['jev-model']
   const mode = parseMode(values.mode)
   const stragglerGraceMs = parseStragglerGrace(values['straggler-grace'], mode)
+  const maxReviewRounds = parseReviewRounds(values['review-rounds'])
+  const claimChecks = values['claim-checks']
+  const reviewMode = parseReviewMode(values['review-mode'], claimChecks, maxReviewRounds)
   if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
     throw new Error('Pass --rounds-dir or --no-rounds, not both')
   }
@@ -398,7 +471,9 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     cwd,
     timeoutMs: parseTimeout(values.timeout),
     mode,
-    maxReviewRounds: parseReviewRounds(values['review-rounds']),
+    maxReviewRounds,
+    ...(reviewMode === 'debate' ? { reviewMode } : {}),
+    ...(claimChecks ? { claimChecks } : {}),
     ...(stragglerGraceMs === undefined ? {} : { stragglerGraceMs }),
     ...(jevModel ? { jevModel } : {}),
     ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
@@ -438,6 +513,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
           verdict: result.verdict,
           finalizer: result.finalizer,
           ...(result.selected ? { selected: true } : {}),
+          ...(result.debate ? { debate: result.debate } : {}),
           timings: result.timings,
           cost: result.cost,
         },
