@@ -24,7 +24,9 @@ process before implementation starts:
 1. Two or more agents inspect the repository and draft plans independently.
 2. Jev scores completeness, feasibility, and risk coverage, and decides whether a cross-review
    would improve the plans.
-3. When it would, the agents review one another's work and revise their own plans.
+3. When it would, the agents review one another's work and revise their own plans, correcting
+   each other's facts and dropping the ideas that do not survive a second opinion
+   ([how it helps](https://jev-planner.com/learn/how-it-works/#what-the-cross-review-improves)).
 4. Jev selects a finalizer, which merges the strongest ideas into one plan — unless one reviewed
    plan already stands alone.
 
