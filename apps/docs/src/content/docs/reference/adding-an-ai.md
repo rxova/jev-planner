@@ -6,11 +6,11 @@ sidebar:
 ---
 
 Every agent comes from one list, `PROVIDERS` in `src/providers.ts`. The CLI flags, `--help`,
-`doctor`, the prompts and Jev's choices are all built from it, so adding an AI is one entry there.
+`doctor`, the prompts and Jev's choices are all built from it, so wiring up a new AI is one entry there.
 
 ## A chat API
 
-An OpenAI-compatible chat API — most are — is one `openAICompatibleProvider` call:
+An OpenAI-compatible chat API is one `openAICompatibleProvider` call:
 
 ```ts
 openAICompatibleProvider({
