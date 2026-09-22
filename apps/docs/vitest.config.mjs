@@ -14,6 +14,7 @@ import { defineConfig } from 'vitest/config'
  * a social card, just not a brand one. version-marker too: a wrong marker still
  * deploys, and only the post-release check would notice, ten minutes later.
  * check-live-site is that check; its network is injected, so it runs offline.
+ * remark-diagrams too: a drawing that no longer matches its Mermaid still renders.
  */
 export default defineConfig({
   test: {

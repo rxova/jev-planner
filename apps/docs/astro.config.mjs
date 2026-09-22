@@ -7,6 +7,7 @@ import starlightLinksValidator from 'starlight-links-validator'
 import sitemap from '@astrojs/sitemap'
 
 import { rehypeMdLinks } from './src/lib/rehype-md-links.mjs'
+import { remarkDiagrams } from './src/lib/remark-diagrams.mjs'
 import { assertReleaseVersion, manifestVersion } from './src/lib/version-marker.mjs'
 
 /**
@@ -42,7 +43,13 @@ export default defineConfig({
     // the `.md` twins need and what Astro emits verbatim into the HTML. One of
     // those two has to be rewritten, and rewriting the HTML is the side that
     // keeps the source readable as files.
+    //
+    // A ```mermaid fence is drawn from src/diagrams/, since Mermaid itself does
+    // not run on this site; the `.md` twin keeps the fence as it is.
     processor: unified({
+      remarkPlugins: [
+        [remarkDiagrams, { dir: fileURLToPath(new URL('src/diagrams', import.meta.url)) }],
+      ],
       rehypePlugins: [
         [
           rehypeMdLinks,

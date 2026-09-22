@@ -18,6 +18,16 @@ The words this page uses:
 - **Cross-review**: a round in which each agent reads the others' plans and revises its own.
 - **Finalizer**: the agent that merges the plans into one at the end.
 
+```mermaid diagram=pipeline caption="One run, from a task to one plan. The dashed step runs only when Jev asks for it."
+flowchart TD
+  task["Task and repository"] --> drafts["Every agent drafts a plan<br>in parallel; none sees another"]
+  drafts --> jev["Jev judges the plans<br>scores, a finalizer, two probabilities"]
+  jev -.->|"another pass ≥ 0.65"| review["Cross-review<br>each agent revises against the others"]
+  review -.-> jev
+  jev --> finish["Adopt one plan, or merge them"]
+  finish --> plan["One final plan"]
+```
+
 ## 1. Independent drafts
 
 Each agent — Codex and Claude by default — drafts a plan independently, all in parallel. None of
@@ -111,6 +121,33 @@ exception, and that is its trade.
 
 All three modes start the same way: every agent writes its own plan, at the same time. They differ in
 what happens next.
+
+```mermaid diagram=mode-fast,mode-balanced,mode-ultra caption="The three modes, with the round times from the runs on Modes compared. A dashed step runs only when Jev asks for it."
+flowchart TD
+  subgraph fast["fast"]
+    fd["Every agent drafts"] --> fj["Jev judges each draft<br>alone, as it arrives"]
+    fj --> fa["first ≥ 0.5<br>That draft<br>is the plan"]
+    fj --> fm["none ≥ 0.5<br>All judged,<br>then merged"]
+    ft["Its run: 221 s, 54 s"]
+  end
+  subgraph balanced["balanced"]
+    bd["Every agent drafts"] --> bj["Jev judges the drafts"]
+    bj -.->|"another pass ≥ 0.65"| br["Cross-review, Jev again<br>up to twice"]
+    br --> ba["reviewed,<br>rated ≥ 0.7<br>Adopt the<br>strongest"]
+    br --> bm["otherwise<br>One agent<br>merges"]
+    bj --> bm
+    bt["Its run: 239 s, 113 s, 116 s, 53 s"]
+  end
+  subgraph ultra["ultra"]
+    ud["Every agent drafts"] --> ur["Cross-review, always<br>then Jev judges"]
+    ur -.->|"another pass ≥ 0.65"| u2["Second cross-review"]
+    ur --> um["by default<br>One agent<br>merges"]
+    u2 --> um
+    u2 --> us["--finalizer<br>none<br>The stronger<br>plan, as is"]
+    ur --> us
+    ut["Its run: 178 s, 80 s, 85 s, 54 s"]
+  end
+```
 
 - **`ultra` always runs the first cross-review.** The agents always read each other's plans and
   improve their own, Jev may ask for a second pass, and one agent merges the plans, unless

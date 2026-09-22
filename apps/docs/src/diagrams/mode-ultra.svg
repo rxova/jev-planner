@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mode-ultra-title mode-ultra-desc" width="240" height="391" viewBox="0 0 240 391" font-size="13" fill="currentColor">
+<title id="mode-ultra-title">ultra</title>
+<desc id="mode-ultra-desc">Every agent drafts, then always cross-reviews the others, and Jev judges. A second cross-review runs when Jev rates another pass 0.65 or more. Then one agent merges, unless --finalizer none is set and Jev rates one plan stronger. The saved run took 178 s, 80 s, 85 s and 54 s.</desc>
+<defs><marker id="mode-ultra-head" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<text class="main" x="120" y="22" text-anchor="middle" font-weight="600" font-size="15">ultra</text>
+<rect class="box" x="8" y="30" width="224" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="53" text-anchor="middle" font-weight="600">Every agent drafts</text>
+<path class="edge" d="M120 63V86" marker-end="url(#mode-ultra-head)"/>
+<rect class="box" x="8" y="93" width="224" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="116" text-anchor="middle" font-weight="600">Cross-review, always</text>
+<text class="note" x="120" y="133" text-anchor="middle">then Jev judges</text>
+<path class="edge" d="M120 143V195" marker-end="url(#mode-ultra-head)"/>
+<text class="label" x="128" y="169">another pass</text>
+<text class="label" x="128" y="184">≥ 0.65</text>
+<rect class="box optional" x="8" y="202" width="224" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="225" text-anchor="middle" font-weight="600">Second cross-review</text>
+<path class="edge" d="M120 235V250H61.5V266" marker-end="url(#mode-ultra-head)"/>
+<path class="edge" d="M120 235V250H178.5V266" marker-end="url(#mode-ultra-head)"/>
+<rect class="box" x="8" y="273" width="107" height="84" rx="6" fill="none" stroke="currentColor"/>
+<text class="note" x="61.5" y="296" text-anchor="middle">by default</text>
+<text class="main" x="61.5" y="313" text-anchor="middle" font-weight="600">One agent</text>
+<text class="main" x="61.5" y="330" text-anchor="middle" font-weight="600">merges</text>
+<rect class="box result" x="125" y="273" width="107" height="84" rx="6" fill="none" stroke="currentColor"/>
+<text class="note" x="178.5" y="296" text-anchor="middle">--finalizer</text>
+<text class="note" x="178.5" y="313" text-anchor="middle">none</text>
+<text class="main" x="178.5" y="330" text-anchor="middle" font-weight="600">The stronger</text>
+<text class="main" x="178.5" y="347" text-anchor="middle" font-weight="600">plan, as is</text>
+<text class="note" x="120" y="379" text-anchor="middle">Its run: 178 s, 80 s, 85 s, 54 s</text>
+</svg>
