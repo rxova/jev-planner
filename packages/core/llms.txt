@@ -11,6 +11,9 @@
 
 ## Install
 
+Not on npm yet: it is private for now, and `jev-planner` bundles it and
+re-exports the planner, the providers and the types. Once published:
+
     npm install @rxova/planner-core
 
 For the ready CLI, judged by TypeSafe's Jev, install `jev-planner` instead; it
