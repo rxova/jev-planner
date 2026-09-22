@@ -1,3 +1,4 @@
+import type { JudgeConfig } from './config.js'
 import type { Provider } from './provider.js'
 import { runProcess } from './process.js'
 
@@ -41,12 +42,19 @@ export function envCheck(
   return { name, ok: set, detail: `${variable} is ${set ? 'set' : 'not set'}` }
 }
 
-/** Each provider's own checks, in order, then the TypeSafe key Jev needs. No paid call. */
+/**
+ * Each provider's own checks, in order, then the TypeSafe key when TypeSafe's
+ * Jev judges. The graph judge's panel providers are among `providers`. No paid call.
+ */
 export async function runDoctor(
   cwd: string,
   providers: readonly Provider[],
   env: Readonly<Record<string, string | undefined>> = process.env,
+  judge: JudgeConfig['kind'] = 'typesafe',
 ): Promise<CheckResult[]> {
   const checks = await Promise.all(providers.map((provider) => provider.doctor(cwd, env)))
-  return [...checks.flat(), envCheck('TypeSafe key', 'TYPESAFE_API_KEY', env)]
+  return [
+    ...checks.flat(),
+    ...(judge === 'typesafe' ? [envCheck('TypeSafe key', 'TYPESAFE_API_KEY', env)] : []),
+  ]
 }

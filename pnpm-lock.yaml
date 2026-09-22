@@ -278,6 +278,12 @@ importers:
 
   packages/jev-planner:
     dependencies:
+      '@rxova/journey-core':
+        specifier: link:../../../journey/packages/core
+        version: link:../../../journey/packages/core
+      '@rxova/journey-judge':
+        specifier: link:../../../journey/packages/judge
+        version: link:../../../journey/packages/judge
       '@typesafe-ai/sdk':
         specifier: ^0.6.0
         version: 0.6.0

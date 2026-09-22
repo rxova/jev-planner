@@ -149,6 +149,27 @@ function claudeArgs(session: string[], { model, effort }: Overrides): string[] {
 }
 
 /**
+ * `claude --print` as a judge: no tools, no MCP servers and no session, so it
+ * answers from its prompt alone.
+ */
+function claudeJudgeArgs({ model }: { model?: string }): string[] {
+  return [
+    '--print',
+    '--permission-prompts',
+    'none',
+    '--no-session-persistence',
+    '--output-format',
+    'stream-json',
+    // Required by stream-json with --print.
+    '--verbose',
+    '--tools',
+    '',
+    '--strict-mcp-config',
+    ...(model ? ['--model', model] : []),
+  ]
+}
+
+/**
  * Every AI jev-planner can plan with. To add one, add an entry here, and the
  * agent to `config.schema.json` and its copy in `apps/docs/public/`, which a
  * test keeps in step: the CLI, `doctor`, `--help`, the config, the prompts and
@@ -187,6 +208,7 @@ export const PROVIDERS: readonly Provider[] = [
     label: 'Claude',
     command: 'claude',
     args: (overrides) => claudeArgs(['--no-session-persistence'], overrides),
+    judgeArgs: claudeJudgeArgs,
     sessions: {
       start: (overrides, id) => claudeArgs(['--session-id', id], overrides),
       resume: (overrides, id) => claudeArgs(['--resume', id], overrides),

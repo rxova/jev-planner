@@ -217,6 +217,72 @@ describe('parseConfig', () => {
     )
   })
 
+  describe('judge', () => {
+    it('reads TypeSafe, and the graph judge with its panel, in milliseconds per call', () => {
+      expect(parse({ judge: { kind: 'typesafe' } }).judge).toEqual({ kind: 'typesafe' })
+      expect(
+        parse({
+          judge: {
+            kind: 'graph',
+            panel: [{ provider: 'claude', model: ' haiku ', weight: 2 }, { provider: 'deepseek' }],
+            samples: 3,
+            maxCalls: 12,
+            timeout: 1.5,
+            rules: { claimChecks: true },
+          },
+        }).judge,
+      ).toEqual({
+        kind: 'graph',
+        panel: [{ provider: 'claude', model: 'haiku', weight: 2 }, { provider: 'deepseek' }],
+        samples: 3,
+        maxCalls: 12,
+        timeoutMs: 1_500,
+        claimChecks: true,
+      })
+      expect(
+        parse({ judge: { kind: 'graph', panel: [{ provider: 'glm' }], rules: {} } }).judge,
+      ).toEqual({ kind: 'graph', panel: [{ provider: 'glm' }] })
+    })
+
+    it('checks the kind, the panel and each setting, and names the key', () => {
+      const graph = (settings: object) => ({
+        judge: { kind: 'graph', panel: [{ provider: 'claude' }], ...settings },
+      })
+      rejects({ judge: [] }, 'judge: must be an object')
+      rejects({ judge: {} }, 'judge.kind: must be one of "typesafe", "graph"')
+      rejects({ judge: { kind: 'typesafe', panel: [] } }, 'judge.panel: unknown key')
+      rejects({ judge: { kind: 'graph' } }, 'judge.panel: must list at least one model')
+      rejects(graph({ panel: [] }), 'judge.panel: must list at least one model')
+      rejects(graph({ panel: [{ provider: 'nope' }] }), 'judge.panel[0].provider: must be one of')
+      rejects(
+        graph({ panel: [{ provider: 'claude', effort: 'high' }] }),
+        'judge.panel[0].effort: unknown key',
+      )
+      rejects(
+        graph({ panel: [{ provider: 'claude', model: '' }] }),
+        'judge.panel[0].model: must be',
+      )
+      rejects(
+        graph({ panel: [{ provider: 'kimi', weight: 0 }] }),
+        'judge.panel[0].weight: must be a positive number',
+      )
+      rejects(
+        graph({ panel: [{ provider: 'kimi', weight: '1' }] }),
+        'judge.panel[0].weight: must be a positive number',
+      )
+      rejects(graph({ samples: 0 }), 'judge.samples: must be a whole number, 1 or more')
+      rejects(graph({ maxCalls: 1.5 }), 'judge.maxCalls: must be a whole number, 1 or more')
+      rejects(graph({ samples: '3' }), 'judge.samples: must be a whole number, 1 or more')
+      rejects(graph({ timeout: 0 }), 'judge.timeout: must be a positive number of seconds')
+      rejects(graph({ rules: { tooShort: true } }), 'judge.rules.tooShort: unknown key')
+      rejects(
+        graph({ rules: { claimChecks: 1 } }),
+        'judge.rules.claimChecks: must be true or false',
+      )
+      rejects(graph({ apiKey: 'x' }), 'judge.apiKey: a config never holds a secret')
+    })
+  })
+
   it('takes cwd only from a file passed with --config', () => {
     rejects({ cwd: 'app' }, 'cwd: allowed only in a file passed with --config')
     expect(parse({ cwd: 'app' }, true).cwd).toBe('/repo/app')

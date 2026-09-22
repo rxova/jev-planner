@@ -1,0 +1,5 @@
+---
+'jev-planner': minor
+---
+
+Add an experimental graph judge: `judge` in `jev-planner.json` (`{ "kind": "graph", "panel": [{ "provider": "claude", "model": "haiku" }, …] }`) asks Jev's questions of a panel of the providers' own models, through `@rxova/journey-judge`, instead of TypeSafe, so a run needs no `TYPESAFE_API_KEY`. Rules settle what they can without a call — every plan too short to stand alone, and with `rules.claimChecks` a dispute its claim check settled — and questions the run will not read take their fallback. `samples`, `maxCalls` and `timeout` bound the panel's calls. Each judged round folder gains `judge.json`, the judge's trail; `doctor` checks the panel's providers and leaves out the TypeSafe key. `{ "kind": "typesafe" }` is the default, so existing configs are unchanged. New in the API: `GraphJevJudge`, `GraphJevOptions`, `judgePanel`, `JudgeSetup`, `PanelEntry`, `JudgeConfig`, `Provider.judge`, `CliProviderConfig.judgeArgs`, `JevVerdict.trail`, the `progress` input of `JevJudge.judge`, and `runDoctor`'s `judge` argument. The CLI now loads the TypeSafe SDK only when TypeSafe judges.

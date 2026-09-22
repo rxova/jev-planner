@@ -56,6 +56,7 @@ Each key stands for the flag of the same name.
 | `output`                                             | `--output`                                      | A path                                                          |
 | `task` or `taskFile`                                 | The task, or `--file`                           | The task to plan when none is given; set one, not both          |
 | `cwd`                                                | `--cwd`                                         | Only in a file passed with `--config`                           |
+| `judge`                                              | —                                               | Who judges: `typesafe`, or the [graph judge](./graph-judge.md)  |
 
 A key that is a provider's id is that provider. Any other key names an agent, and says which provider
 it runs on, so one provider can be two agents:
@@ -113,6 +114,6 @@ Rules between settings are checked on the result, as for flags: `stragglerGrace`
 
 The file is meant to be committed, so it never holds a secret. A key such as `apiKey` or `token` is
 rejected, with the variable to set instead: `TYPESAFE_API_KEY` for Jev and each chat API's own, such
-as `DEEPSEEK_API_KEY`. The [agents reference](../reference/agents.md) lists them.
+as `DEEPSEEK_API_KEY`, which a graph judge's panel uses too. The [agents reference](../reference/agents.md) lists them.
 
 An unrelated `jev-planner.json` already in a repository is read too; `--no-config` skips it.

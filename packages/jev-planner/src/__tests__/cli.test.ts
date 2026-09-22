@@ -1227,6 +1227,113 @@ describe('the config file', () => {
   })
 })
 
+describe('the graph judge', () => {
+  const graph = {
+    judge: {
+      kind: 'graph',
+      panel: [{ provider: 'claude', model: 'haiku' }, { provider: 'deepseek' }],
+    },
+  }
+  const env = { DEEPSEEK_API_KEY: 'key' }
+  const trail: JevVerdict['trail'] = {
+    path: ['rules', 'panel'],
+    answers: {},
+    samples: [],
+    calls: 4,
+  }
+  const judged: JevVerdict = { ...verdict, model: 'claude/haiku+deepseek', trail }
+
+  async function config(settings: unknown) {
+    await writeFile(join(dir, 'jev-planner.json'), JSON.stringify(settings))
+  }
+
+  it('needs no TypeSafe key, and hands the configured judge to the planner', async () => {
+    await config(graph)
+    const createPlanner = vi.fn<CliDeps['createPlanner']>(() => ({
+      plan: () => Promise.resolve(result),
+    }))
+    const h = harness({ env, createPlanner })
+    await expect(main(['task'], h.deps)).resolves.toBe(0)
+    expect(createPlanner.mock.calls[0]?.[0].judge).toEqual({
+      kind: 'graph',
+      panel: [{ provider: 'claude', model: 'haiku' }, { provider: 'deepseek' }],
+    })
+    expect(h.stderr()).not.toContain('--jev-model')
+  })
+
+  it('hands TypeSafe to the planner when the config names no judge', async () => {
+    const createPlanner = vi.fn<CliDeps['createPlanner']>(() => ({
+      plan: () => Promise.resolve(result),
+    }))
+    await expect(main(['task'], harness({ createPlanner }).deps)).resolves.toBe(0)
+    expect(createPlanner.mock.calls[0]?.[0].judge).toEqual({ kind: 'typesafe' })
+  })
+
+  it("rejects a panel model whose provider's key is not set, before planning", async () => {
+    await config(graph)
+    const h = harness({ env: { TYPESAFE_API_KEY: 'key' } })
+    await expect(main(['task'], h.deps)).resolves.toBe(1)
+    expect(h.planned()).toBeUndefined()
+    expect(h.stderr()).toContain(
+      'jev-planner: DEEPSEEK_API_KEY is not set, so DeepSeek cannot judge on the panel\n',
+    )
+  })
+
+  it('warns that --jev-model does nothing for the graph judge', async () => {
+    await config(graph)
+    const h = harness({ env })
+    await expect(main(['--jev-model', 'jev-custom', 'task'], h.deps)).resolves.toBe(0)
+    expect(h.stderr()).toContain(
+      "[jev-planner] --jev-model is ignored: the graph judge's panel names its models\n",
+    )
+  })
+
+  it('writes the trail to judge.json, and keeps it out of the verdict and the output', async () => {
+    const round: PlanRound = {
+      round: 1,
+      stage: 'draft',
+      plans: { codex: 'codex draft' },
+      verdict: judged,
+      timings: { totalMs: 10, agents: {} },
+    }
+    const h = harness({
+      env,
+      createPlanner: () => ({
+        plan: async (options) => {
+          await options.onRound?.(round)
+          return { ...result, verdict: judged }
+        },
+      }),
+    })
+    await config(graph)
+    const argv = ['--rounds-dir', 'out', '--json', '--verbose', 'task']
+    await expect(main(argv, h.deps)).resolves.toBe(0)
+    const read = (path: string) => readFile(join(dir, 'out/round1', path), 'utf8')
+    expect(JSON.parse(await read('jev-verdict.json'))).toEqual({ ...verdict, model: judged.model })
+    expect(JSON.parse(await read('judge.json'))).toEqual(trail)
+    expect(JSON.parse(h.stdout())).not.toHaveProperty('verdict.trail')
+    expect(h.stderr()).not.toContain('"samples"')
+  })
+
+  it('runs doctor over the agents and the panel, without the TypeSafe check', async () => {
+    await config(graph)
+    const doctor = vi.fn<CliDeps['doctor']>(() => Promise.resolve([]))
+    await main(['doctor', '--agents', 'codex,claude'], harness({ doctor }).deps)
+    expect(doctor.mock.calls[0]?.[1].map(({ id }) => id)).toEqual(['codex', 'claude', 'deepseek'])
+    expect(doctor.mock.calls[0]?.[2]).toBe('graph')
+  })
+
+  it('runs doctor with the TypeSafe check by default', async () => {
+    const doctor = vi.fn<CliDeps['doctor']>(() => Promise.resolve([]))
+    await main(['doctor'], harness({ doctor }).deps)
+    expect(doctor.mock.calls[0]?.[2]).toBe('typesafe')
+  })
+
+  it('names the graph judge in the help', () => {
+    expect(HELP).toContain('not for the graph judge')
+  })
+})
+
 describe('several agents from one provider', () => {
   async function failure(argv: string[]): Promise<string> {
     const h = harness()
@@ -1392,6 +1499,7 @@ describe('several agents from one provider', () => {
         ],
         models: { sol: 'gpt-a' },
         efforts: { terra: 'high' },
+        judge: { kind: 'typesafe' },
       },
       {},
       [],

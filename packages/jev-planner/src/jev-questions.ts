@@ -69,7 +69,8 @@ function agentOptions(plans: readonly JudgedPlan[], describe: (label: string) =>
   return Object.fromEntries(plans.map(({ agent, label }) => [agent, describe(label)]))
 }
 
-function labelOf(plans: readonly JudgedPlan[], agent: AgentName): string {
+/** How the plans name an agent: its label, or its name when no plan is its. */
+export function labelOf(plans: readonly JudgedPlan[], agent: AgentName): string {
   return plans.find((plan) => plan.agent === agent)?.label ?? agent
 }
 

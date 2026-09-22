@@ -95,7 +95,8 @@ an agent never sees another provider's credentials.
 - Node.js 20.19 or newer
 - For each agent CLI you select: the CLI, already logged in
 - For each chat API you select: its API key in the environment
-- A TypeSafe API key from <https://console.typesafe.ai/keys>
+- A TypeSafe API key from <https://console.typesafe.ai/keys>, unless the
+  [graph judge](#graph-judge-experimental) judges
 
 The implementation uses the official [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript)
 and defaults to the SDK's `jev-latest` model alias.
@@ -219,6 +220,8 @@ Each key stands for the flag of the same name: `agents` with each agent's `model
 (`"sol": { "provider": "codex" }`); `mode`, `reviewMode`, `reviewRounds`, `claimChecks`, `finalizer`, `jevModel`,
 `stragglerGrace` and `timeout` (seconds); `resume`, `rounds`, `json`, `verbose` and
 `allowAnyTask`; `output`; `task` or `taskFile`; and `cwd`, only in a file passed with `--config`.
+`judge`, which has no flag, picks who judges: `{ "kind": "typesafe" }`, the default, or the
+[graph judge](#graph-judge-experimental).
 `runsDir` is a folder in which each run gets its own timestamped folder. Paths are relative to the
 file, and an unknown key or a wrong type is an error that names the key.
 
@@ -325,6 +328,36 @@ A debate costs 2N agent calls where a cross-review costs N, plus one call per ag
 claim. It never runs with `--review-rounds 0`. The rounds folder keeps each critique, reply and check
 as `<agent>.critique.md`, `.reply.md` and `.check.md`, beside `objections.json`, `replies.json` and
 `disputes.json`; from code, `PlanRound.debate` and `PlanResult.debate` carry the same.
+
+### Graph judge (experimental)
+
+`judge` in `jev-planner.json` can hand Jev's questions to a panel of the providers' own models,
+through [`@rxova/journey-judge`](https://www.npmjs.com/package/@rxova/journey-judge), instead of
+TypeSafe. No `TYPESAFE_API_KEY` is needed; each panel model runs on its provider's login or key.
+
+```json
+{
+  "judge": {
+    "kind": "graph",
+    "panel": [
+      { "provider": "claude", "model": "haiku" },
+      { "provider": "deepseek", "weight": 2 }
+    ],
+    "samples": 3,
+    "maxCalls": 12,
+    "timeout": 60,
+    "rules": { "claimChecks": true }
+  }
+}
+```
+
+Rules answer what they can without a call (every plan too short to stand alone; a claim check
+settling its dispute, with `rules.claimChecks`), and a question whose answer the run will not read
+takes its fallback. The panel samples the rest, up to `maxCalls` model calls a verdict, each billed
+to its provider. Each judged round gets a `judge.json` with every answer's source and sample, and
+the verdict's `model` names the panel and what the rules settled. `--jev-model` is ignored. In code,
+`new GraphJevJudge({ panel: judgePanel(entries, setup) })` is a `JevJudge` for `Planner`. The
+[graph judge guide](https://jev-planner.com/guides/graph-judge/) has the details.
 
 ## Following a run round by round
 

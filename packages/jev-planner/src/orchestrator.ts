@@ -268,6 +268,11 @@ export class Planner {
             })),
             ...(disputes.length > 0 ? { disputes } : {}),
             ...(options.jevModel ? { model: options.jevModel } : {}),
+            // `fast` never reviews, so no verdict of it can buy a review round.
+            progress: {
+              reviewRounds: cost.reviewRounds,
+              maxReviewRounds: mode === 'fast' ? 0 : maxReviewRounds,
+            },
           }),
         (ms) => {
           // `fast` judges several drafts alone in one round; the round shows them all.

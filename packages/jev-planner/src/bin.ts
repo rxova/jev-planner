@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { tmpdir } from 'node:os'
 import { createAgents, main } from './cli.js'
 import type { CliDeps } from './cli.js'
 import { runDoctor } from './doctor.js'
-import { TypeSafeJevJudge } from './jev.js'
+import { createJevJudge } from './judge-models.js'
 import { Planner } from './orchestrator.js'
 import { PROVIDERS } from './providers.js'
 
@@ -26,8 +27,12 @@ const deps: CliDeps = {
   cwd: () => process.cwd(),
   readStdin: readPipedStdin,
   createPlanner: (setup) =>
-    new Planner(createAgents(setup, process.env, omitEnv), new TypeSafeJevJudge()),
-  doctor: runDoctor,
+    new Planner(
+      createAgents(setup, process.env, omitEnv),
+      // A CLI judge runs outside the repository, so it reads none of its instructions.
+      createJevJudge(setup.judge, { cwd: tmpdir(), omitEnv, env: process.env }),
+    ),
+  doctor: (cwd, providers, judge) => runDoctor(cwd, providers, process.env, judge),
   now: () => new Date(),
 }
 

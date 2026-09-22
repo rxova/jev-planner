@@ -275,6 +275,33 @@ describe('claude', () => {
     expect(run.mock.calls[0]?.[1].slice(-2)).toEqual(['--effort', 'low'])
   })
 
+  it('judges with no tools, no MCP servers and no session', async () => {
+    const judge = provider('claude').judge?.({ cwd: '/repo', ...setup, model: 'haiku' })
+    const signal = new AbortController().signal
+    await expect(judge?.({ system: 's', prompt: 'p', schema: {}, signal })).resolves.toBe(
+      'the plan',
+    )
+    const [command, args, options] = run.mock.calls[0]!
+    expect(command).toBe('claude')
+    expect(args.join(' ')).toContain('--output-format stream-json --verbose')
+    expect(args).toContain('--no-session-persistence')
+    expect(args).toContain('--strict-mcp-config')
+    expect(args[args.indexOf('--tools') + 1]).toBe('')
+    expect(args).not.toContain('--permission-mode')
+    expect(args.slice(-2)).toEqual(['--model', 'haiku'])
+    expect(options).toMatchObject({ omitEnv: setup.omitEnv, signal })
+  })
+
+  it('judges with its default model when the panel names none', async () => {
+    await provider('claude').judge?.({ cwd: '/repo', ...setup })({
+      system: 's',
+      prompt: 'p',
+      schema: {},
+      signal: new AbortController().signal,
+    })
+    expect(run.mock.calls[0]?.[1]).not.toContain('--model')
+  })
+
   describe('auth check', () => {
     function authWith(status: () => Promise<{ stdout: string; stderr: string; exitCode: number }>) {
       run.mockImplementation((_command, args) =>

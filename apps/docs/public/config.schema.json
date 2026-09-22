@@ -190,6 +190,82 @@
       "minLength": 1,
       "description": "As --jev-model."
     },
+    "judge": {
+      "description": "Who judges the plans. typesafe, the default, is TypeSafe's Jev and needs TYPESAFE_API_KEY. graph is a panel of the providers' own models: rules settle what they can, the panel samples the rest. No flag sets it.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "const": "typesafe"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "panel"],
+          "properties": {
+            "kind": {
+              "const": "graph"
+            },
+            "panel": {
+              "type": "array",
+              "minItems": 1,
+              "description": "The models that answer, in turn. Each provider's CLI or API key must be ready.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["provider"],
+                "properties": {
+                  "provider": {
+                    "enum": ["codex", "claude", "deepseek", "kimi", "glm"],
+                    "description": "The provider whose model judges."
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Its model; the provider's default otherwise."
+                  },
+                  "weight": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "How much its vote counts; 1 otherwise."
+                  }
+                }
+              }
+            },
+            "samples": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Samples per question round."
+            },
+            "maxCalls": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Model calls one verdict may make, retries included."
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Seconds for each model call."
+            },
+            "rules": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "claimChecks": {
+                  "type": "boolean",
+                  "description": "Let an agent's claim check settle its dispute without the panel."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
     "stragglerGrace": {
       "type": "number",
       "minimum": 0,

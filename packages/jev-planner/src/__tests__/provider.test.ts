@@ -6,6 +6,7 @@ import {
   API_AGENT_SYSTEM_PROMPT,
   brief,
   cliProvider,
+  judgePrompt,
   openAICompatibleProvider,
 } from '../provider.js'
 import { repoSnapshot } from '../repo-context.js'
@@ -19,6 +20,12 @@ vi.mock('../repo-context.js', () => ({ repoSnapshot: vi.fn() }))
 const run = vi.mocked(runProcess)
 const snapshot = vi.mocked(repoSnapshot)
 const request = { prompt: 'plan it', cwd: '/repo', timeoutMs: 2_000 }
+const judgeRequest = {
+  system: 'You judge.',
+  prompt: 'Which plan?',
+  schema: { type: 'object' },
+  signal: new AbortController().signal,
+}
 
 beforeEach(() => {
   run.mockReset()
@@ -40,6 +47,14 @@ describe('agentLabel', () => {
     const codex = { id: 'codex', label: 'Codex' }
     expect(agentLabel(codex, 'codex')).toBe('Codex')
     expect(agentLabel(codex, 'sol')).toBe('Codex (sol)')
+  })
+})
+
+describe('judgePrompt', () => {
+  it('ends with the schema, and starts with the system prompt only when asked', () => {
+    const schema = 'The JSON object must match this JSON Schema:\n{"type":"object"}'
+    expect(judgePrompt(judgeRequest, true)).toBe(`You judge.\n\nWhich plan?\n\n${schema}`)
+    expect(judgePrompt(judgeRequest, false)).toBe(`Which plan?\n\n${schema}`)
   })
 })
 
@@ -288,6 +303,39 @@ describe('cliProvider', () => {
     })
   })
 
+  describe('judge', () => {
+    it('answers on stdin with judgeArgs, withholding secrets and passing the signal', async () => {
+      run.mockResolvedValue({ stdout: ' {"a":1} ', stderr: '', exitCode: 0 })
+      const judgeArgs = vi.fn(() => ['judge'])
+      const judge = cliProvider({ ...config, judgeArgs }).judge?.({
+        cwd: '/repo',
+        omitEnv: ['SECRET'],
+        env: {},
+        model: 'm',
+      })
+      await expect(judge?.(judgeRequest)).resolves.toBe('{"a":1}')
+      expect(judgeArgs).toHaveBeenCalledWith({ model: 'm' })
+      const [command, args, options] = run.mock.calls[0]!
+      expect(command).toBe('tool')
+      expect(args).toEqual(['judge'])
+      expect(options).toMatchObject({
+        cwd: '/repo',
+        input: judgePrompt(judgeRequest, true),
+        omitEnv: ['SECRET'],
+        signal: judgeRequest.signal,
+      })
+    })
+
+    it('falls back to args, with no overrides when no model is given', async () => {
+      run.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 })
+      const args = vi.fn(() => ['run'])
+      await cliProvider({ ...config, args }).judge?.({ cwd: '/repo', omitEnv: [], env: {} })(
+        judgeRequest,
+      )
+      expect(args).toHaveBeenCalledWith({})
+    })
+  })
+
   it('checks only the CLI when it has no auth check', async () => {
     run.mockResolvedValue({ stdout: 'tool 1', stderr: '', exitCode: 0 })
     await expect(cliProvider(config).doctor('/repo', {})).resolves.toEqual([
@@ -489,6 +537,65 @@ describe('openAICompatibleProvider', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  describe('judge', () => {
+    it('asks for a JSON object, with the schema in the prompt and the temperature given', async () => {
+      const send = vi.fn<typeof fetch>().mockResolvedValue(completion(' {"a":1} '))
+      const judge = provider.judge?.({ cwd: '/repo', omitEnv: [], env, fetch: send })
+      await expect(judge?.({ ...judgeRequest, temperature: 0.7 })).resolves.toBe('{"a":1}')
+
+      const [url, init] = send.mock.calls[0]!
+      expect(url).toBe('https://api.acme.test/v1/chat/completions')
+      expect(init?.headers).toEqual({
+        'content-type': 'application/json',
+        authorization: 'Bearer sk-test',
+      })
+      expect(init?.signal).toBe(judgeRequest.signal)
+      expect(JSON.parse(init?.body as string)).toEqual({
+        model: 'acme-default',
+        messages: [
+          { role: 'system', content: 'You judge.' },
+          { role: 'user', content: judgePrompt(judgeRequest, false) },
+        ],
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+      })
+      expect(snapshot).not.toHaveBeenCalled()
+    })
+
+    it("uses the panel's model, and sends no temperature when none is given", async () => {
+      const send = vi.fn<typeof fetch>().mockResolvedValue(completion('{}'))
+      await provider.judge?.({ cwd: '/repo', omitEnv: [], env, fetch: send, model: 'big' })(
+        judgeRequest,
+      )
+      const body = JSON.parse(send.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>
+      expect(body.model).toBe('big')
+      expect(body).not.toHaveProperty('temperature')
+    })
+
+    it('refuses to run without its key, and reports a failed response', async () => {
+      const send = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response('slow down', { status: 429 }))
+      await expect(
+        provider.judge?.({ cwd: '/repo', omitEnv: [], env: {}, fetch: send })(judgeRequest),
+      ).rejects.toThrow('ACME_API_KEY is not set, so Acme judge cannot run')
+      await expect(
+        provider.judge?.({ cwd: '/repo', omitEnv: [], env, fetch: send })(judgeRequest),
+      ).rejects.toThrow('Acme judge API failed with status 429: slow down')
+    })
+
+    it('uses the global fetch by default', async () => {
+      const send = vi.fn<typeof fetch>().mockResolvedValue(completion('{}'))
+      vi.stubGlobal('fetch', send)
+      try {
+        await provider.judge?.({ cwd: '/repo', omitEnv: [], env })(judgeRequest)
+        expect(send).toHaveBeenCalledOnce()
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
   })
 
   it('checks the key without printing it', async () => {

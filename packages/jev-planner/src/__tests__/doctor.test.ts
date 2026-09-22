@@ -103,6 +103,12 @@ describe('runDoctor', () => {
     ])
   })
 
+  it('leaves out the TypeSafe key when the graph judge judges', async () => {
+    await expect(runDoctor('/repo', [fakeProvider('a', true)], {}, 'graph')).resolves.toEqual([
+      { name: 'a check', ok: true, detail: '/repo' },
+    ])
+  })
+
   it('reads process.env by default', async () => {
     vi.stubEnv('TYPESAFE_API_KEY', '')
     await expect(runDoctor('/repo', [])).resolves.toEqual([

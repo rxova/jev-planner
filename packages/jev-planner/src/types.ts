@@ -1,3 +1,5 @@
+import type { JudgeTrail } from '@rxova/journey-judge'
+
 /** An agent's name in a run: its provider id (`codex`, `claude`, …) unless named (`sol`). */
 export type AgentName = string
 
@@ -188,7 +190,14 @@ export interface JevVerdict {
   standsAloneProbability: number
   /** Jev's ruling on each dispute it was given, in `debate` review; absent when it was given none. */
   disputes?: DisputeRuling[]
+  /**
+   * The judge that answered. For the graph judge, the panel's model ids, then
+   * `rule:<questions>` for the questions a rule settled and `abstained:<questions>`
+   * for those that took their fallback.
+   */
   model: string
+  /** How the graph judge reached this verdict: its path, each answer's source, every sample. */
+  trail?: JudgeTrail
 }
 
 /** One plan, for Jev: the agent that wrote it and the text. */
@@ -212,6 +221,11 @@ export interface JevJudge {
     /** In `debate` review, the rejected objections to rule on alongside the plans. */
     disputes?: readonly Dispute[]
     model?: string
+    /**
+     * Where the run stands, so a judge can leave out a question whose answer
+     * cannot change what the run does next. `TypeSafeJevJudge` ignores it.
+     */
+    progress?: { reviewRounds: number; maxReviewRounds: number }
   }): Promise<JevVerdict>
 }
 

@@ -119,6 +119,8 @@ jev-planner \
 - `--review-rounds <0|1|2>` caps the cross-reviews; `0` skips them.
 - `--review-mode debate` (experimental) turns the cross-review into critiques, replies and Jev's
   ruling on each disagreement ([debate review](https://jev-planner.com/guides/debate-review/)).
+- `judge` in `jev-planner.json` (experimental) swaps Jev for a panel of the agents' own models, with
+  no TypeSafe key ([graph judge](https://jev-planner.com/guides/graph-judge/)).
 
 ```text
 .jev-planner/20260921-230512/

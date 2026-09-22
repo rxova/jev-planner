@@ -3,13 +3,15 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import packageJson from '../package.json' with { type: 'json' }
 import { CONFIG_FILE, findConfig, validateAgentName } from './config.js'
-import type { ConfigValues } from './config.js'
+import type { ConfigValues, JudgeConfig } from './config.js'
 import type { CheckResult } from './doctor.js'
+import { panelProviders } from './judge-models.js'
 import { agentLabel } from './provider.js'
 import type { AgentSetup, Provider } from './provider.js'
 import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
 import { requireNonEmptyTask, STDIN_CONFLICT_MESSAGE, validateTask } from './task.js'
 import type {
+  JevVerdict,
   PlanCost,
   PlanMode,
   PlanningAgent,
@@ -50,7 +52,7 @@ Options:
   -e, --effort <name>=<level> Override one agent's reasoning effort; repeatable
       --review-effort <name>=<level>
                               The effort for its cross-review and synthesis only; repeatable
-      --jev-model <model>     Override Jev (default: SDK's jev-latest)
+      --jev-model <model>     Override Jev (default: SDK's jev-latest); not for the graph judge
       --finalizer <name>      auto, none, or one of the agents (default: auto/Jev decides);
                               none keeps a cross-reviewed plan Jev rates stronger, unmerged
       --mode <fast|balanced|ultra>
@@ -83,7 +85,8 @@ ${PROVIDERS.map(agentLine).join('\n')}
 The task can also be piped on stdin. A flag given here beats the config; --json,
 --verbose, --claim-checks and --allow-any-task each have a --no- form, and --resume
 and --rounds turn back on what the config turned off. Agent CLIs use their existing
-logins. Jev requires TYPESAFE_API_KEY, which the config never holds.`
+logins. Jev requires TYPESAFE_API_KEY, which the config never holds, unless the
+config's judge is the graph judge: a panel of the providers' own models.`
 
 /** The planner surface the CLI drives; `Planner` in production, a fake in tests. */
 export interface PlanRunner {
@@ -107,6 +110,8 @@ export interface PlannerSetup {
   models: Readonly<Record<string, string>>
   /** `--effort` overrides, or a config agent's `effort`, by agent name. */
   efforts: Readonly<Record<string, string>>
+  /** Who judges the plans: the config's `judge`, TypeSafe's Jev by default. */
+  judge: JudgeConfig
 }
 
 /** The planner's agents for `setup`: each spec's provider, built under the spec's name and label. */
@@ -136,7 +141,12 @@ export interface CliDeps {
   /** The piped task, or `undefined` when stdin is a terminal. */
   readStdin: () => Promise<string | undefined>
   createPlanner: (setup: PlannerSetup) => PlanRunner
-  doctor: (cwd: string, providers: readonly Provider[]) => Promise<CheckResult[]>
+  /** `providers` includes the graph judge's panel providers when it judges. */
+  doctor: (
+    cwd: string,
+    providers: readonly Provider[],
+    judge: JudgeConfig['kind'],
+  ) => Promise<CheckResult[]>
   /** The clock that names a run's folder under `.jev-planner/`. */
   now: () => Date
 }
@@ -294,6 +304,13 @@ const ARTIFACT_SUFFIX: Partial<Record<PlanRound['stage'], string>> = {
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 
+/** A verdict without the graph judge's trail, which is long and has its own file. */
+function withoutTrail(verdict: JevVerdict): Omit<JevVerdict, 'trail'> {
+  const rest = { ...verdict }
+  delete rest.trail
+  return rest
+}
+
 /**
  * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
  * `jev-verdict.json` beside a judged round's plans, `timings.json` in every
@@ -340,7 +357,10 @@ async function writeRound(dir: string, round: PlanRound): Promise<void> {
       ])
     }
   }
-  if (round.verdict) files.push(['jev-verdict.json', json(round.verdict)])
+  if (round.verdict) {
+    files.push(['jev-verdict.json', json(withoutTrail(round.verdict))])
+    if (round.verdict.trail) files.push(['judge.json', json(round.verdict.trail)])
+  }
   files.push(['timings.json', `${JSON.stringify(round.timings, null, 2)}\n`])
   await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
 }
@@ -580,10 +600,12 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   await assertDirectory(cwd)
 
   const agents = parseAgents(values.agents ?? configured.agents)
+  const judge: JudgeConfig = configured.judge ?? { kind: 'typesafe' }
+  const panel = judge.kind === 'graph' ? panelProviders(judge.panel) : []
   if (positionals[0] === 'doctor') {
     if (positionals.length > 1) throw new Error('doctor does not accept a task')
-    const providers = [...new Set(agents.map(({ provider }) => provider))]
-    const checks = await deps.doctor(cwd, providers)
+    const providers = [...new Set([...agents.map(({ provider }) => provider), ...panel])]
+    const checks = await deps.doctor(cwd, providers, judge.kind)
     for (const check of checks) {
       deps.stdout(`${check.ok ? '✓' : '✗'} ${check.name}: ${check.detail}\n`)
     }
@@ -618,10 +640,16 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     configured['allow-any-task'] ??
     false
   task = allowAnyTask ? requireNonEmptyTask(task) : validateTask(task)
-  if (!deps.env.TYPESAFE_API_KEY?.trim()) {
+  if (judge.kind === 'typesafe' && !deps.env.TYPESAFE_API_KEY?.trim()) {
     throw new Error(
       'TYPESAFE_API_KEY is not set. Create a key at https://console.typesafe.ai/keys and export it first.',
     )
+  }
+  for (const provider of panel) {
+    const unset = provider.secretEnv.find((variable) => !deps.env[variable]?.trim())
+    if (unset !== undefined) {
+      throw new Error(`${unset} is not set, so ${provider.label} cannot judge on the panel`)
+    }
   }
 
   const models = parseOverrides(
@@ -678,7 +706,10 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   // Before the planner and any paid call, so it is read while there is time to stop.
   const warning = identicalWarning(agents, models, efforts)
   if (warning !== undefined) deps.stderr(`[jev-planner] ${warning}\n`)
-  const planner = deps.createPlanner({ agents, models, efforts })
+  if (judge.kind === 'graph' && jevModel) {
+    deps.stderr("[jev-planner] --jev-model is ignored: the graph judge's panel names its models\n")
+  }
+  const planner = deps.createPlanner({ agents, models, efforts, judge })
   const labels = new Map(agents.map(({ name, label }) => [name, label]))
   const result = await planner.plan({
     task,
@@ -716,7 +747,9 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
 
   if (verbose) {
     deps.stderr(`[jev-planner] Total: ${formatDuration(result.timings.totalMs)}\n`)
-    deps.stderr(`[jev-planner] Jev verdict:\n${JSON.stringify(result.verdict, null, 2)}\n`)
+    deps.stderr(
+      `[jev-planner] Jev verdict:\n${JSON.stringify(withoutTrail(result.verdict), null, 2)}\n`,
+    )
   }
   deps.stderr(`[jev-planner] ${costLine(result.cost)}\n`)
 
@@ -724,7 +757,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     ? `${JSON.stringify(
         {
           plan: result.plan,
-          verdict: result.verdict,
+          verdict: withoutTrail(result.verdict),
           finalizer: result.finalizer,
           ...(result.selected ? { selected: true } : {}),
           ...(result.debate ? { debate: result.debate } : {}),

@@ -15,8 +15,9 @@
 or, without installing, `npx jev-planner "<coding task>"`. It needs each
 selected agent CLI installed and logged in (`codex` and `claude` by default),
 each selected chat API's key (`DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`,
-`ZAI_API_KEY`), and `TYPESAFE_API_KEY` for Jev. `jev-planner doctor` checks
-them; `jev-planner --help` lists every agent id.
+`ZAI_API_KEY`), and `TYPESAFE_API_KEY` for Jev, unless `judge` in
+`jev-planner.json` picks the experimental graph judge, a panel of the
+providers' own models. `jev-planner doctor` checks them; `jev-planner --help` lists every agent id.
 
 ## Minimal working example
 
@@ -91,17 +92,23 @@ const { plan, verdict, finalizer } = await planner.plan({
 | `Planner`                    | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize                                                                                                                              |
 | `DEFAULT_STRAGGLER_GRACE_MS` | const    | 90_000: what a `balanced` or `fast` round waits for a straggler before going on without it                                                                                                                              |
 | `TypeSafeJevJudge`           | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                                                                                                                                                     |
+| `GraphJevJudge`              | class    | A `JevJudge` on `@rxova/journey-judge`: rules, then a panel of models; each verdict carries a `trail`. Experimental                                                                                                     |
+| `judgePanel`                 | function | `judgePanel(entries, setup, providers?)`: a `GraphJevJudge` panel from `{ provider, model?, weight? }` entries                                                                                                          |
 | `PROVIDERS`                  | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                                                                                                                                 |
 | `DEFAULT_AGENTS`             | const    | The ids used without `--agents`: `['codex', 'claude']`                                                                                                                                                                  |
 | `cliProvider`                | function | Builds a `Provider` for an agent CLI run read-only in the repository                                                                                                                                                    |
 | `openAICompatibleProvider`   | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                                                                                                                                             |
-| `runDoctor`                  | function | `runDoctor(cwd, providers, env?)` runs each provider's checks and the Jev key check                                                                                                                                     |
+| `runDoctor`                  | function | `runDoctor(cwd, providers, env?, judge?)` runs each provider's checks, and the Jev key check unless `judge` is `'graph'`                                                                                                |
 | `ProcessError`               | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                                                                                                                                        |
 | `TaskValidationError`        | class    | Thrown by `plan` before any call when the task is empty or a placeholder                                                                                                                                                |
-| `Provider`                   | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                                                                                                                                       |
+| `Provider`                   | type     | `{ id, label, kind, secretEnv, effort, create(setup), judge?(setup), doctor(cwd, env) }`, one AI                                                                                                                        |
 | `AgentSetup`                 | type     | `{ name?, label?, model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given; `name` defaults to the id                                                                                                  |
 | `CliProviderConfig`          | type     | `{ id, label, command, args({ model?, effort? }), effort?, events?, sessions?, auth? }`, `cliProvider`'s input                                                                                                          |
 | `OpenAICompatibleConfig`     | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                                                                                                                                          |
+| `JudgeSetup`                 | type     | `{ model?, cwd, omitEnv, env, fetch? }`, what `Provider.judge` is given                                                                                                                                                 |
+| `GraphJevOptions`            | type     | `{ panel, samples?, maxCalls?, timeoutMs?, claimChecks? }`, `GraphJevJudge`'s input                                                                                                                                     |
+| `PanelEntry`                 | type     | `{ provider, model?, weight? }`, one model on the graph judge's panel                                                                                                                                                   |
+| `JudgeConfig`                | type     | `{ kind: 'typesafe' }` or `{ kind: 'graph', panel, samples?, maxCalls?, timeoutMs?, claimChecks? }`, the config's `judge`                                                                                               |
 | `ProcessResult`              | type     | `{ stdout, stderr }` of a finished agent process                                                                                                                                                                        |
 | `CheckResult`                | type     | `{ name, ok, detail }`, one `runDoctor` check                                                                                                                                                                           |
 | `AgentName`                  | type     | `string`: a provider id, or a name given to one (`codex:sol` is `sol`)                                                                                                                                                  |
@@ -109,8 +116,8 @@ const { plan, verdict, finalizer } = await planner.plan({
 | `AgentSession`               | type     | `{ id? }`: one agent's conversation, carried from its draft to its later calls in a run                                                                                                                                 |
 | `PlanningAgent`              | type     | `{ name, label, readsRepository?, generate(request) }`, the agent interface `Planner` drives                                                                                                                            |
 | `JudgedPlan`                 | type     | `{ agent, label, plan }`, one plan as Jev sees it                                                                                                                                                                       |
-| `JevJudge`                   | type     | `{ judge({ task, plans, stage, disputes?, model? }) }`, returns a `JevVerdict`; `stage` is `'solo'`, `'draft'` or `'review'`                                                                                            |
-| `JevVerdict`                 | type     | Scores and confidences, the stronger plan (an agent or `tie`), the finalizer, and `disputes?` rulings                                                                                                                   |
+| `JevJudge`                   | type     | `{ judge({ task, plans, stage, disputes?, model?, progress? }) }`, returns a `JevVerdict`; `stage` is `'solo'`, `'draft'` or `'review'`                                                                                 |
+| `JevVerdict`                 | type     | Scores and confidences, the stronger plan (an agent or `tie`), the finalizer, `disputes?` rulings, and a graph judge's `trail?`                                                                                         |
 | `PlanMode`                   | type     | `'fast'` (the first draft Jev accepts alone), `'balanced'` (Jev skips the rounds a plan does not need) or `'ultra'` (always cross-reviews)                                                                              |
 | `PlanOptions`                | type     | `{ task, cwd, timeoutMs, mode?, maxReviewRounds?, reviewMode?, claimChecks?, stragglerGraceMs?, jevModel?, finalizer?, selectStronger?, allowAnyTask?, resume?, reviewEfforts?, onStage?, onAgentProgress?, onRound? }` |
 | `PlanResult`                 | type     | `{ plan, verdict, finalizer, selected?, drafts, debate?, timings, cost }`; `drafts` maps agent name to its last plan                                                                                                    |
@@ -161,6 +168,10 @@ const { plan, verdict, finalizer } = await planner.plan({
   key such as `apiKey` or `token` is rejected; keys stay in the environment.
   A discovered file cannot set `cwd` either: only a file passed with `--config`
   can.
+- **Taking the graph judge for Jev's price.** Its verdict is up to `maxCalls`
+  model calls (4 × `samples` by default), each billed to its provider, where
+  Jev's is one call. `--jev-model` does not reach it; its panel names its
+  models.
 - **Expecting the agents to edit code.** All run read-only; the output is a
   plan, not a change. The CLI itself writes only the rounds folder
   (`.jev-planner/` unless `--rounds-dir` or `--no-rounds`) and `-o`'s file.

@@ -34,7 +34,31 @@ export interface ConfigValues {
   json?: boolean
   verbose?: boolean
   'allow-any-task'?: boolean
+  /** The config's `judge`; there is no flag for it. */
+  judge?: JudgeConfig
 }
+
+/** One model on the graph judge's panel: a provider, its model, and how much its vote counts. */
+export interface PanelEntry {
+  provider: string
+  model?: string
+  weight?: number
+}
+
+/**
+ * Who judges the plans: TypeSafe's Jev, or the graph judge, a panel of the
+ * providers' own models on `@rxova/journey-judge`. `timeoutMs` is per call.
+ */
+export type JudgeConfig =
+  | { kind: 'typesafe' }
+  | {
+      kind: 'graph'
+      panel: PanelEntry[]
+      samples?: number
+      maxCalls?: number
+      timeoutMs?: number
+      claimChecks?: boolean
+    }
 
 /** A config that was read, and where from. */
 export interface LoadedConfig {
@@ -188,6 +212,67 @@ function agents(value: unknown): Partial<ConfigValues> {
   return { agents: specs.join(','), ...values }
 }
 
+function count(at: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new Error(`${at}: must be a whole number, 1 or more`)
+  }
+  return value
+}
+
+/** Rejects any key of `fields` not in `keys`. */
+function onlyKeys(at: string, fields: Record<string, unknown>, keys: readonly string[]): void {
+  const extra = Object.keys(fields).find((key) => !keys.includes(key))
+  if (extra !== undefined) throw unknownKey(`${at}.${extra}`, keys)
+}
+
+function panelEntry(at: string, value: unknown): PanelEntry {
+  const fields = object(at, value)
+  onlyKeys(at, fields, ['provider', 'model', 'weight'])
+  const entry: PanelEntry = { provider: choice(`${at}.provider`, fields.provider, IDS) }
+  if ('model' in fields) entry.model = string(`${at}.model`, fields.model)
+  if ('weight' in fields) {
+    const { weight } = fields
+    if (typeof weight !== 'number' || !Number.isFinite(weight) || weight <= 0) {
+      throw new Error(`${at}.weight: must be a positive number`)
+    }
+    entry.weight = weight
+  }
+  return entry
+}
+
+const GRAPH_KEYS = ['kind', 'panel', 'samples', 'maxCalls', 'timeout', 'rules'] as const
+
+function judge(value: unknown): Partial<ConfigValues> {
+  const fields = object('judge', value)
+  const kind = choice('judge.kind', fields.kind, ['typesafe', 'graph'])
+  if (kind === 'typesafe') {
+    onlyKeys('judge', fields, ['kind'])
+    return { judge: { kind } }
+  }
+  onlyKeys('judge', fields, GRAPH_KEYS)
+  const { panel } = fields
+  if (!Array.isArray(panel) || panel.length === 0) {
+    throw new Error('judge.panel: must list at least one model')
+  }
+  const config: JudgeConfig = {
+    kind,
+    panel: panel.map((entry, index) => panelEntry(`judge.panel[${String(index)}]`, entry)),
+  }
+  if ('samples' in fields) config.samples = count('judge.samples', fields.samples)
+  if ('maxCalls' in fields) config.maxCalls = count('judge.maxCalls', fields.maxCalls)
+  if ('timeout' in fields) {
+    config.timeoutMs = Number(seconds('judge.timeout', fields.timeout)) * 1_000
+  }
+  if ('rules' in fields) {
+    const rules = object('judge.rules', fields.rules)
+    onlyKeys('judge.rules', rules, ['claimChecks'])
+    if ('claimChecks' in rules) {
+      config.claimChecks = boolean('judge.rules.claimChecks', rules.claimChecks)
+    }
+  }
+  return { judge: config }
+}
+
 /** Every top-level key, what it becomes, and its check. The keys follow the flags' names. */
 const SETTINGS: Record<string, (value: unknown, dir: string) => Partial<ConfigValues>> = {
   agents,
@@ -209,6 +294,7 @@ const SETTINGS: Record<string, (value: unknown, dir: string) => Partial<ConfigVa
   cwd: (value, dir) => ({ cwd: resolve(dir, string('cwd', value)) }),
   task: (value) => ({ task: string('task', value) }),
   taskFile: (value, dir) => ({ taskFile: resolve(dir, string('taskFile', value)) }),
+  judge,
 }
 
 /** Every key a config may hold, `$schema` included; `config.schema.json` must list the same. */

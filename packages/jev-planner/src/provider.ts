@@ -4,6 +4,7 @@ import type { CheckResult } from './doctor.js'
 import { ProcessError, runProcess } from './process.js'
 import { repoSnapshot } from './repo-context.js'
 import type { AgentRequest, AgentSession, PlanningAgent } from './types.js'
+import type { CompletionRequest } from '@rxova/journey-judge'
 
 type Env = Readonly<Record<string, string | undefined>>
 
@@ -27,6 +28,32 @@ export interface AgentSetup {
   fetch?: typeof fetch
 }
 
+/** What a provider needs to answer as a judge on the graph judge's panel. */
+export interface JudgeSetup {
+  /** The panel entry's model; the provider's default otherwise. */
+  model?: string
+  /** Where a CLI judge runs. It is given no tools, so it reads nothing there. */
+  cwd: string
+  omitEnv: readonly string[]
+  env: Env
+  /** Replaces the global `fetch`; for tests. */
+  fetch?: typeof fetch
+}
+
+/**
+ * A judge's prompt as one text, for a model with no system prompt or
+ * structured-output mode of its own to put the rest in.
+ */
+export function judgePrompt(request: CompletionRequest, withSystem: boolean): string {
+  return [
+    ...(withSystem ? [request.system, ''] : []),
+    request.prompt,
+    '',
+    'The JSON object must match this JSON Schema:',
+    JSON.stringify(request.schema),
+  ].join('\n')
+}
+
 /**
  * One AI jev-planner can plan with. Build one with `cliProvider` or
  * `openAICompatibleProvider` and add it to `PROVIDERS` in `providers.ts`.
@@ -47,6 +74,11 @@ export interface Provider {
   /** Whether it takes a reasoning effort, from `--effort` or the config's `agents.<id>.effort`. */
   readonly effort: boolean
   create(setup: AgentSetup): PlanningAgent
+  /**
+   * A model for the graph judge's panel: one call per sample, answered with a
+   * JSON reply. The judge's `signal` carries its timeout and stops the call.
+   */
+  judge?(setup: JudgeSetup): (request: CompletionRequest) => Promise<string>
   /** Local checks only: `jev-planner doctor` never makes a paid call. */
   doctor(cwd: string, env: Env): Promise<CheckResult[]>
 }
@@ -83,6 +115,12 @@ export interface CliProviderConfig {
    * CLI's own configuration.
    */
   args: (overrides: { model?: string; effort?: string }) => string[]
+  /**
+   * Arguments for one judge call, prompt on stdin, answer as `args` gives it.
+   * Give the CLI no tools if it can go without: a judge reads only its prompt.
+   * `args` otherwise.
+   */
+  judgeArgs?: (overrides: { model?: string }) => string[]
   /** Whether `args` passes an effort on, so `--effort` is accepted for it. */
   effort?: boolean
   /**
@@ -115,6 +153,51 @@ export interface CliProviderConfig {
   auth?: readonly string[] | ((cwd: string) => Promise<CheckResult>)
 }
 
+/**
+ * One run of a CLI with `input` on stdin: its answer, and the session it
+ * reported. With `events`, the answer is the last `result` an event gives;
+ * stdout otherwise.
+ */
+async function runCli(
+  config: CliProviderConfig,
+  label: string,
+  args: string[],
+  options: {
+    cwd: string
+    input: string
+    timeoutMs?: number
+    omitEnv: readonly string[]
+    signal?: AbortSignal
+    onProgress?: (line: string) => void
+  },
+): Promise<{ answer: string; session: string | undefined }> {
+  const { events } = config
+  const read = (line: string, stream: 'stdout' | 'stderr') => {
+    if (stream === 'stderr') return { progress: line }
+    if (!events) return {}
+    let event: unknown
+    try {
+      event = JSON.parse(line)
+    } catch {
+      return { progress: line }
+    }
+    return events(event)
+  }
+  let answer = ''
+  let session: string | undefined
+  const { onProgress, ...spawnOptions } = options
+  const { stdout } = await runProcess(config.command, args, {
+    ...spawnOptions,
+    onLine: (line, stream) => {
+      const event = read(line, stream)
+      if (event.progress) onProgress?.(event.progress)
+      if (event.result !== undefined) answer = event.result
+      if (event.session !== undefined) session = event.session
+    },
+  })
+  return { answer: requireOutput(label, events ? answer : stdout), session }
+}
+
 /** An agent CLI installed and logged in on this machine, run read-only in the repository. */
 export function cliProvider(config: CliProviderConfig): Provider {
   return {
@@ -134,36 +217,16 @@ export function cliProvider(config: CliProviderConfig): Provider {
           ...(model === undefined ? {} : { model }),
           ...(callEffort === undefined ? {} : { effort: callEffort }),
         }
-        const { events, sessions } = config
-        const read = (line: string, stream: 'stdout' | 'stderr') => {
-          if (stream === 'stderr') return { progress: line }
-          if (!events) return {}
-          let event: unknown
-          try {
-            event = JSON.parse(line)
-          } catch {
-            return { progress: line }
-          }
-          return events(event)
-        }
-        const once = async (args: string[], input: string) => {
-          let answer = ''
-          let session: string | undefined
-          const { stdout } = await runProcess(config.command, args, {
+        const { sessions } = config
+        const once = (args: string[], input: string) =>
+          runCli(config, label, args, {
             cwd: request.cwd,
             input,
             timeoutMs: request.timeoutMs,
             omitEnv,
             ...(request.signal ? { signal: request.signal } : {}),
-            onLine: (line, stream) => {
-              const event = read(line, stream)
-              if (event.progress) request.onProgress?.(event.progress)
-              if (event.result !== undefined) answer = event.result
-              if (event.session !== undefined) session = event.session
-            },
+            ...(request.onProgress ? { onProgress: request.onProgress } : {}),
           })
-          return { answer: requireOutput(label, events ? answer : stdout), session }
-        }
         const { session } = request
         if (!sessions || !session)
           return (await once(config.args(overrides), request.prompt)).answer
@@ -197,6 +260,20 @@ export function cliProvider(config: CliProviderConfig): Provider {
         }
       },
     }),
+    judge:
+      ({ model, cwd, omitEnv }) =>
+      async (request) => {
+        const overrides = model === undefined ? {} : { model }
+        const args = (config.judgeArgs ?? config.args)(overrides)
+        // A CLI takes no temperature: its samples differ as much as its model does.
+        const { answer } = await runCli(config, config.label, args, {
+          cwd,
+          input: judgePrompt(request, true),
+          omitEnv,
+          signal: request.signal,
+        })
+        return answer
+      },
     doctor: (cwd) => {
       const checks = [commandCheck(`${config.label} CLI`, config.command, ['--version'], cwd)]
       if (typeof config.auth === 'function') checks.push(config.auth(cwd))
@@ -231,6 +308,18 @@ interface ChatMessage {
 
 interface ChatCompletion {
   choices?: { message?: { content?: string | null } }[]
+}
+
+/** The answer of a `/chat/completions` response, or why there is none. */
+async function completionOf(label: string, response: Response): Promise<string> {
+  if (!response.ok) {
+    const detail = (await response.text()).trim().slice(0, 500)
+    throw new Error(
+      `${label} API failed with status ${String(response.status)}${detail ? `: ${detail}` : ''}`,
+    )
+  }
+  const body = (await response.json()) as ChatCompletion
+  return requireOutput(label, body.choices?.[0]?.message?.content ?? '')
 }
 
 /**
@@ -315,16 +404,7 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
             throw error
           }
 
-          if (!response.ok) {
-            const detail = (await response.text()).trim().slice(0, 500)
-            throw new Error(
-              `${label} API failed with status ${String(response.status)}${
-                detail ? `: ${detail}` : ''
-              }`,
-            )
-          }
-          const body = (await response.json()) as ChatCompletion
-          const answer = requireOutput(label, body.choices?.[0]?.message?.content ?? '')
+          const answer = await completionOf(label, response)
           if (request.session) {
             conversations.set(request.session, [
               ...messages,
@@ -335,6 +415,29 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
         },
       }
     },
+    judge:
+      ({ model = config.model, env, fetch: send = fetch }) =>
+      async (request) => {
+        const label = `${config.label} judge`
+        const key = env[config.apiKeyEnv]?.trim()
+        if (!key) throw new Error(`${config.apiKeyEnv} is not set, so ${label} cannot run`)
+        // A JSON object, not `json_schema`: more of these APIs accept it. The schema is in the prompt.
+        const response = await send(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: request.system },
+              { role: 'user', content: judgePrompt(request, false) },
+            ],
+            ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+            response_format: { type: 'json_object' },
+          }),
+          signal: request.signal,
+        })
+        return completionOf(label, response)
+      },
     doctor: (_cwd, env) =>
       Promise.resolve([envCheck(`${config.label} key`, config.apiKeyEnv, env)]),
   }
