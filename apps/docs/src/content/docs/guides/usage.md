@@ -72,14 +72,17 @@ spend — see [how it works](../learn/how-it-works.md#why-the-mode-matters).
 
 - `--mode balanced` (the default) lets Jev skip the rounds a plan does not need: the cross-review when
   the drafts already agree, and the merge when one cross-reviewed plan is final as it stands.
+- `--mode fast` has Jev judge each draft alone, as it arrives, and answers with the first it accepts,
+  stopping the other agents; when it accepts none, the drafts are merged with no cross-review. The
+  accepted plan was read by no other agent, and `--finalizer` only picks who merges.
 - `--mode ultra` always cross-reviews and always merges — 2N + 1 agent calls with N agents, or
   3N + 1 when Jev asks for a second pass.
-- `--review-rounds <0|1|2>` caps the cross-review rounds either mode may run (default: 2).
-- `--straggler-grace <seconds>` sets how long a `balanced` round waits for the agents still working once
+- `--review-rounds <0|1|2>` caps the cross-review rounds `balanced` and `ultra` may run (default: 2); `fast` runs none.
+- `--straggler-grace <seconds>` sets how long a `balanced` or `fast` round waits for the agents still working once
   half have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
 - `--review-mode debate` (experimental) runs the first cross-review as critiques, replies and Jev's
   ruling on each disagreement, and `--claim-checks` checks the disputed repository claims — see
-  [debate review](debate-review.md).
+  [debate review](debate-review.md). Neither works with `--mode fast`, which has no review.
 
 ```sh
 jev-planner --mode ultra "Migrate the persistence layer from SQLite to Postgres"
@@ -141,7 +144,7 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
-      jev-verdict.json  in balanced mode; ultra judges only reviewed plans
+      jev-verdict.json  in balanced and fast mode; ultra judges only reviewed plans
       timings.json    how long the round and each call in it took, in milliseconds
     round2/           only when a cross-review ran: the revised plans, and Jev's verdict
       codex.md
