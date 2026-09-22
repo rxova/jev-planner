@@ -1,5 +1,13 @@
 import { choice, noul, score, TypeSafeClient } from '@typesafe-ai/sdk'
-import type { JevJudge, JevVerdict, JudgedPlan } from './types.js'
+import type { ChoiceResponse } from '@typesafe-ai/sdk'
+import type {
+  AgentName,
+  Dispute,
+  DisputeRuling,
+  JevJudge,
+  JevVerdict,
+  JudgedPlan,
+} from './types.js'
 
 const MAX_PLAN_CHARS = 40_000
 
@@ -12,6 +20,47 @@ function agentOptions(plans: readonly JudgedPlan[], describe: (label: string) =>
   return Object.fromEntries(plans.map(({ agent, label }) => [agent, describe(label)]))
 }
 
+function labelOf(plans: readonly JudgedPlan[], agent: AgentName): string {
+  return plans.find((plan) => plan.agent === agent)?.label ?? agent
+}
+
+/**
+ * One choice per dispute: does the objection hold, does the author's
+ * rejection, or does the material not settle it. Keyed `dispute_<n>`, in the
+ * order of `disputes`, so the answers map back by position.
+ */
+type DisputeKey = `dispute_${number}`
+const disputeKey = (index: number) => `dispute_${String(index + 1)}` as DisputeKey
+
+function disputeQuestions(plans: readonly JudgedPlan[], disputes: readonly Dispute[]) {
+  const questions: Record<DisputeKey, ReturnType<typeof disputeQuestion>> = {}
+  disputes.forEach((dispute, index) => {
+    questions[disputeKey(index)] = disputeQuestion(plans, dispute)
+  })
+  return questions
+}
+
+function disputeQuestion(plans: readonly JudgedPlan[], dispute: Dispute) {
+  const critics = dispute.critics.map((critic) => labelOf(plans, critic)).join(' and ')
+  const author = labelOf(plans, dispute.target)
+  return choice(
+    {
+      question: `${critics} objected to ${author}'s plan, and ${author} rejected the objection. Judging from the plans, which side is right?`,
+      claim: dispute.claim,
+      why: dispute.reasons,
+      rejection: dispute.rejections,
+      check: dispute.check
+        ? `${dispute.check.result.toUpperCase()}${dispute.check.evidence ? `: ${dispute.check.evidence}` : ''}`
+        : 'not checked',
+    },
+    {
+      critic: `${critics}'s objection holds`,
+      author: `${author}'s position holds`,
+      unclear: 'The material does not settle it',
+    },
+  )
+}
+
 export class TypeSafeJevJudge implements JevJudge {
   constructor(private readonly client: TypeSafeClient = new TypeSafeClient()) {}
 
@@ -19,8 +68,10 @@ export class TypeSafeJevJudge implements JevJudge {
     task: string
     plans: readonly JudgedPlan[]
     stage: 'draft' | 'review'
+    disputes?: readonly Dispute[]
     model?: string
   }): Promise<JevVerdict> {
+    const disputes = input.disputes ?? []
     const response = await this.client.systemOne({
       ...(input.model ? { model: input.model } : {}),
       state: {
@@ -90,10 +141,15 @@ export class TypeSafeJevJudge implements JevJudge {
             false: 'The plans hold complementary material that a final merge has to combine',
           },
         ),
+        ...disputeQuestions(input.plans, disputes),
       },
     })
 
     const answers = response.answers
+    // The spread above widens to an index the SDK's inference drops; the keys are ours.
+    const rulings = answers as unknown as Partial<
+      Record<DisputeKey, ChoiceResponse<ReturnType<typeof disputeQuestion>['criteria']>>
+    >
     return {
       strongerPlan: answers.stronger_plan.choice,
       strongerPlanConfidence: answers.stronger_plan.confidence,
@@ -107,6 +163,16 @@ export class TypeSafeJevJudge implements JevJudge {
       riskCoverageConfidence: answers.risk_coverage.confidence,
       needsAnotherPassProbability: answers.needs_another_pass.noul,
       standsAloneProbability: answers.stands_alone.noul,
+      ...(disputes.length > 0
+        ? {
+            disputes: disputes.map((dispute, index): DisputeRuling => {
+              const answer = rulings[disputeKey(index)]
+              return answer
+                ? { id: dispute.id, choice: answer.choice, confidence: answer.confidence }
+                : { id: dispute.id, choice: 'unclear', confidence: 0 }
+            }),
+          }
+        : {}),
       model: response.model,
     }
   }
