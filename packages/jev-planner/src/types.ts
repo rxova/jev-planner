@@ -1,4 +1,4 @@
-/** A provider id from the registry: `codex`, `claude`, `deepseek`, … */
+/** An agent's name in a run: its provider id (`codex`, `claude`, …) unless named (`sol`). */
 export type AgentName = string
 
 /**
@@ -147,9 +147,16 @@ export interface AgentRequest {
 }
 
 export interface PlanningAgent {
-  /** The provider id: what `--agents`, `--finalizer` and the Jev verdict use. */
+  /**
+   * Unique in a run: what `--finalizer`, the Jev verdict, objection ids and the
+   * rounds files use. Its provider id, unless named (`--agents codex:sol`).
+   */
   readonly name: AgentName
-  /** How prompts, stages and the plan refer to it: `Codex`, `DeepSeek`, … */
+  /**
+   * How prompts, stages, the plan and Jev refer to it: `Codex`, `DeepSeek`, or
+   * `Codex (sol)` for a named one. Keep labels unique too: Jev tells plans
+   * apart by label.
+   */
   readonly label: string
   /**
    * Whether the agent opens files in the repository itself, as an agent CLI

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { main } from './cli.js'
+import { createAgents, main } from './cli.js'
 import type { CliDeps } from './cli.js'
 import { runDoctor } from './doctor.js'
 import { TypeSafeJevJudge } from './jev.js'
@@ -25,18 +25,8 @@ const deps: CliDeps = {
   env: process.env,
   cwd: () => process.cwd(),
   readStdin: readPipedStdin,
-  createPlanner: ({ agents, models, efforts }) =>
-    new Planner(
-      agents.map((provider) =>
-        provider.create({
-          ...(models[provider.id] === undefined ? {} : { model: models[provider.id] }),
-          ...(efforts[provider.id] === undefined ? {} : { effort: efforts[provider.id] }),
-          omitEnv,
-          env: process.env,
-        }),
-      ),
-      new TypeSafeJevJudge(),
-    ),
+  createPlanner: (setup) =>
+    new Planner(createAgents(setup, process.env, omitEnv), new TypeSafeJevJudge()),
   doctor: runDoctor,
   now: () => new Date(),
 }

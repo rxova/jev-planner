@@ -9,9 +9,16 @@ type Env = Readonly<Record<string, string | undefined>>
 
 /** What the planner factory hands a provider when it builds an agent for a run. */
 export interface AgentSetup {
-  /** A model from `--model <id>=<model>` or the config's `agents.<id>.model`; the provider's default otherwise. */
+  /**
+   * The agent's name in the run, for a provider used more than once:
+   * `--agents codex:sol` or the config's `agents.sol`. The provider's `id` otherwise.
+   */
+  name?: string
+  /** How prompts, stages and Jev refer to it. `agentLabel` otherwise. */
+  label?: string
+  /** A model from `--model <name>=<model>` or the config's `agents.<name>.model`; the provider's default otherwise. */
   model?: string
-  /** A reasoning effort from `--effort <id>=<level>` or the config; only for a provider whose `effort` is true. */
+  /** A reasoning effort from `--effort <name>=<level>` or the config; only for a provider whose `effort` is true. */
   effort?: string
   /** Every provider's secret variables, and Jev's: never passed to an agent subprocess. */
   omitEnv: readonly string[]
@@ -25,7 +32,12 @@ export interface AgentSetup {
  * `openAICompatibleProvider` and add it to `PROVIDERS` in `providers.ts`.
  */
 export interface Provider {
-  /** Lowercase, what `--agents`, `--model` and `--finalizer` take, and a key of the config's `agents`. */
+  /**
+   * Lowercase, what `--agents` takes, and a key of the config's `agents`. An
+   * agent's name defaults to it; a second agent of the same provider is named
+   * (`--agents codex:sol,codex:terra`), and `--model` and `--finalizer` take
+   * the name.
+   */
   readonly id: string
   readonly label: string
   /** `cli` agents read the repository themselves; `api` agents get a snapshot of it. */
@@ -43,6 +55,15 @@ export interface Provider {
 export function brief(text: string, max = 160): string {
   const line = text.trim().split('\n', 1)[0]?.trim() ?? ''
   return line.length <= max ? line : `${line.slice(0, max - 1)}…`
+}
+
+/**
+ * An agent's label: the provider's own for an agent named after it, `Codex (sol)`
+ * for a named one, so two agents of one provider never share a label, which is
+ * how Jev and the prompts tell plans apart.
+ */
+export function agentLabel(provider: { id: string; label: string }, name: string): string {
+  return name === provider.id ? provider.label : `${provider.label} (${name})`
 }
 
 function requireOutput(label: string, output: string): string {
@@ -102,9 +123,9 @@ export function cliProvider(config: CliProviderConfig): Provider {
     kind: 'cli',
     secretEnv: [],
     effort: config.effort ?? false,
-    create: ({ model, effort, omitEnv }) => ({
-      name: config.id,
-      label: config.label,
+    create: ({ name = config.id, label = agentLabel(config, name), model, effort, omitEnv }) => ({
+      name,
+      label,
       // It runs in the repository, so it can open a file to check a claim.
       readsRepository: true,
       generate: async (request: AgentRequest) => {
@@ -141,7 +162,7 @@ export function cliProvider(config: CliProviderConfig): Provider {
               if (event.session !== undefined) session = event.session
             },
           })
-          return { answer: requireOutput(config.label, events ? answer : stdout), session }
+          return { answer: requireOutput(label, events ? answer : stdout), session }
         }
         const { session } = request
         if (!sessions || !session)
@@ -229,19 +250,25 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
     secretEnv: [config.apiKeyEnv],
     // Each API spells reasoning effort its own way, if at all.
     effort: false,
-    create: ({ model = config.model, env, fetch: send = fetch }) => {
+    create: ({
+      name = config.id,
+      label = agentLabel(config, name),
+      model = config.model,
+      env,
+      fetch: send = fetch,
+    }) => {
       // Built once per run and per directory: every call in a run sees the same snapshot.
       const snapshots = new Map<string, Promise<string>>()
       // Each session's messages so far, the answers included.
       const conversations = new WeakMap<AgentSession, ChatMessage[]>()
       return {
-        name: config.id,
-        label: config.label,
+        name,
+        label,
         // It sees a snapshot of the repository, not the repository: it cannot check a claim.
         readsRepository: false,
         generate: async (request: AgentRequest) => {
           const key = env[config.apiKeyEnv]?.trim()
-          if (!key) throw new Error(`${config.apiKeyEnv} is not set, so ${config.label} cannot run`)
+          if (!key) throw new Error(`${config.apiKeyEnv} is not set, so ${label} cannot run`)
 
           const earlier = request.session && conversations.get(request.session)
           let messages: ChatMessage[]
@@ -276,15 +303,14 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
             })
           } catch (error) {
             if (request.signal?.aborted === true) {
-              throw new Error(`${config.label} was stopped: the run no longer needs it`, {
+              throw new Error(`${label} was stopped: the run no longer needs it`, {
                 cause: error,
               })
             }
             if (error instanceof Error && error.name === 'TimeoutError') {
-              throw new Error(
-                `${config.label} timed out after ${String(request.timeoutMs / 1_000)}s`,
-                { cause: error },
-              )
+              throw new Error(`${label} timed out after ${String(request.timeoutMs / 1_000)}s`, {
+                cause: error,
+              })
             }
             throw error
           }
@@ -292,13 +318,13 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
           if (!response.ok) {
             const detail = (await response.text()).trim().slice(0, 500)
             throw new Error(
-              `${config.label} API failed with status ${String(response.status)}${
+              `${label} API failed with status ${String(response.status)}${
                 detail ? `: ${detail}` : ''
               }`,
             )
           }
           const body = (await response.json()) as ChatCompletion
-          const answer = requireOutput(config.label, body.choices?.[0]?.message?.content ?? '')
+          const answer = requireOutput(label, body.choices?.[0]?.message?.content ?? '')
           if (request.session) {
             conversations.set(request.session, [
               ...messages,

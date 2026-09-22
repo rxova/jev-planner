@@ -113,6 +113,36 @@ describe('TypeSafeJevJudge', () => {
     })
   })
 
+  it('keys named agents of one provider by name, beside tie', async () => {
+    const { client, requests } = fakeClient({
+      stronger_plan: {
+        type: 'choice',
+        choice: 'sol-2',
+        confidence: 0.6,
+        probabilities: { 'sol-2': 0.6, terra: 0.3, tie: 0.1 },
+      },
+      finalizer: {
+        type: 'choice',
+        choice: 'terra',
+        confidence: 0.7,
+        probabilities: { 'sol-2': 0.3, terra: 0.7 },
+      },
+    })
+    const result = await new TypeSafeJevJudge(client).judge({
+      task: 'task',
+      plans: [
+        { agent: 'sol-2', label: 'Codex (sol-2)', plan: 'a' },
+        { agent: 'terra', label: 'Codex (terra)', plan: 'b' },
+      ],
+      stage: 'draft',
+    })
+    expect(result).toMatchObject({ strongerPlan: 'sol-2', finalizer: 'terra' })
+    expect(JSON.stringify(requests[0])).toContain(
+      "Codex (sol-2)'s plan is materially stronger overall",
+    )
+    expect(Object.keys((requests[0]?.state as { plans: object }).plans)).toEqual(['sol-2', 'terra'])
+  })
+
   it('tells Jev whether it is looking at drafts or at cross-reviewed plans', async () => {
     const judged = async (stage: 'draft' | 'review') => {
       const { client, requests } = fakeClient()

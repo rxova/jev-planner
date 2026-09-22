@@ -123,6 +123,8 @@ export function llmsIndex(pages, origin) {
     '',
     '1. It needs the `codex` and `claude` CLIs on the PATH, both logged in, and',
     '   `TYPESAFE_API_KEY` set. `jev-planner doctor` checks all of these at once.',
+    '   One provider can be both agents under two names: `--agents codex:sol,codex:terra`,',
+    '   with overrides by name (`--model sol=…`).',
     '2. With the default two agents and the standard review, a run makes two to',
     '   seven agent calls and one to three Jev calls, all of them billed;',
     '   `--mode fast` makes two or three, `--mode ultra` five or seven. The debate',
