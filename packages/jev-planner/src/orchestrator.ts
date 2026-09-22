@@ -544,9 +544,10 @@ export class Planner {
     }
     const debateRecord = debated ? { debate: debated.record } : {}
 
-    // A plan may only be answered with whole once it has seen every other
-    // agent's material: before a cross-review, the merge is the only place that
-    // happens, so the synthesis call is not the run's to skip.
+    // Outside fast mode, a plan may only be answered with whole once it has seen
+    // every other agent's material: before a cross-review, the merge is the only
+    // place that happens, so the synthesis call is not the run's to skip. A draft
+    // fast mode accepted is the exception, and the mode's stated trade.
     const reviewed = cost.reviewRounds > 0
     const selected =
       reviewed && options.selectStronger
