@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Planner } from '../orchestrator.js'
 import { TaskValidationError } from '../task.js'
-import type { AgentRequest, JevJudge, JevVerdict, PlanRound, PlanningAgent } from '../types.js'
+import type { AgentRequest, PlanJudge, Verdict, PlanRound, PlanningAgent } from '../types.js'
 
-const verdict: JevVerdict = {
+const verdict: Verdict = {
   strongerPlan: 'tie',
   strongerPlanConfidence: 0.2,
   finalizer: 'claude',
@@ -62,16 +62,17 @@ class FakeAgent implements PlanningAgent {
   }
 }
 
-class FakeJev implements JevJudge {
-  readonly inputs: Parameters<JevJudge['judge']>[0][] = []
+class FakeJev implements PlanJudge {
+  readonly name = 'Jev'
+  readonly inputs: Parameters<PlanJudge['judge']>[0][] = []
 
-  constructor(private readonly verdicts: Partial<JevVerdict>[] = [{}]) {}
+  constructor(private readonly verdicts: Partial<Verdict>[] = [{}]) {}
 
-  get input(): Parameters<JevJudge['judge']>[0] | undefined {
+  get input(): Parameters<PlanJudge['judge']>[0] | undefined {
     return this.inputs.at(-1)
   }
 
-  async judge(input: Parameters<JevJudge['judge']>[0]): Promise<JevVerdict> {
+  async judge(input: Parameters<PlanJudge['judge']>[0]): Promise<Verdict> {
     this.inputs.push(input)
     return { ...verdict, ...(this.verdicts.at(this.inputs.length - 1) ?? this.verdicts.at(-1)) }
   }
@@ -105,7 +106,7 @@ describe('Planner in balanced mode', () => {
       reviewRounds: 0,
       synthesized: true,
       agentCalls: 3,
-      jevCalls: 1,
+      judgeCalls: 1,
       dropped: [],
     })
   })
@@ -122,7 +123,7 @@ describe('Planner in balanced mode', () => {
     })
 
     expect(result.plan).toBe('final plan')
-    expect(codex.prompts[1]).toContain('Jev identified remaining uncertainty')
+    expect(codex.prompts[1]).toContain('The judge identified remaining uncertainty')
     expect(codex.prompts[1]).toContain('claude draft')
     expect(jev.inputs.map(({ stage }) => stage)).toEqual(['draft', 'review'])
     expect(stages).toEqual([
@@ -132,7 +133,7 @@ describe('Planner in balanced mode', () => {
       'Re-evaluating the revised plans with Jev…',
       'Synthesizing the final plan with Claude…',
     ])
-    expect(result.cost).toMatchObject({ reviewRounds: 1, agentCalls: 5, jevCalls: 2 })
+    expect(result.cost).toMatchObject({ reviewRounds: 1, agentCalls: 5, judgeCalls: 2 })
   })
 
   it('answers with the strongest cross-reviewed plan when Jev judges it final as it stands', async () => {
@@ -225,7 +226,10 @@ describe('Planner in balanced mode', () => {
         stage: 'draft',
         plans: { codex: 'codex draft', claude: 'claude draft' },
         verdict,
-        timings: expect.objectContaining({ agents: expect.any(Object), jevMs: expect.any(Number) }),
+        timings: expect.objectContaining({
+          agents: expect.any(Object),
+          judgeMs: expect.any(Number),
+        }),
       },
       {
         round: 2,
@@ -370,7 +374,7 @@ describe('Planner in ultra mode', () => {
       reviewRounds: 1,
       synthesized: true,
       agentCalls: 5,
-      jevCalls: 1,
+      judgeCalls: 1,
       dropped: [],
     })
     expect(codex.prompts).toHaveLength(2)
@@ -411,8 +415,8 @@ describe('Planner in ultra mode', () => {
     expect(result.plan).toBe('codex final')
     expect(codex.prompts).toHaveLength(4)
     expect(claude.prompts).toHaveLength(3)
-    expect(codex.prompts[2]).toContain('Jev identified remaining uncertainty')
-    expect(result.cost).toMatchObject({ reviewRounds: 2, jevCalls: 2, agentCalls: 7 })
+    expect(codex.prompts[2]).toContain('The judge identified remaining uncertainty')
+    expect(result.cost).toMatchObject({ reviewRounds: 2, judgeCalls: 2, agentCalls: 7 })
   })
 
   it('waits for every agent, however long one takes', async () => {
@@ -433,7 +437,7 @@ describe('Planner in ultra mode', () => {
 
     await new Planner([codex, claude], jev).plan({
       ...ultra,
-      jevModel: 'jev-custom',
+      judgeModel: 'jev-custom',
       onStage: (message) => stages.push(message),
     })
 
@@ -454,7 +458,7 @@ describe('Planner in ultra mode', () => {
       await new Planner([codex, claude], jev).plan({
         ...ultra,
         maxReviewRounds,
-        jevModel: 'jev-custom',
+        judgeModel: 'jev-custom',
       })
       return jev.inputs.map(({ model }) => model)
     }
@@ -469,7 +473,10 @@ describe('Planner in ultra mode', () => {
     it('returns the stronger revised plan as it is, with no synthesis call', async () => {
       const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
       const claude = new FakeAgent('claude', ['claude draft', 'claude revised'])
-      const jev: JevJudge = { judge: async () => ({ ...verdict, strongerPlan: 'codex' }) }
+      const jev: PlanJudge = {
+        name: 'Jev',
+        judge: async () => ({ ...verdict, strongerPlan: 'codex' }),
+      }
       const stages: string[] = []
       const rounds: PlanRound[] = []
       const result = await new Planner([codex, claude], jev).plan({
@@ -527,7 +534,7 @@ describe('Planner in ultra mode', () => {
 
     expect(result.plan).toBe('final plan')
     expect(jev.input?.stage).toBe('draft')
-    expect(result.cost).toMatchObject({ reviewRounds: 0, agentCalls: 3, jevCalls: 1 })
+    expect(result.cost).toMatchObject({ reviewRounds: 0, agentCalls: 3, judgeCalls: 1 })
   })
 
   it('runs any number of agents, each revising against every peer', async () => {
@@ -583,7 +590,7 @@ describe('Planner in ultra mode', () => {
     const timed = (agents: string[], judged: boolean) => ({
       totalMs: expect.any(Number) as number,
       agents: Object.fromEntries(agents.map((agent) => [agent, expect.any(Number) as number])),
-      ...(judged ? { jevMs: expect.any(Number) as number } : {}),
+      ...(judged ? { judgeMs: expect.any(Number) as number } : {}),
     })
     expect(rounds).toEqual([
       {
@@ -807,7 +814,8 @@ describe('Planner', () => {
         ['claude draft', 3_000],
         ['claude revised', 2_500],
       ])
-      const jev: JevJudge = {
+      const jev: PlanJudge = {
+        name: 'Jev',
         judge: async () => {
           await new Promise((done) => setTimeout(done, 400))
           return { ...verdict, finalizer: 'codex' }
@@ -829,7 +837,7 @@ describe('Planner', () => {
 
       expect(onRound.mock.calls.map(([round]) => round.timings)).toEqual([
         { totalMs: 5_000, agents: { codex: 5_000, claude: 3_000 } },
-        { totalMs: 2_900, agents: { codex: 2_000, claude: 2_500 }, jevMs: 400 },
+        { totalMs: 2_900, agents: { codex: 2_000, claude: 2_500 }, judgeMs: 400 },
         { totalMs: 1_500, agents: { codex: 1_500 } },
       ])
       expect(timings).toEqual({
@@ -841,7 +849,7 @@ describe('Planner', () => {
             stage: 'review',
             totalMs: 2_900,
             agents: { codex: 2_000, claude: 2_500 },
-            jevMs: 400,
+            judgeMs: 400,
           },
           { round: 3, stage: 'final', totalMs: 1_500, agents: { codex: 1_500 } },
         ],
@@ -855,7 +863,8 @@ describe('Planner', () => {
         ['final', 1_500],
       ])
       const claude = slow('claude', [['claude draft', 3_000]])
-      const jev: JevJudge = {
+      const jev: PlanJudge = {
+        name: 'Jev',
         judge: async () => {
           await new Promise((done) => setTimeout(done, 400))
           return { ...verdict, finalizer: 'codex' }
@@ -877,7 +886,7 @@ describe('Planner', () => {
             stage: 'draft',
             totalMs: 5_400,
             agents: { codex: 5_000, claude: 3_000 },
-            jevMs: 400,
+            judgeMs: 400,
           },
           { round: 2, stage: 'final', totalMs: 1_500, agents: { codex: 1_500 } },
         ],
@@ -923,7 +932,7 @@ describe('Planner in fast mode', () => {
       reviewRounds: 0,
       synthesized: false,
       agentCalls: 2,
-      jevCalls: 1,
+      judgeCalls: 1,
       dropped: ['codex'],
     })
     expect(stages).toEqual([
@@ -980,7 +989,7 @@ describe('Planner in fast mode', () => {
       reviewRounds: 0,
       synthesized: true,
       agentCalls: 3,
-      jevCalls: 3,
+      judgeCalls: 3,
     })
   })
 
@@ -991,7 +1000,8 @@ describe('Planner in fast mode', () => {
     let inFlight = 0
     let most = 0
     const judged: string[] = []
-    const jev: JevJudge = {
+    const jev: PlanJudge = {
+      name: 'Jev',
       judge: async (input) => {
         inFlight += 1
         most = Math.max(most, inFlight)
@@ -1082,7 +1092,8 @@ describe('Planner in fast mode', () => {
         return plan
       },
     })
-    const jev: JevJudge = {
+    const jev: PlanJudge = {
+      name: 'Jev',
       judge: async () => {
         await new Promise((done) => setTimeout(done, 400))
         return verdict
@@ -1107,7 +1118,7 @@ describe('Planner in fast mode', () => {
         stage: 'draft',
         totalMs: 3_800,
         agents: { codex: 3_000, claude: 1_000 },
-        jevMs: 1_200,
+        judgeMs: 1_200,
       },
       { round: 2, stage: 'final', totalMs: 500, agents: { claude: 500 } },
     ])
@@ -1117,7 +1128,7 @@ describe('Planner in fast mode', () => {
     const aborts: string[] = []
     const codex = new FakeAgent('codex', [straggler(aborts)])
     const claude = new FakeAgent('claude', ['claude draft'])
-    const jev: JevJudge = { judge: () => Promise.reject(new Error('jev down')) }
+    const jev: PlanJudge = { name: 'Jev', judge: () => Promise.reject(new Error('jev down')) }
 
     await expect(new Planner([codex, claude], jev).plan(fast)).rejects.toThrow('jev down')
     expect(aborts).toEqual(['aborted'])
@@ -1131,7 +1142,8 @@ describe('Planner in fast mode', () => {
         ),
     ])
     const claude = new FakeAgent('claude', ['claude draft'])
-    const jev: JevJudge = {
+    const jev: PlanJudge = {
+      name: 'Jev',
       judge: async () => {
         await new Promise((done) => setTimeout(done, 10))
         return { ...verdict, ...accept }
@@ -1243,7 +1255,7 @@ describe('Planner debate review', () => {
     })
     expect(result.debate?.claimChecks).toBeUndefined()
     expect(claude.prompts[3]).toContain(
-      "D1 (Codex → Claude): runRound is missing. Jev: Claude's position holds (0.80).",
+      "D1 (Codex → Claude): runRound is missing. Judge: Claude's position holds (0.80).",
     )
     expect(stages).toContain('Re-evaluating the revised plans and 1 disagreements with Jev…')
     expect(result.cost).toEqual({
@@ -1252,7 +1264,7 @@ describe('Planner debate review', () => {
       reviewRounds: 1,
       synthesized: true,
       agentCalls: 7,
-      jevCalls: 1,
+      judgeCalls: 1,
       dropped: [],
     })
   })
@@ -1279,12 +1291,12 @@ describe('Planner debate review', () => {
 
     expect(codex.prompts[3]).toContain('<open-disagreements>')
     expect(codex.prompts[3]).toContain(
-      'D1 (Codex → Claude): runRound is missing. Jev: the material does not settle it (0.90).',
+      'D1 (Codex → Claude): runRound is missing. Judge: the material does not settle it (0.90).',
     )
-    expect(codex.prompts[3]).not.toContain('<jev-feedback>')
+    expect(codex.prompts[3]).not.toContain('<judge-feedback>')
     expect(jev.inputs[2]?.disputes).toBeUndefined()
     // The merge still sees the debate's rulings, not the pass verdict's lack of them.
-    expect(claude.prompts[4]).toContain('Jev: the material does not settle it (0.90).')
+    expect(claude.prompts[4]).toContain('Judge: the material does not settle it (0.90).')
     expect(result.cost).toMatchObject({ reviewMode: 'debate', reviewRounds: 2, agentCalls: 9 })
   })
 
@@ -1415,7 +1427,7 @@ describe('Planner debate review', () => {
     expect(stages).toContain('Claim checks skipped: no disputed claim about the repository')
     expect(result.debate).toMatchObject({ claimChecks: 'skipped', disputes: [{ repo: false }] })
     // Jev gave no rulings: the merge reports the dispute as not judged.
-    expect(claude.prompts[3]).toContain('D1 (Codex → Claude): too broad. Jev: not judged.')
+    expect(claude.prompts[3]).toContain('D1 (Codex → Claude): too broad. Judge: not judged.')
   })
 
   it('keeps an author’s plan when the round stops waiting for its reply', async () => {

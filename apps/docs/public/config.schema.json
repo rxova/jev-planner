@@ -185,10 +185,10 @@
       "minLength": 1,
       "description": "auto, none or one of the agents. As --finalizer."
     },
-    "jevModel": {
+    "judgeModel": {
       "type": "string",
       "minLength": 1,
-      "description": "As --jev-model."
+      "description": "As --judge-model."
     },
     "stragglerGrace": {
       "type": "number",

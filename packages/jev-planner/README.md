@@ -27,6 +27,9 @@ the debate run on Modes compared, 7 of the 10 objections were about the reposito
 accepted. Compare `round1/` with `round2/` in a run folder to see it in yours.
 [How the cross-review improves a plan →](https://jev-planner.com/learn/how-it-works/#what-the-cross-review-improves)
 
+The planner itself is [`@rxova/planner-core`](https://github.com/rxova/jev-planner/tree/main/packages/core#readme), a dependency of this package;
+jev-planner adds Jev, TypeSafe's typed judge, and the `jev-planner` command.
+
 **[Documentation →](https://jev-planner.com/)**
 
 ## Agents
@@ -173,7 +176,7 @@ effort, with Claude at its defaults:
 jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the search endpoint"
 ```
 
-- `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
+- `--judge-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <name>` to override Jev's routing decision with one of the selected agents.
 - `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
   merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
@@ -216,7 +219,7 @@ from there. `--config <path>` reads another file, `--no-config` none. It is for 
 
 Each key stands for the flag of the same name: `agents` with each agent's `model`, `effort` and
 `reviewEffort`, keyed by provider id or by a name that sets `provider`
-(`"sol": { "provider": "codex" }`); `mode`, `reviewMode`, `reviewRounds`, `claimChecks`, `finalizer`, `jevModel`,
+(`"sol": { "provider": "codex" }`); `mode`, `reviewMode`, `reviewRounds`, `claimChecks`, `finalizer`, `judgeModel`,
 `stragglerGrace` and `timeout` (seconds); `resume`, `rounds`, `json`, `verbose` and
 `allowAnyTask`; `output`; `task` or `taskFile`; and `cwd`, only in a file passed with `--config`.
 `runsDir` is a folder in which each run gets its own timestamped folder. Paths are relative to the
@@ -338,19 +341,19 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
-      jev-verdict.json  in balanced and fast mode; ultra judges only reviewed plans
+      verdict.json  in balanced and fast mode; ultra judges only reviewed plans
       timings.json    how long the round and each call in it took, in milliseconds
     round2/           only when a cross-review ran: the revised plans, and Jev's verdict
       codex.md
       claude.md
-      jev-verdict.json
+      verdict.json
     round3/           only when Jev asked for a second review
     final/
       plan.md         the merged plan, headed by the agent that merged it, or selected from
-      jev-verdict.json  the verdict the merge followed
+      verdict.json  the verdict the merge followed
 ```
 
-In `fast` mode, `round1/jev-verdict.json` is the verdict that decided the run: the accepted draft's,
+In `fast` mode, `round1/verdict.json` is the verdict that decided the run: the accepted draft's,
 or the one Jev gave the drafts together. The verdicts of drafts it turned down alone are not saved.
 A debate names its rounds' files differently ([Debate review](#debate-review-experimental)).
 
@@ -414,7 +417,7 @@ provider you select.
 
 ## Adding a new AI
 
-Every agent comes from one list, `PROVIDERS` in `src/providers.ts`. The CLI flags, `--help`,
+Every agent comes from one list, `PROVIDERS` in `@rxova/planner-core`'s `src/providers.ts`. The CLI flags, `--help`,
 `doctor`, the prompts and Jev's choices are all built from it, so wiring up a new AI is one entry
 there. Add the agent to `config.schema.json` too, and to its copy in `apps/docs/public/`: a test
 fails until both list it.
@@ -454,8 +457,8 @@ cliProvider({
 `effort: true` says `args` passes an effort on, so `--effort` is accepted for it. `auth` is
 optional: arguments that exit 0 when the CLI is logged in, or a check function. So is `sessions`,
 for a CLI that can continue a conversation: `start(overrides, id)` and `resume(overrides, id)`
-return the arguments that keep one and continue it, and without it every call starts afresh. The same
-two builders are exported, so a program using the library can build its own agents from them and
+return the arguments that keep one and continue it, and without it every call starts afresh. Both builders are
+exported by `@rxova/planner-core`, so a program using the library can build its own agents from them and
 pass them to `Planner`.
 
 ## Development

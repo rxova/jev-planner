@@ -1,0 +1,154 @@
+# @rxova/planner-core
+
+> The planner behind jev-planner, as a library: two or more AI agents — Codex
+> and Claude Code by default; DeepSeek, Kimi and GLM too — draft a coding plan
+> for the same task, and a judge you supply scores the drafts, orders a
+> cross-review or a debate when one would help, and picks the stronger plan and
+> the agent that writes the final version. It also carries the CLI around the
+> planner, so a program is a name, a judge and a `bin` of a few lines. Every
+> agent runs read-only. Node >= 20.19. MIT. Ships ESM and CommonJS with type
+> declarations.
+
+## Install
+
+    npm install @rxova/planner-core
+
+For the ready CLI, judged by TypeSafe's Jev, install `jev-planner` instead; it
+depends on this package.
+
+## Minimal working example
+
+Plan from code with any judge that implements `PlanJudge`:
+
+```ts
+import { PROVIDERS, Planner } from '@rxova/planner-core'
+import type { PlanJudge } from '@rxova/planner-core'
+
+declare const judge: PlanJudge // yours: `name` and `judge(input)`, returning a `Verdict`
+
+const secrets = PROVIDERS.flatMap((p) => p.secretEnv)
+const agents = PROVIDERS.filter((p) => ['codex', 'claude'].includes(p.id)).map((p) =>
+  p.create({ env: process.env, omitEnv: secrets }),
+)
+const { plan, verdict, finalizer } = await new Planner(agents, judge).plan({
+  task: 'Add rate limiting to the public API',
+  cwd: process.cwd(),
+  timeoutMs: 600_000,
+})
+```
+
+Or make a whole CLI of it — flags, `doctor`, a config file named after the
+program, a rounds folder — from a `PlannerProgram` and a judge:
+
+```ts
+#!/usr/bin/env node
+import { main, processDeps } from '@rxova/planner-core'
+import type { PlannerProgram } from '@rxova/planner-core'
+import { MyJudge } from './my-judge.js'
+
+const program: PlannerProgram = {
+  name: 'my-planner', // the [my-planner] prefix, my-planner.json, .my-planner/
+  version: '1.0.0',
+  summary: 'coding plans from two or more agents, judged by mine',
+  judge: 'Mine',
+  judgeModelDefault: 'mine-latest',
+  judgeEnv: [{ variable: 'MY_JUDGE_KEY', check: 'Judge key', missing: 'MY_JUDGE_KEY is not set.' }],
+}
+
+void main(process.argv.slice(2), processDeps(program, () => new MyJudge())).then((code) => {
+  process.exitCode = code
+})
+```
+
+## API
+
+| Export                       | Kind     | What it does                                                                                                                                                                                                              |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Planner`                    | class    | `new Planner(agents, judge).plan(options)`: two or more agents draft, cross-review, finalize                                                                                                                              |
+| `DEFAULT_STRAGGLER_GRACE_MS` | const    | 90_000: what a `balanced` or `fast` round waits for a straggler before going on without it                                                                                                                                |
+| `PROVIDERS`                  | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                                                                                                                                   |
+| `DEFAULT_AGENTS`             | const    | The ids used without `--agents`: `['codex', 'claude']`                                                                                                                                                                    |
+| `cliProvider`                | function | Builds a `Provider` for an agent CLI run read-only in the repository                                                                                                                                                      |
+| `openAICompatibleProvider`   | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                                                                                                                                               |
+| `runDoctor`                  | function | `runDoctor(cwd, providers, env?)` runs each provider's checks                                                                                                                                                             |
+| `ProcessError`               | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                                                                                                                                          |
+| `TaskValidationError`        | class    | Thrown by `plan` before any call when the task is empty or a placeholder                                                                                                                                                  |
+| `Provider`                   | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                                                                                                                                         |
+| `AgentSetup`                 | type     | `{ name?, label?, model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given; `name` defaults to the id                                                                                                    |
+| `CliProviderConfig`          | type     | `{ id, label, command, args({ model?, effort? }), effort?, events?, sessions?, auth? }`, `cliProvider`'s input                                                                                                            |
+| `OpenAICompatibleConfig`     | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                                                                                                                                            |
+| `ProcessResult`              | type     | `{ stdout, stderr }` of a finished agent process                                                                                                                                                                          |
+| `CheckResult`                | type     | `{ name, ok, detail }`, one `runDoctor` check                                                                                                                                                                             |
+| `AgentName`                  | type     | `string`: a provider id, or a name given to one (`codex:sol` is `sol`)                                                                                                                                                    |
+| `AgentRequest`               | type     | `{ prompt, resumePrompt?, session?, effort?, cwd, timeoutMs, onProgress?, signal? }`, what a `PlanningAgent` is given                                                                                                     |
+| `AgentSession`               | type     | `{ id? }`: one agent's conversation, carried from its draft to its later calls in a run                                                                                                                                   |
+| `PlanningAgent`              | type     | `{ name, label, readsRepository?, generate(request) }`, the agent interface `Planner` drives                                                                                                                              |
+| `JudgedPlan`                 | type     | `{ agent, label, plan }`, one plan as the judge sees it                                                                                                                                                                   |
+| `PlanJudge`                  | type     | `{ name, judge({ task, plans, stage, disputes?, model? }) }`, returns a `Verdict`; `stage` is `'solo'`, `'draft'` or `'review'`; `name` labels its stage messages                                                         |
+| `Verdict`                    | type     | Scores and confidences, the stronger plan (an agent or `tie`), the finalizer, and `disputes?` rulings                                                                                                                     |
+| `PlanMode`                   | type     | `'fast'` (the first draft the judge accepts alone), `'balanced'` (the judge skips the rounds a plan does not need) or `'ultra'` (always cross-reviews)                                                                    |
+| `PlanOptions`                | type     | `{ task, cwd, timeoutMs, mode?, maxReviewRounds?, reviewMode?, claimChecks?, stragglerGraceMs?, judgeModel?, finalizer?, selectStronger?, allowAnyTask?, resume?, reviewEfforts?, onStage?, onAgentProgress?, onRound? }` |
+| `PlanResult`                 | type     | `{ plan, verdict, finalizer, selected?, drafts, debate?, timings, cost }`; `drafts` maps agent name to its last plan                                                                                                      |
+| `PlanCost`                   | type     | `{ mode, reviewMode, reviewRounds, synthesized, agentCalls, judgeCalls, dropped }`, what the run spent                                                                                                                    |
+| `PlanRound`                  | type     | `{ round, stage, plans, verdict?, timings, selected?, artifacts?, debate? }`, one round as `onRound` receives it                                                                                                          |
+| `ReviewMode`                 | type     | `'standard'` (revise against every plan) or `'debate'` (critiques, replies, the judge rules on disputes; experimental)                                                                                                    |
+| `Objection`                  | type     | `{ id, critic, target, claim, why, repo }`, one numbered objection from a critique                                                                                                                                        |
+| `Reply`                      | type     | `{ id, author, decision: 'accept' \| 'reject', reason }`, an author's answer to one objection                                                                                                                             |
+| `ClaimCheck`                 | type     | `{ checker, result: 'confirm' \| 'refute' \| 'unknown', evidence }`, one repository claim checked                                                                                                                         |
+| `Dispute`                    | type     | `{ id, target, critics, objections, claim, reasons, rejections, repo, check? }`, a rejected objection for the judge                                                                                                       |
+| `DisputeRuling`              | type     | `{ id, choice: 'critic' \| 'author' \| 'unclear', confidence }`, the judge's ruling on a dispute                                                                                                                          |
+| `RoundDebate`                | type     | `{ objections, replies?, unanswered?, disputes?, overflow?, claimChecks? }`, a debate's state after a round                                                                                                               |
+| `RoundTimings`               | type     | `{ totalMs, agents, judgeMs? }`: one round, and each agent call and judge call in it, in ms                                                                                                                               |
+| `RunTimings`                 | type     | `{ totalMs, rounds }`: the whole run, and each round's `RoundTimings` with its `round` and `stage`                                                                                                                        |
+| `main`                       | function | `main(argv, deps)`: the whole CLI — flags, config file, `doctor`, the run, the rounds folder — for `deps.program`; resolves to the exit code                                                                              |
+| `processDeps`                | function | `processDeps(program, judge)`: the `CliDeps` of a real process — stdio, env, cwd, the real agents, and a judge from `judge()`                                                                                             |
+| `createAgents`               | function | `createAgents(setup, env, omitEnv)`: one `PlanningAgent` per `AgentSpec`, with the setup's models and efforts                                                                                                             |
+| `secretEnv`                  | function | `secretEnv(program)`: the judge's variables and every provider's secrets, which no agent subprocess sees                                                                                                                  |
+| `CONFIG_KEYS`                | const    | The keys a config file may hold, `$schema` first                                                                                                                                                                          |
+| `commandCheck`               | function | `commandCheck(name, command, args, cwd)`: a `CheckResult` from running a command                                                                                                                                          |
+| `envCheck`                   | function | `envCheck(name, variable, env)`: a `CheckResult` for whether a variable is set, never its value                                                                                                                           |
+| `planQuestions`              | function | `planQuestions({ plans, stage, disputes? })`: the typed questions a judge answers about a round                                                                                                                           |
+| `judgedPlans`                | function | `judgedPlans(plans)`: the plans keyed by agent, each cut to what a judge is sent                                                                                                                                          |
+| `disputeKey`                 | function | `disputeKey(index)`: `dispute_<index + 1>`, the question key of a dispute                                                                                                                                                 |
+| `STAGE_TEXT`                 | const    | One line per `JudgeStage`, saying what the judge is looking at                                                                                                                                                            |
+| `PlannerProgram`             | type     | `{ name, version, summary, judge, judgeModelDefault, judgeEnv }`: what makes `main` one program — its help, prefix, config file and runs folder                                                                           |
+| `JudgeEnv`                   | type     | `{ variable, check, missing }`: a variable the judge needs, its `doctor` check, and the error when it is unset                                                                                                            |
+| `CliDeps`                    | type     | `{ stdout, stderr, env, cwd, readStdin, createPlanner, doctor, now, program }`, what `main` runs with                                                                                                                     |
+| `PlannerSetup`               | type     | `{ agents, models, efforts }`, the agents a run asked for, as `createPlanner` gets them                                                                                                                                   |
+| `AgentSpec`                  | type     | `{ name, label, provider }`, one agent of a `PlannerSetup`                                                                                                                                                                |
+| `PlanRunner`                 | type     | `{ plan(options) }`: what `createPlanner` returns; a `Planner` is one                                                                                                                                                     |
+| `JudgeStage`                 | type     | `'solo'`, `'draft'` or `'review'`: which plans a judge is shown                                                                                                                                                           |
+| `PlanQuestion`               | type     | One `choice`, `score` or `binary` question, with its details and options                                                                                                                                                  |
+| `PlanQuestions`              | type     | Every question of a round, keyed `stronger_plan`, `finalizer`, the scores, and `dispute_<n>`                                                                                                                              |
+| `DisputeKey`                 | type     | `dispute_${number}`, the key of a dispute question                                                                                                                                                                        |
+
+## Mistakes to avoid
+
+- **Treating a run as free.** With N agents one plan is N + 1 to 3N + 1 agent
+  calls, plus one judge call per judged round (in `fast` mode, per draft
+  judged alone), each billed to the account or key it runs under.
+- **Reusing a judge's name for another.** `PlanJudge.name` is what the stage
+  messages call the judge; keep it the name people see in the help.
+- **Hand-building agents without `omitEnv`.** `Provider.create` needs the
+  variables to strip from agent subprocesses; pass every provider's
+  `secretEnv` and the judge's own variables — `secretEnv(program)` is that
+  list.
+- **Hand-building two agents of one provider without names.** Pass `name` to
+  `Provider.create`, and keep every agent's `label` unique: the peer reviews
+  and the judge tell the plans apart by label.
+- **Expecting `Planner` to read a config file.** Only `main` reads one
+  (`<name>.json`); from code, pass `PlanOptions`.
+- **Sending a template as the task.** A placeholder — `TODO`, `<coding task>`,
+  `{{task}}`, text with no letters — is rejected with `TaskValidationError`
+  before any billed call, unless `allowAnyTask: true`.
+- **Expecting the agents to edit code.** All run read-only; the output is a
+  plan, not a change.
+
+## Docs
+
+- Documentation site: https://jev-planner.com/ — every page is also raw
+  markdown at the same URL plus `.md`
+- README: `node_modules/@rxova/planner-core/README.md`, or
+  https://github.com/rxova/jev-planner/tree/main/packages/core#readme
+- Package: https://www.npmjs.com/package/@rxova/planner-core
+- Source: https://github.com/rxova/jev-planner

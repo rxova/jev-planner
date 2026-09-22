@@ -41,12 +41,15 @@ export function envCheck(
   return { name, ok: set, detail: `${variable} is ${set ? 'set' : 'not set'}` }
 }
 
-/** Each provider's own checks, in order, then the TypeSafe key Jev needs. No paid call. */
+/**
+ * Each provider's own checks, in order. No paid call. The CLI adds a check for
+ * each variable its judge reads (`PlannerProgram.judgeEnv`).
+ */
 export async function runDoctor(
   cwd: string,
   providers: readonly Provider[],
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<CheckResult[]> {
   const checks = await Promise.all(providers.map((provider) => provider.doctor(cwd, env)))
-  return [...checks.flat(), envCheck('TypeSafe key', 'TYPESAFE_API_KEY', env)]
+  return checks.flat()
 }

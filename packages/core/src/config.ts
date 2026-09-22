@@ -2,8 +2,15 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { PROVIDERS } from './providers.js'
 
-/** The one file the CLI looks for in the repository. Not a dotfile, so it is not taken for run output. */
-export const CONFIG_FILE = 'jev-planner.json'
+/**
+ * What a config depends on besides its text: the one file the CLI looks for
+ * in the repository, `<program>.json`, not a dotfile so it is not taken for run
+ * output; and the variables the judge reads, which a config must never hold.
+ */
+export interface ConfigSetup {
+  file: string
+  judgeEnv: readonly string[]
+}
 
 /**
  * A config's settings, shaped like the flags they stand for, so `run()` merges
@@ -25,7 +32,7 @@ export interface ConfigValues {
   'review-mode'?: string
   'review-rounds'?: string
   finalizer?: string
-  'jev-model'?: string
+  'judge-model'?: string
   'straggler-grace'?: string
   timeout?: string
   'claim-checks'?: boolean
@@ -45,8 +52,11 @@ export interface LoadedConfig {
 const IDS = PROVIDERS.map(({ id }) => id)
 const PROVIDER_IDS = IDS.join(', ')
 
-/** Where the keys a config must never hold belong instead. */
-const SECRET_ENV = ['TYPESAFE_API_KEY', ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv)]
+/** Where the keys a config must never hold belong instead: the judge's, then every provider's. */
+const secretEnv = (judgeEnv: readonly string[]) => [
+  ...judgeEnv,
+  ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv),
+]
 
 const SECRET = /key|token|secret|password/i
 
@@ -89,12 +99,12 @@ function seconds(at: string, value: unknown, zero = false): string {
   return String(value)
 }
 
-function unknownKey(at: string, expected: readonly string[]): Error {
+function unknownKey(at: string, expected: readonly string[], judgeEnv: readonly string[]): Error {
   const key = at.slice(at.lastIndexOf('.') + 1)
   if (SECRET.test(key)) {
     return new Error(
       `${at}: a config never holds a secret; it is meant to be committed. ` +
-        `Set ${SECRET_ENV.join(', ')} in the environment instead.`,
+        `Set ${secretEnv(judgeEnv).join(', ')} in the environment instead.`,
     )
   }
   return new Error(`${at}: unknown key. Expected one of ${expected.join(', ')}.`)
@@ -108,7 +118,7 @@ const AGENT_FIELDS = {
 
 const NAME = /^[a-z][a-z0-9-]{0,23}$/
 
-/** Taken by `--finalizer` (`auto`, `none`), by Jev's verdict (`tie`), or by Windows as a file name. */
+/** Taken by `--finalizer` (`auto`, `none`), by the judge's verdict (`tie`), or by Windows as a file name. */
 const RESERVED = new Set([
   'auto',
   'none',
@@ -141,7 +151,7 @@ export function validateAgentName(name: string, provider: string): string {
   return lower
 }
 
-function agents(value: unknown): Partial<ConfigValues> {
+function agents(value: unknown, { judgeEnv }: Context): Partial<ConfigValues> {
   const entries = Object.entries(object('agents', value))
   if (entries.length < 2) throw new Error('agents: needs at least two agents')
   const values = { model: [] as string[], effort: [] as string[], 'review-effort': [] as string[] }
@@ -176,7 +186,11 @@ function agents(value: unknown): Partial<ConfigValues> {
       if (named && field === 'provider') continue
       const at = `agents.${key}.${field}`
       if (!Object.hasOwn(AGENT_FIELDS, field)) {
-        throw unknownKey(at, [...(named ? ['provider'] : []), ...Object.keys(AGENT_FIELDS)])
+        throw unknownKey(
+          at,
+          [...(named ? ['provider'] : []), ...Object.keys(AGENT_FIELDS)],
+          judgeEnv,
+        )
       }
       const flag = AGENT_FIELDS[field as keyof typeof AGENT_FIELDS]
       if (flag !== 'model' && !provider.effort) {
@@ -188,15 +202,21 @@ function agents(value: unknown): Partial<ConfigValues> {
   return { agents: specs.join(','), ...values }
 }
 
+/** Where a config's relative paths start, and the variables it must not hold besides the providers'. */
+interface Context {
+  dir: string
+  judgeEnv: readonly string[]
+}
+
 /** Every top-level key, what it becomes, and its check. The keys follow the flags' names. */
-const SETTINGS: Record<string, (value: unknown, dir: string) => Partial<ConfigValues>> = {
+const SETTINGS: Record<string, (value: unknown, context: Context) => Partial<ConfigValues>> = {
   agents,
   mode: (value) => ({ mode: choice('mode', value, ['fast', 'balanced', 'ultra']) }),
   reviewMode: (value) => ({ 'review-mode': choice('reviewMode', value, ['standard', 'debate']) }),
   reviewRounds: (value) => ({ 'review-rounds': String(choice('reviewRounds', value, [0, 1, 2])) }),
   claimChecks: (value) => ({ 'claim-checks': boolean('claimChecks', value) }),
   finalizer: (value) => ({ finalizer: string('finalizer', value) }),
-  jevModel: (value) => ({ 'jev-model': string('jevModel', value) }),
+  judgeModel: (value) => ({ 'judge-model': string('judgeModel', value) }),
   stragglerGrace: (value) => ({ 'straggler-grace': seconds('stragglerGrace', value, true) }),
   timeout: (value) => ({ timeout: seconds('timeout', value) }),
   resume: (value) => ({ resume: boolean('resume', value) }),
@@ -204,11 +224,11 @@ const SETTINGS: Record<string, (value: unknown, dir: string) => Partial<ConfigVa
   json: (value) => ({ json: boolean('json', value) }),
   verbose: (value) => ({ verbose: boolean('verbose', value) }),
   allowAnyTask: (value) => ({ 'allow-any-task': boolean('allowAnyTask', value) }),
-  runsDir: (value, dir) => ({ runsDir: resolve(dir, string('runsDir', value)) }),
-  output: (value, dir) => ({ output: resolve(dir, string('output', value)) }),
-  cwd: (value, dir) => ({ cwd: resolve(dir, string('cwd', value)) }),
+  runsDir: (value, { dir }) => ({ runsDir: resolve(dir, string('runsDir', value)) }),
+  output: (value, { dir }) => ({ output: resolve(dir, string('output', value)) }),
+  cwd: (value, { dir }) => ({ cwd: resolve(dir, string('cwd', value)) }),
   task: (value) => ({ task: string('task', value) }),
-  taskFile: (value, dir) => ({ taskFile: resolve(dir, string('taskFile', value)) }),
+  taskFile: (value, { dir }) => ({ taskFile: resolve(dir, string('taskFile', value)) }),
 }
 
 /** Every key a config may hold, `$schema` included; `config.schema.json` must list the same. */
@@ -222,9 +242,15 @@ export const CONFIG_KEYS: readonly string[] = ['$schema', ...Object.keys(SETTING
  *
  * `explicit` is whether the file was named with `--config`: only such a file
  * may set `cwd`, so a file found inside a repository cannot send the agents to
- * another one.
+ * another one. `judgeEnv` joins the providers' variables in the error for a
+ * key that looks like a secret.
  */
-export function parseConfig(text: string, path: string, explicit: boolean): ConfigValues {
+export function parseConfig(
+  text: string,
+  path: string,
+  explicit: boolean,
+  judgeEnv: readonly string[] = [],
+): ConfigValues {
   let raw: unknown
   try {
     raw = JSON.parse(text.replace(/^\uFEFF/, ''))
@@ -237,8 +263,8 @@ export function parseConfig(text: string, path: string, explicit: boolean): Conf
     const dir = dirname(path)
     for (const [key, value] of Object.entries(top)) {
       if (key === '$schema') continue
-      if (!Object.hasOwn(SETTINGS, key)) throw unknownKey(key, CONFIG_KEYS)
-      Object.assign(values, SETTINGS[key]?.(value, dir))
+      if (!Object.hasOwn(SETTINGS, key)) throw unknownKey(key, CONFIG_KEYS, judgeEnv)
+      Object.assign(values, SETTINGS[key]?.(value, { dir, judgeEnv }))
     }
     if ('cwd' in top && !explicit) {
       throw new Error(
@@ -257,14 +283,15 @@ export function parseConfig(text: string, path: string, explicit: boolean): Conf
 
 /**
  * The config for a run: the file named with `--config` (`explicit`, already
- * resolved), which must exist, or else `jev-planner.json` in `dir`, where a
- * missing file just means no config.
+ * resolved), which must exist, or else `setup.file` in `dir`, where a missing
+ * file just means no config.
  */
 export async function findConfig(
   dir: string,
   explicit: string | undefined,
+  setup: ConfigSetup,
 ): Promise<LoadedConfig | undefined> {
-  const path = explicit ?? join(dir, CONFIG_FILE)
+  const path = explicit ?? join(dir, setup.file)
   let text: string
   try {
     text = await readFile(path, 'utf8')
@@ -275,5 +302,5 @@ export async function findConfig(
       cause: error,
     })
   }
-  return { path, values: parseConfig(text, path, explicit !== undefined) }
+  return { path, values: parseConfig(text, path, explicit !== undefined, setup.judgeEnv) }
 }
