@@ -152,7 +152,6 @@ should finish. The agents explore and write; Jev evaluates.
 - [Guides and reference](https://jev-planner.com/)
 - [Complete package README](packages/jev-planner/README.md)
 - [Agent-readable reference](packages/jev-planner/llms.txt)
-- [The planner as a library](packages/core/README.md): `@rxova/planner-core`, which jev-planner is built on
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

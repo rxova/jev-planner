@@ -27,8 +27,9 @@ the debate run on Modes compared, 7 of the 10 objections were about the reposito
 accepted. Compare `round1/` with `round2/` in a run folder to see it in yours.
 [How the cross-review improves a plan →](https://jev-planner.com/learn/how-it-works/#what-the-cross-review-improves)
 
-The planner itself is [`@rxova/planner-core`](https://github.com/rxova/jev-planner/tree/main/packages/core#readme), a dependency of this package;
-jev-planner adds Jev, TypeSafe's typed judge, and the `jev-planner` command.
+The planner itself is [`packages/core`](https://github.com/rxova/jev-planner/tree/main/packages/core#readme),
+an internal package bundled into this one; jev-planner adds Jev, TypeSafe's typed judge, and the
+`jev-planner` command.
 
 **[Documentation →](https://jev-planner.com/)**
 
@@ -417,7 +418,7 @@ provider you select.
 
 ## Adding a new AI
 
-Every agent comes from one list, `PROVIDERS` in `@rxova/planner-core`'s `src/providers/providers.ts`. The CLI flags, `--help`,
+Every agent comes from one list, `PROVIDERS` in `packages/core/src/providers/providers.ts`. The CLI flags, `--help`,
 `doctor`, the prompts and Jev's choices are all built from it, so wiring up a new AI is one entry
 there. Add the agent to `config.schema.json` too, and to its copy in `apps/docs/public/`: a test
 fails until both list it.
@@ -458,7 +459,7 @@ cliProvider({
 optional: arguments that exit 0 when the CLI is logged in, or a check function. So is `sessions`,
 for a CLI that can continue a conversation: `start(overrides, id)` and `resume(overrides, id)`
 return the arguments that keep one and continue it, and without it every call starts afresh. Both builders are
-exported by `@rxova/planner-core`, so a program using the library can build its own agents from them and
+exported by this package, so a program using the library can build its own agents from them and
 pass them to `Planner`.
 
 ## Development
