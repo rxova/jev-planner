@@ -106,14 +106,14 @@ jev-planner \
 - Every draft, review, and Jev verdict is saved under `.jev-planner/<run>/`; `--rounds-dir <path>`
   moves it, `--no-rounds` skips it.
 - `--json` emits structured output for another tool.
-- `--mode ultra` runs every round, every time; the default `fast` lets Jev skip the ones a plan
-  does not need ([fast or ultra](https://jev-planner.com/learn/how-it-works/#fast-or-ultra-in-short)).
+- `--mode ultra` runs every round, every time; the default `balanced` lets Jev skip the ones a plan
+  does not need ([balanced or ultra](https://jev-planner.com/learn/how-it-works/#balanced-or-ultra-in-short)).
 - `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
 - `--review-rounds <0|1|2>` caps the cross-reviews; `0` skips them.
 
 ```text
 .jev-planner/20260921-230512/
-  round1/          independent drafts (+ Jev verdict in fast mode)
+  round1/          independent drafts (+ Jev verdict in balanced mode)
   round2/          cross-reviewed plans + Jev verdict, when a review ran
   round3/          optional second review
   final/plan.md    merged, or selected, implementation plan
@@ -122,7 +122,7 @@ jev-planner \
 ## Cost and data flow
 
 With **N** agents, `--mode ultra` makes **2N + 1** agent calls: drafts, reviews, and final
-synthesis, plus **N** if Jev requests another review. The default `fast` makes as few as **N + 1**
+synthesis, plus **N** if Jev requests another review. The default `balanced` makes as few as **N + 1**
 and never more than `ultra`. Each Jev evaluation is a separate TypeSafe call.
 
 Agent CLIs inspect the repository in read-only mode. Chat APIs receive a bounded snapshot of tracked

@@ -79,7 +79,7 @@ class FakeJev implements JevJudge {
 
 const task = { task: 'Add caching', cwd: '/tmp', timeoutMs: 1_000 } as const
 
-describe('Planner in fast mode', () => {
+describe('Planner in balanced mode', () => {
   it('judges the drafts and skips a cross-review Jev does not ask for', async () => {
     const codex = new FakeAgent('codex', ['codex draft'])
     const claude = new FakeAgent('claude', ['claude draft', 'final plan'])
@@ -100,7 +100,7 @@ describe('Planner in fast mode', () => {
     expect(claude.prompts[1]).toContain('codex draft')
     expect(claude.prompts[1]).toContain('claude draft')
     expect(result.cost).toEqual({
-      mode: 'fast',
+      mode: 'balanced',
       reviewRounds: 0,
       synthesized: true,
       agentCalls: 3,
@@ -846,7 +846,7 @@ describe('Planner', () => {
       })
     })
 
-    it('counts Jev judging the drafts in the draft round, in fast mode', async () => {
+    it('counts Jev judging the drafts in the draft round, in balanced mode', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'performance'] })
       const codex = slow('codex', [
         ['codex draft', 5_000],

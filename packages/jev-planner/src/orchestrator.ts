@@ -52,7 +52,7 @@ const STANDS_ALONE = 0.7
 /** A round never returns fewer plans than this: below it, there is no collaboration left to judge. */
 const MIN_PLANS = 2
 
-/** What a `fast` round waits for a straggler once enough agents have answered. */
+/** What a `balanced` round waits for a straggler once enough agents have answered. */
 export const DEFAULT_STRAGGLER_GRACE_MS = 90_000
 
 const labelsOf = (agents: readonly PlanningAgent[]) => agents.map(({ label }) => label)
@@ -81,7 +81,7 @@ export class Planner {
     const finalizerOverride =
       options.finalizer === undefined ? undefined : this.agent(options.finalizer)
 
-    const mode: PlanMode = options.mode ?? 'fast'
+    const mode: PlanMode = options.mode ?? 'balanced'
     const maxReviewRounds = options.maxReviewRounds ?? 2
     // `ultra` buys every agent's answer to every round, so it never stops waiting.
     const graceMs = mode === 'ultra' ? 0 : (options.stragglerGraceMs ?? DEFAULT_STRAGGLER_GRACE_MS)
@@ -277,7 +277,7 @@ export class Planner {
         : undefined
     const standsAlone =
       reviewed &&
-      mode === 'fast' &&
+      mode === 'balanced' &&
       finalizerOverride === undefined &&
       verdict.standsAloneProbability >= STANDS_ALONE
     const adopted = selected ?? (standsAlone ? this.strongest(drafts, verdict) : undefined)

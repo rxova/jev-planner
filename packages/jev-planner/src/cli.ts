@@ -36,10 +36,11 @@ Options:
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
       --finalizer <id>        auto, none, or one of the agents (default: auto/Jev decides);
                               none keeps a cross-reviewed plan Jev rates stronger, unmerged
-      --mode <fast|ultra>     fast: Jev skips the rounds a run does not need
-                              ultra: always cross-review, always merge (default: fast)
+      --mode <balanced|ultra>
+                              balanced: Jev skips the rounds a run does not need
+                              ultra: always cross-review, always merge (default: balanced)
       --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
-      --straggler-grace <s>   In fast mode, how long a round waits for the agents
+      --straggler-grace <s>   In balanced mode, how long a round waits for the agents
                               still working once half have answered; 0 waits for
                               every agent (default: 90)
       --timeout <seconds>     Timeout for each agent call (default: 600)
@@ -275,15 +276,15 @@ function parseReviewRounds(value: string | undefined): 0 | 1 | 2 {
 }
 
 function parseMode(value: string | undefined): PlanMode {
-  if (value === undefined || value === 'fast') return 'fast'
+  if (value === undefined || value === 'balanced') return 'balanced'
   if (value === 'ultra') return 'ultra'
-  throw new Error(`Invalid --mode value: ${value}. Expected fast or ultra.`)
+  throw new Error(`Invalid --mode value: ${value}. Expected balanced or ultra.`)
 }
 
 function parseStragglerGrace(value: string | undefined, mode: PlanMode): number | undefined {
   if (value === undefined) return undefined
   if (mode === 'ultra')
-    throw new Error('--straggler-grace is for --mode fast; ultra never drops an agent')
+    throw new Error('--straggler-grace is for --mode balanced; ultra never drops an agent')
   const seconds = Number(value)
   if (!Number.isFinite(seconds) || seconds < 0) {
     throw new Error('--straggler-grace must be a number of seconds, 0 or more')
