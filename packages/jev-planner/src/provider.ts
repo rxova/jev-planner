@@ -105,6 +105,8 @@ export function cliProvider(config: CliProviderConfig): Provider {
     create: ({ model, effort, omitEnv }) => ({
       name: config.id,
       label: config.label,
+      // It runs in the repository, so it can open a file to check a claim.
+      readsRepository: true,
       generate: async (request: AgentRequest) => {
         const callEffort = config.effort ? (request.effort ?? effort) : effort
         const overrides = {
@@ -235,6 +237,8 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
       return {
         name: config.id,
         label: config.label,
+        // It sees a snapshot of the repository, not the repository: it cannot check a claim.
+        readsRepository: false,
         generate: async (request: AgentRequest) => {
           const key = env[config.apiKeyEnv]?.trim()
           if (!key) throw new Error(`${config.apiKeyEnv} is not set, so ${config.label} cannot run`)
