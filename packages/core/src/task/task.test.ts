@@ -37,6 +37,11 @@ describe('validateTask', () => {
     rejects('Describe the coding change you want to plan?!')
   })
 
+  it('strips a long run of trailing punctuation', () => {
+    rejects(`Describe the coding change you want to plan${'!'.repeat(50_000)}`)
+    expect(validateTask(`Add a flag${'!'.repeat(50_000)}x`)).toMatch(/^Add a flag!/)
+  })
+
   it('rejects the other known placeholders', () => {
     for (const raw of ['your task here', 'TODO', 'tbd.', '<coding task>']) rejects(raw)
   })

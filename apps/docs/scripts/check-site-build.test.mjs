@@ -97,6 +97,21 @@ describe('eagerAssets', () => {
   })
 })
 
+describe('eagerAssets, in any case', () => {
+  it('finds upper-case tags and closing tags with spaces', () => {
+    const found = eagerAssets(
+      '<LINK REL="stylesheet" HREF="/a.css"><SCRIPT SRC="/a.js"></SCRIPT >' +
+        '<Script>inline()</sCrIpT><STYLE>p{}</STYLE >',
+    )
+    expect(found).toEqual({
+      css: ['/a.css'],
+      js: ['/a.js'],
+      inline: ['inline()'],
+      inlineCss: ['p{}'],
+    })
+  })
+})
+
 describe('staticImports', () => {
   it('finds relative static imports, bare and named, and ignores packages', () => {
     const js =
