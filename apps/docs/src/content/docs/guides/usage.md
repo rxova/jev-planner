@@ -70,12 +70,12 @@ A run's wall clock is the number of rounds, not the number of agent calls: the a
 in parallel, and each round waits for the one before it. `--mode` decides how many rounds a run may
 spend — see [how it works](../learn/how-it-works.md#why-the-mode-matters).
 
-- `--mode fast` (the default) lets Jev skip the rounds a plan does not need: the cross-review when
+- `--mode balanced` (the default) lets Jev skip the rounds a plan does not need: the cross-review when
   the drafts already agree, and the merge when one cross-reviewed plan is final as it stands.
 - `--mode ultra` always cross-reviews and always merges — 2N + 1 agent calls with N agents, or
   3N + 1 when Jev asks for a second pass.
 - `--review-rounds <0|1|2>` caps the cross-review rounds either mode may run (default: 2).
-- `--straggler-grace <seconds>` sets how long a `fast` round waits for the agents still working once
+- `--straggler-grace <seconds>` sets how long a `balanced` round waits for the agents still working once
   half have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
 
 ```sh
@@ -85,7 +85,7 @@ jev-planner --mode ultra "Migrate the persistence layer from SQLite to Postgres"
 Every run reports what it spent on stderr:
 
 ```text
-[jev-planner] fast mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged
+[jev-planner] balanced mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged
 ```
 
 ## JSON output
@@ -138,7 +138,7 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
-      jev-verdict.json  in fast mode; ultra judges only reviewed plans
+      jev-verdict.json  in balanced mode; ultra judges only reviewed plans
       timings.json    how long the round and each call in it took, in milliseconds
     round2/           only when a cross-review ran: the revised plans, and Jev's verdict
       codex.md

@@ -31,7 +31,7 @@ const SUMMARY = [
   'default: each drafts a plan against the repository, read-only. TypeSafe Jev',
   'scores the plans with typed answers — completeness, feasibility, risk',
   'coverage, which agent should merge them, and whether a cross-review is worth',
-  "it. In the default `fast` mode the agents revise after reading each other's",
+  "it. In the default `balanced` mode the agents revise after reading each other's",
   'plans only when Jev asks, and the chosen agent writes one final plan unless a',
   'reviewed plan already stands alone; `--mode ultra` always runs every round.',
   'The plan goes to stdout as Markdown, or as JSON with `--json`;',

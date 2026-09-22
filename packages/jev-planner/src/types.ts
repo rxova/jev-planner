@@ -4,14 +4,14 @@ export type AgentName = string
 /**
  * How much work a run spends before it answers.
  *
- * - `fast` lets Jev cut the run short: it judges the drafts first and orders a
+ * - `balanced` lets Jev cut the run short: it judges the drafts first and orders a
  *   cross-review only when one would help, adopts a cross-reviewed plan that
  *   already stands alone instead of paying for a merge, and stops waiting on a
  *   straggling agent once the round has enough plans.
  * - `ultra` always cross-reviews and always merges: the most material for the
  *   money, at 2N + 1 agent calls and three sequential rounds.
  */
-export type PlanMode = 'fast' | 'ultra'
+export type PlanMode = 'balanced' | 'ultra'
 
 /**
  * One agent's conversation, carried from one stage of a run to the next. The
@@ -70,7 +70,7 @@ export interface JevVerdict {
   riskCoverageConfidence: number
   needsAnotherPassProbability: number
   /**
-   * How likely the strongest plan is already a final plan on its own. In `fast`
+   * How likely the strongest plan is already a final plan on its own. In `balanced`
    * mode a cross-reviewed run above the threshold is answered with that plan
    * rather than a synthesis call.
    */
@@ -99,13 +99,13 @@ export interface PlanOptions {
   task: string
   cwd: string
   timeoutMs: number
-  /** `fast` (the default) lets Jev skip work a run does not need; `ultra` never skips. */
+  /** `balanced` (the default) lets Jev skip work a run does not need; `ultra` never skips. */
   mode?: PlanMode
-  /** Cross-review rounds a run may spend; `fast` runs only the ones Jev asks for. */
+  /** Cross-review rounds a run may spend; `balanced` runs only the ones Jev asks for. */
   maxReviewRounds?: 0 | 1 | 2
   /**
    * How long a round waits for the agents still working once enough of them
-   * have answered, in `fast` mode. `0` waits for every agent, as `ultra` always
+   * have answered, in `balanced` mode. `0` waits for every agent, as `ultra` always
    * does. A dropped agent's call is aborted, and a round never falls below two
    * plans, so nothing is dropped that the round still needs.
    */
@@ -187,7 +187,7 @@ export interface PlanResult {
   finalizer: AgentName
   /**
    * The plan is `finalizer`'s own plan, adopted whole rather than merged: in
-   * `fast` mode when Jev judged it final as it stands, or by `selectStronger`.
+   * `balanced` mode when Jev judged it final as it stands, or by `selectStronger`.
    */
   selected?: true
   /** Each agent's last plan, by agent name. */
