@@ -112,6 +112,7 @@ export function cliProvider(config: CliProviderConfig): Provider {
           input: request.prompt,
           timeoutMs: request.timeoutMs,
           omitEnv,
+          ...(request.signal ? { signal: request.signal } : {}),
           onLine: (line, stream) => {
             const { progress, result } = read(line, stream)
             if (progress) request.onProgress?.(progress)
@@ -184,6 +185,9 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
           }
 
           request.onProgress?.(`Waiting for ${model} to answer…`)
+          const timeout = AbortSignal.timeout(request.timeoutMs)
+          // The request ends at the timeout, or as soon as the run stops needing it.
+          const signal = request.signal ? AbortSignal.any([timeout, request.signal]) : timeout
           let response: Response
           try {
             response = await send(endpoint, {
@@ -196,9 +200,14 @@ export function openAICompatibleProvider(config: OpenAICompatibleConfig): Provid
                   { role: 'user', content: `${await snapshot}\n\n${request.prompt}` },
                 ],
               }),
-              signal: AbortSignal.timeout(request.timeoutMs),
+              signal,
             })
           } catch (error) {
+            if (request.signal?.aborted === true) {
+              throw new Error(`${config.label} was stopped: the run no longer needs it`, {
+                cause: error,
+              })
+            }
             if (error instanceof Error && error.name === 'TimeoutError') {
               throw new Error(
                 `${config.label} timed out after ${String(request.timeoutMs / 1_000)}s`,

@@ -1,7 +1,7 @@
 export { runDoctor } from './doctor.js'
 export type { CheckResult } from './doctor.js'
 export { TypeSafeJevJudge } from './jev.js'
-export { Planner } from './orchestrator.js'
+export { DEFAULT_STRAGGLER_GRACE_MS, Planner } from './orchestrator.js'
 export { ProcessError } from './process.js'
 export type { ProcessResult } from './process.js'
 export { cliProvider, openAICompatibleProvider } from './provider.js'
@@ -15,6 +15,8 @@ export type {
   JevVerdict,
   JudgedPlan,
   PlanningAgent,
+  PlanCost,
+  PlanMode,
   PlanOptions,
   PlanResult,
   PlanRound,
