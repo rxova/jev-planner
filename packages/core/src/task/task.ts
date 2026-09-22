@@ -26,12 +26,15 @@ const PLACEHOLDERS = new Set([
 /** Unfilled template slots: `<task>`, `{{task}}`, `[task]`, as the whole text. */
 const TEMPLATE_SLOTS = [/^<[^>]*>$/, /^\{\{.*\}\}$/s, /^\[[^\]]*\]$/]
 
+const TRAILING_PUNCTUATION = new Set('.!?,;:…')
+
 /** Lowercase, collapse whitespace, drop trailing punctuation: for comparison only. */
 function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[.!?,;:…]+$/, '')
+  const collapsed = text.toLowerCase().replace(/\s+/g, ' ')
+  // A loop, not `/[.!?]+$/`: that regex is quadratic on a long run of punctuation.
+  let end = collapsed.length
+  while (end > 0 && TRAILING_PUNCTUATION.has(collapsed.charAt(end - 1))) end -= 1
+  return collapsed.slice(0, end)
 }
 
 function preview(text: string): string {

@@ -94,23 +94,23 @@ export function prefixFrom(indexMd) {
  */
 export function eagerAssets(html) {
   const css = []
-  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
-    if (!/\brel=["']?stylesheet/.test(tag) || /\bmedia=["']?print/.test(tag)) continue
-    const href = /\bhref=["']?([^"'\s>]+)/.exec(tag)?.[1]
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
+    if (!/\brel=["']?stylesheet/i.test(tag) || /\bmedia=["']?print/i.test(tag)) continue
+    const href = /\bhref=["']?([^"'\s>]+)/i.exec(tag)?.[1]
     if (href) css.push(href)
   }
 
   const js = []
   const inline = []
-  for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
-    if (/type=["']?application\/(?:ld\+)?json/.test(attrs)) continue
-    const src = /\bsrc=["']?([^"'\s>]+)/.exec(attrs)?.[1]
+  for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    if (/\btype=["']?application\/(?:ld\+)?json/i.test(attrs)) continue
+    const src = /\bsrc=["']?([^"'\s>]+)/i.exec(attrs)?.[1]
     if (src) js.push(src)
     else if (body.trim()) inline.push(body)
   }
 
   // Styles inlined into the page count against the CSS budget too.
-  const inlineCss = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/g)].map(([, s]) => s)
+  const inlineCss = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)].map(([, s]) => s)
 
   return { css, js, inline, inlineCss }
 }

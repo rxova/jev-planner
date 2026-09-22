@@ -344,6 +344,19 @@ describe('openAICompatibleProvider', () => {
     expect(agentWith(fetch).readsRepository).toBe(false)
   })
 
+  it('drops every trailing slash from the base URL, however many', async () => {
+    const send = vi.fn<typeof fetch>().mockResolvedValue(completion('the plan'))
+    const slashes = openAICompatibleProvider({
+      id: 'acme',
+      label: 'Acme',
+      baseUrl: `https://api.acme.test/v1${'/'.repeat(50_000)}`,
+      apiKeyEnv: 'ACME_API_KEY',
+      model: 'acme-default',
+    })
+    await slashes.create({ env, omitEnv: [], fetch: send }).generate(request)
+    expect(send.mock.calls[0]?.[0]).toBe('https://api.acme.test/v1/chat/completions')
+  })
+
   it('posts the snapshot and prompt to /chat/completions with the key', async () => {
     const send = vi.fn<typeof fetch>().mockResolvedValue(completion('  the plan \n'))
     const agent = agentWith(send)
