@@ -28,6 +28,45 @@ asking, up to `--review-rounds` times (two by default; `0` skips the cross-revie
 In `--mode ultra` the first cross-review is not Jev's to skip: the agents always review each other,
 and Jev only decides whether to ask for a second pass.
 
+### What the cross-review improves
+
+A draft is written blind: each agent knows the repository, but not what the others noticed in it.
+The cross-review is the first time a plan meets a second opinion, and it is where most of a run's
+improvement happens. Reading each other's plans, the agents:
+
+- **Correct each other's facts.** One plan assumes a function is private; another has read the file
+  and shows it is exported. Claims the plans disagree on are exactly the ones an agent reopens the
+  repository to check.
+- **Drop their weakest ideas.** A shortcut that looked fine in isolation rarely survives a peer that
+  proposes something safer.
+- **Take the other plan's strengths.** One draft is concise and well structured, another is tied to
+  files and line numbers; after the review each revised plan carries more of both.
+- **Name the real open questions.** Where the agents still disagree, the revised plans say so,
+  rather than each confidently settling it a different way.
+
+For example, on a brief to add a debate-style review to `jev-planner` itself, Claude's draft merged
+similar objections by word overlap; after reading Codex's plan it switched to exact matching, which
+cannot merge two different objections. Codex, in turn, took Claude's idea of evaluating the feature
+against past commits instead of trusting the tool's own scores. The final merge added little on
+top: the revised plans had already done the work.
+
+A hand review of that run's five plans, scored out of 10 (a person's judgement, not Jev's; the brief
+asked for under 1,500 words):
+
+| Plan            | Words | Score | In one line                                                                                  |
+| --------------- | ----: | ----: | -------------------------------------------------------------------------------------------- |
+| Codex, round 1  |  1312 |   6.5 | Clean design and the only one within the word limit, but it names no file or line            |
+| Claude, round 1 |  1968 |     7 | Best tied to the actual code, but it has two risky ideas                                     |
+| Codex, round 2  |  1465 |   7.5 | Took Claude's evaluation ideas and the stricter duplicate check, still no references to code |
+| Claude, round 2 |  2175 |     8 | Dropped its weak ideas, well grounded, and says what it took from Codex and why              |
+| Final, merged   |  2278 |   8.5 | The best overall, but only slightly better than Claude's round 2 plan, and the longest       |
+
+Both agents gained a point from the cross-review; the merge gained half of one.
+
+To see it on your own run, compare `round1/` with `round2/` in the run folder. That is also why a
+plan that has not been cross-reviewed is never adopted whole, and why `--review-rounds 0` trades
+quality for time.
+
 ## 4. Synthesis
 
 The selected agent merges the plans into one final implementation plan. `--finalizer <id>` overrides
