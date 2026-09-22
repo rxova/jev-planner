@@ -94,7 +94,12 @@ D1: REFUTE — src/orchestrator.ts:Planner.round is private, runRound is a local
 Jev then rules with the check in front of it. An agent CLI (`codex`, `claude`) runs in the
 repository and can check a claim; a chat API (`deepseek`, `kimi`, `glm`) sees only a snapshot and
 cannot. With fewer than two agent CLIs, or no disputed repository claim, the checks are skipped and
-the run says so on stderr.
+the run says so on stderr. Two named agents of one CLI, such as `codex:sol,codex:terra`, count as
+two.
+
+A debate between [two agents of one provider](../reference/agents.md#one-provider-several-agents)
+is worth most when they differ in model or effort: with both the same, the run warns that their
+drafts may barely differ, and their critiques may too.
 
 ## What it costs
 

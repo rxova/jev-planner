@@ -32,7 +32,7 @@ agent calls and `ultra` five or seven.
 
 - **`--finalizer none`** drops the merge, one agent call and one round, whenever a cross-review ran
   and Jev rates one plan stronger; on a tie, the merge still runs.
-- **`--finalizer <id>`** always merges: `balanced` then never adopts a plan whole.
+- **`--finalizer <name>`** always merges: `balanced` then never adopts a plan whole.
 - **`fast` still pays for the agents it stops.** An agent aborted mid-draft counts as a call and has
   billed what it used. Only the verdict that decided the run is saved; the verdicts of drafts Jev
   turned down alone are not.

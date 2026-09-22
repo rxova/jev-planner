@@ -35,16 +35,17 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
 
 ## Choosing agents and models
 
-- `--agents <ids>` to choose two or more agents (default: `codex,claude`). The
-  [agents reference](../reference/agents.md) lists the ids.
-- `--model <id>=<model>`, repeatable, to override one agent's model.
-- `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
+- `--agents <provider[:name],…>` to choose two or more agents (default: `codex,claude`). The
+  [agents reference](../reference/agents.md) lists the providers; `codex:sol,codex:terra` runs one
+  provider as [two named agents](../reference/agents.md#one-provider-several-agents).
+- `--model <name>=<model>`, repeatable, to override one agent's model.
+- `--effort <name>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
-- `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
+- `--review-effort <name>=<level>`, repeatable, to use another effort for that agent's cross-reviews
   and synthesis only, while its draft keeps `--effort`. The later stages edit plans rather than
   explore the repository, so a lower effort is meant to make them quicker; that is not measured.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
-- `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
+- `--finalizer <name>` to override Jev's routing decision with one of the selected agents.
 - `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
   merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
   ran, the finalizer still runs.

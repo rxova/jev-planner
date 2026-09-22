@@ -138,6 +138,23 @@ a note between replies
     })
   })
 
+  it('reads ids between named agents, hyphens and all', () => {
+    const peer = { name: 'gpt-mini', label: 'Codex (gpt-mini)' }
+    const { objections } = parseCritique('sol-2', 'TARGET: Codex (gpt-mini)\nC1: no cache', [peer])
+    expect(objections.map(({ id, target }) => [id, target])).toEqual([
+      ['sol-2:gpt-mini:C1', 'gpt-mini'],
+    ])
+    const { replies } = parseReply(
+      'gpt-mini',
+      '<replies>\nsol-2:gpt-mini:C1: ACCEPT — added\n</replies>\n<revised-plan>\n# Plan\n</revised-plan>',
+      ['sol-2:gpt-mini:C1'],
+      'old',
+    )
+    expect(replies).toEqual([
+      { id: 'sol-2:gpt-mini:C1', author: 'gpt-mini', decision: 'accept', reason: 'added' },
+    ])
+  })
+
   it('runs an unclosed plan tag to the end', () => {
     expect(parseReply('claude', '<revised-plan>\n# Plan\nstep', ids, 'old').plan).toBe(
       '# Plan\nstep',

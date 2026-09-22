@@ -148,6 +148,75 @@ describe('parseConfig', () => {
     )
   })
 
+  it('runs one provider as several named agents, keyed by name', () => {
+    expect(
+      parse({
+        agents: {
+          sol: { provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' },
+          Terra: { provider: 'codex', reviewEffort: 'low' },
+          deepseek: {},
+          chat: { provider: 'deepseek', model: 'deepseek-reasoner' },
+        },
+      }),
+    ).toMatchObject({
+      agents: 'codex:sol,codex:terra,deepseek,deepseek:chat',
+      model: ['sol=gpt-5.6-sol', 'chat=deepseek-reasoner'],
+      effort: ['sol=high'],
+      'review-effort': ['terra=low'],
+    })
+  })
+
+  it('checks a named agent: its provider, and a name the run can use', () => {
+    const ids = PROVIDERS.map(({ id }) => JSON.stringify(id)).join(', ')
+    rejects(
+      { agents: { codex: { provider: 'claude' }, claude: {} } },
+      'agents.codex.provider: a provider key names its own provider; use another key for an instance',
+    )
+    rejects(
+      { agents: { sol: { provider: 'gemini' }, claude: {} } },
+      `agents.sol.provider: must be one of ${ids}`,
+    )
+    rejects(
+      { agents: { sol: { provider: 7 }, claude: {} } },
+      `agents.sol.provider: must be one of ${ids}`,
+    )
+    rejects(
+      { agents: { sol: {}, claude: {} } },
+      'agents.sol: unknown agent. Expected one of codex, claude, deepseek, kimi, glm. A named agent sets "provider".',
+    )
+    rejects(
+      { agents: { tie: { provider: 'codex' }, claude: {} } },
+      'agents.tie: a reserved word, not an agent name',
+    )
+    rejects(
+      { agents: { Auto: { provider: 'codex' }, claude: {} } },
+      'agents.auto: a reserved word, not an agent name',
+    )
+    rejects(
+      { agents: { Claude: { provider: 'codex' }, codex: {} } },
+      'agents.claude: the name of another provider, not an agent name',
+    )
+    rejects(
+      { agents: { '9lives': { provider: 'codex' }, claude: {} } },
+      'agents.9lives: an agent name is a letter, then letters, digits or -, at most 24 characters',
+    )
+    rejects(
+      { agents: { sol: { provider: 'codex' }, SOL: { provider: 'claude' } } },
+      'agents.SOL: sol is listed more than once',
+    )
+    rejects(
+      { agents: { sol: { provider: 'codex', models: 'x' }, claude: {} } },
+      'agents.sol.models: unknown key. Expected one of provider, model, effort, reviewEffort.',
+    )
+  })
+
+  it('takes an effort under a name only when its provider has one', () => {
+    rejects(
+      { agents: { codex: {}, chat: { provider: 'deepseek', effort: 'high' } } },
+      'agents.chat.effort: DeepSeek does not take effort',
+    )
+  })
+
   it('takes cwd only from a file passed with --config', () => {
     rejects({ cwd: 'app' }, 'cwd: allowed only in a file passed with --config')
     expect(parse({ cwd: 'app' }, true).cwd).toBe('/repo/app')
@@ -222,6 +291,22 @@ describe('config.schema.json', () => {
         provider.effort ? ['model', 'effort', 'reviewEffort'] : ['model'],
       )
     }
+  })
+
+  it('takes a named agent of any provider, with an effort only where the provider takes one', async () => {
+    const { properties } = await read('../../config.schema.json')
+    const named = (
+      properties.agents as {
+        additionalProperties: {
+          properties: { provider: { enum: string[] } }
+          if: { properties: { provider: { enum: string[] } } }
+        }
+      }
+    ).additionalProperties
+    expect(named.properties.provider.enum).toEqual(PROVIDERS.map(({ id }) => id))
+    expect(named.if.properties.provider.enum).toEqual(
+      PROVIDERS.filter(({ effort }) => !effort).map(({ id }) => id),
+    )
   })
 
   it('is the copy the docs site serves, byte for byte', async () => {

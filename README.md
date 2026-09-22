@@ -45,7 +45,8 @@ TASK + REPOSITORY ───────┤                    ├─► JEV EVAL
 `--mode fast` short-cuts this: Jev judges each draft alone as it arrives, and the first it accepts is
 the plan.
 
-Codex and Claude are the defaults. DeepSeek, Kimi, and GLM are supported too.
+Codex and Claude are the defaults. DeepSeek, Kimi, and GLM are supported too, and one provider can
+run as two named agents (`--agents codex:sol,codex:terra`).
 
 ## Quick start
 
@@ -86,7 +87,7 @@ npx jev-planner "Make image uploads resumable"
 | `kimi`     | chat API  | `MOONSHOT_API_KEY`             |
 | `glm`      | chat API  | `ZAI_API_KEY`                  |
 
-Use any two or more, and override models when needed:
+Use any two or more, or one provider twice under two names, and override models when needed:
 
 ```sh
 jev-planner \

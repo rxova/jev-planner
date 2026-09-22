@@ -5,7 +5,8 @@ sidebar:
   order: 1
 ---
 
-Pick the agents with `--agents`, two or more, comma-separated:
+Pick the agents with `--agents`, two or more, comma-separated. One provider can be two of them,
+under different names; see [one provider, several agents](#one-provider-several-agents).
 
 | Id         | AI                                                                            | Kind      | Needs              |
 | ---------- | ----------------------------------------------------------------------------- | --------- | ------------------ |
@@ -40,6 +41,29 @@ If a session cannot be continued, the call starts afresh with the whole prompt.
 The CLIs keep those sessions as they keep any other: in `~/.codex/sessions` and
 `~/.claude/projects`, and Claude's appear in its `/resume` list. [`--no-resume`](../guides/usage.md) starts every call
 afresh and keeps none, as before.
+
+## One provider, several agents
+
+An agent is a provider under a name. `--agents codex` is short for `codex:codex`, and
+`--agents codex:sol,codex:terra` runs Codex twice, as two agents named `sol` and `terra`. Each has
+its own session, draft and [round files](../guides/usage.md) (`round1/sol.md`), and the overrides take the name:
+
+```sh
+jev-planner --agents codex:sol,codex:terra \
+  --model sol=gpt-5.6-sol --model terra=gpt-5.6-terra "Add caching to the search endpoint"
+```
+
+- **Names** are a letter, then letters, digits or `-`, at most 24 characters, read lowercased. A
+  name cannot be `auto`, `none`, `tie`, a Windows device name (`con`, `nul`, …) or another
+  provider's id.
+- **Labels** tell them apart: the output, the peer reviews and Jev see `Codex (sol)` and
+  `Codex (terra)`.
+- **Vary them.** Two agents with the same provider, model and effort get a warning on stderr, since
+  their drafts may barely differ; the run still goes ahead.
+- **Name the one you mean.** Once a provider's agents are named, `--model codex=…` is an error that
+  lists them.
+- **One quota.** Both draw on the same subscription or key, at the same time. A rate limit (HTTP 429) fails the call, and a failed call fails the run.
+- `doctor` checks each provider once.
 
 ## Credentials
 

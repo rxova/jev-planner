@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import packageJson from '../../package.json' with { type: 'json' }
-import { costLine, HELP, main, VERSION } from '../cli.js'
+import { costLine, createAgents, HELP, main, VERSION } from '../cli.js'
 import type { CliDeps } from '../cli.js'
 import type { CheckResult } from '../doctor.js'
 import { PROVIDERS } from '../providers.js'
@@ -91,7 +91,7 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
     cwd: () => dir,
     readStdin: () => Promise.resolve(undefined),
     createPlanner: ({ agents, models, efforts }) => {
-      setup = { agents: agents.map(({ id }) => id), models, efforts }
+      setup = { agents: agents.map(({ name }) => name), models, efforts }
       return {
         plan: (options) => {
           planned = options
@@ -1224,5 +1224,181 @@ describe('the config file', () => {
       await config({ agents: { codex: {}, claude: {} }, finalizer: 'glm' })
       await expect(failure(['task'])).resolves.toContain('Invalid --finalizer value: glm')
     })
+  })
+})
+
+describe('several agents from one provider', () => {
+  async function failure(argv: string[]): Promise<string> {
+    const h = harness()
+    await expect(main(argv, h.deps)).resolves.toBe(1)
+    expect(h.planned()).toBeUndefined()
+    return h.stderr()
+  }
+
+  const TWO = ['--agents', 'codex:sol,codex:terra']
+
+  it('names each agent after the colon, lowercased, and a bare provider after itself', async () => {
+    const h = harness()
+    await main(['--agents', 'codex:Sol, codex:terra ,claude', 'task'], h.deps)
+    expect(h.setup()?.agents).toEqual(['sol', 'terra', 'claude'])
+  })
+
+  it('takes overrides and the finalizer by name', async () => {
+    const h = harness()
+    await main(
+      [
+        ...TWO,
+        '--model',
+        'sol=gpt-a',
+        '--model',
+        'TERRA=gpt-b',
+        '--effort',
+        'sol=high',
+        '--review-effort',
+        'terra=low',
+        '--finalizer',
+        'Terra',
+        'task',
+      ],
+      h.deps,
+    )
+    expect(h.setup()).toEqual({
+      agents: ['sol', 'terra'],
+      models: { sol: 'gpt-a', terra: 'gpt-b' },
+      efforts: { sol: 'high' },
+    })
+    expect(h.planned()).toMatchObject({ finalizer: 'terra', reviewEfforts: { terra: 'low' } })
+  })
+
+  it('rejects a list that names nobody twice apart, with a hint for a repeated provider', async () => {
+    await expect(failure(['--agents', 'codex,codex', 'task'])).resolves.toContain(
+      '--agents lists codex more than once; name each instance: codex:a,codex:b',
+    )
+    await expect(failure(['--agents', 'codex:Sol,codex:sol', 'task'])).resolves.toContain(
+      'jev-planner: --agents lists sol more than once\n',
+    )
+    await expect(failure(['--agents', 'codex:codex,codex', 'task'])).resolves.toContain(
+      '--agents lists codex more than once; name each instance',
+    )
+  })
+
+  it('rejects a name the run cannot use', async () => {
+    await expect(failure(['--agents', 'codex:claude,claude', 'task'])).resolves.toContain(
+      'claude: the name of another provider, not an agent name',
+    )
+    await expect(failure(['--agents', 'codex:tie,claude', 'task'])).resolves.toContain(
+      'tie: a reserved word, not an agent name',
+    )
+    await expect(failure(['--agents', 'codex:con,claude', 'task'])).resolves.toContain(
+      'con: a reserved word, not an agent name',
+    )
+    await expect(failure(['--agents', 'codex:,claude', 'task'])).resolves.toContain(
+      ': an agent name is a letter, then letters, digits or -, at most 24 characters',
+    )
+    await expect(failure(['--agents', 'codex:a:b,claude', 'task'])).resolves.toContain(
+      'Invalid agent in --agents: codex:a:b. Expected <provider>[:<name>].',
+    )
+    await expect(failure(['--agents', 'gpt9:sol,claude', 'task'])).resolves.toContain(
+      'Unknown agent in --agents: gpt9.',
+    )
+  })
+
+  it('asks which instance a provider id meant, and names the run’s agents otherwise', async () => {
+    await expect(failure([...TWO, '--model', 'codex=x', 'task'])).resolves.toContain(
+      "--model codex: the run's Codex agents are sol, terra; name one",
+    )
+    await expect(failure([...TWO, '--model', 'claude=x', 'task'])).resolves.toContain(
+      '--model sets claude, which is not one of the --agents',
+    )
+    await expect(failure([...TWO, '--effort', 'luna=x', 'task'])).resolves.toContain(
+      'Unknown agent in --effort: luna. Expected one of sol, terra.',
+    )
+    await expect(failure([...TWO, '--finalizer', 'codex', 'task'])).resolves.toContain(
+      'Invalid --finalizer value: codex. Expected auto, none or one of sol, terra.',
+    )
+  })
+
+  it('warns when two agents of one provider would draft alike, whatever their review effort', async () => {
+    const h = harness()
+    await main([...TWO, '--review-effort', 'sol=low', 'task'], h.deps)
+    expect(h.stderr()).toContain(
+      '[jev-planner] sol and terra are both Codex with the same model and effort; their drafts may barely differ. Vary --model or --effort.\n',
+    )
+    const three = harness()
+    await main(['--agents', 'codex:a,codex:b,codex:c', 'task'], three.deps)
+    expect(three.stderr()).toContain('a, b and c are all Codex with the same model')
+    expect(three.planned()).toBeDefined()
+  })
+
+  it('does not warn when the model or the effort differs, or the providers do', async () => {
+    for (const argv of [
+      [...TWO, '--effort', 'sol=high'],
+      [...TWO, '--model', 'terra=gpt-b'],
+      ['--agents', 'codex:sol,claude:terra'],
+    ]) {
+      const h = harness()
+      await main([...argv, 'task'], h.deps)
+      expect(h.stderr()).not.toContain('drafts may barely differ')
+    }
+  })
+
+  it('checks each provider once in doctor', async () => {
+    const doctor = vi.fn<CliDeps['doctor']>(() => Promise.resolve([]))
+    await main(['doctor', '--agents', 'codex:a,codex:b,claude'], harness({ doctor }).deps)
+    expect(doctor.mock.calls[0]?.[1].map(({ id }) => id)).toEqual(['codex', 'claude'])
+  })
+
+  it('keeps a config’s settings for a name only while it names the same provider', async () => {
+    await writeFile(
+      join(dir, 'jev-planner.json'),
+      JSON.stringify({
+        agents: {
+          sol: { provider: 'codex', model: 'gpt-a', effort: 'high' },
+          terra: { provider: 'codex', model: 'gpt-b' },
+        },
+      }),
+    )
+    const same = harness()
+    await main(['task'], same.deps)
+    expect(same.setup()).toEqual({
+      agents: ['sol', 'terra'],
+      models: { sol: 'gpt-a', terra: 'gpt-b' },
+      efforts: { sol: 'high' },
+    })
+    const moved = harness()
+    await main(['--agents', 'claude:sol,codex:terra', 'task'], moved.deps)
+    expect(moved.setup()).toEqual({
+      agents: ['sol', 'terra'],
+      models: { terra: 'gpt-b' },
+      efforts: {},
+    })
+  })
+
+  it('documents the named form in the help', () => {
+    expect(HELP).toContain('-a, --agents <provider[:name],…>')
+    expect(HELP).toContain('as codex:sol,codex:terra')
+    expect(HELP).toContain('-m, --model <name>=<model>')
+    expect(HELP).toContain('--finalizer <name>')
+  })
+
+  it('creates each agent under its name and label, with its own overrides', () => {
+    const codex = PROVIDERS.find(({ id }) => id === 'codex')
+    if (!codex) throw new Error('no codex provider')
+    const agents = createAgents(
+      {
+        agents: [
+          { name: 'sol', label: 'Codex (sol)', provider: codex },
+          { name: 'terra', label: 'Codex (terra)', provider: codex },
+        ],
+        models: { sol: 'gpt-a' },
+        efforts: { terra: 'high' },
+      },
+      {},
+      [],
+    )
+    expect(agents.map(({ name, label }) => [name, label])).toEqual([
+      ['sol', 'Codex (sol)'],
+      ['terra', 'Codex (terra)'],
+    ])
   })
 })
