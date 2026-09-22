@@ -9,9 +9,9 @@ type Env = Readonly<Record<string, string | undefined>>
 
 /** What the planner factory hands a provider when it builds an agent for a run. */
 export interface AgentSetup {
-  /** A model override from `--model <id>=<model>`; the provider's default otherwise. */
+  /** A model from `--model <id>=<model>` or the config's `agents.<id>.model`; the provider's default otherwise. */
   model?: string
-  /** A reasoning effort from `--effort <id>=<level>`; only for a provider whose `effort` is true. */
+  /** A reasoning effort from `--effort <id>=<level>` or the config; only for a provider whose `effort` is true. */
   effort?: string
   /** Every provider's secret variables, and Jev's: never passed to an agent subprocess. */
   omitEnv: readonly string[]
@@ -25,14 +25,14 @@ export interface AgentSetup {
  * `openAICompatibleProvider` and add it to `PROVIDERS` in `providers.ts`.
  */
 export interface Provider {
-  /** Lowercase, what `--agents`, `--model` and `--finalizer` take. */
+  /** Lowercase, what `--agents`, `--model` and `--finalizer` take, and a key of the config's `agents`. */
   readonly id: string
   readonly label: string
   /** `cli` agents read the repository themselves; `api` agents get a snapshot of it. */
   readonly kind: 'cli' | 'api'
   /** Variables holding this provider's credentials, stripped from every agent subprocess. */
   readonly secretEnv: readonly string[]
-  /** Whether it takes a reasoning effort, from `--effort`. */
+  /** Whether it takes a reasoning effort, from `--effort` or the config's `agents.<id>.effort`. */
   readonly effort: boolean
   create(setup: AgentSetup): PlanningAgent
   /** Local checks only: `jev-planner doctor` never makes a paid call. */
@@ -194,7 +194,7 @@ export interface OpenAICompatibleConfig {
   baseUrl: string
   /** The variable holding the API key. */
   apiKeyEnv: string
-  /** The model used without a `--model` override. */
+  /** The model used when neither `--model` nor the config sets one. */
   model: string
 }
 

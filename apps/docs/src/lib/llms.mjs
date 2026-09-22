@@ -134,8 +134,9 @@ export function llmsIndex(pages, origin) {
     "4. The agents run read-only, in Codex's read-only sandbox and in Claude's plan",
     '   mode, against the directory given by `--cwd`. They edit nothing; the CLI',
     '   writes a `.jev-planner/` rounds folder unless `--no-rounds` is passed.',
-    '5. The task can be an argument, a file (`-f`) or piped on stdin, but only one',
-    '   of these; giving both arguments and `--file` is an error.',
+    '5. The task can be an argument, a file (`-f`), piped on stdin, or `task` in a',
+    '   `jev-planner.json`, which pins any setting and which a flag beats. Giving',
+    '   both arguments and `--file`, or piping a task the config also sets, is an error.',
     '',
   ]
 

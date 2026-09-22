@@ -7,6 +7,8 @@ sidebar:
 
 Every agent comes from one list, `PROVIDERS` in `src/providers.ts`. The CLI flags, `--help`,
 `doctor`, the prompts and Jev's choices are all built from it, so wiring up a new AI is one entry there.
+Add the agent to `config.schema.json` too, and to its copy in `apps/docs/public/`: a test fails
+until both list it, with `effort` and `reviewEffort` only for an agent that takes an effort.
 
 ## A chat API
 

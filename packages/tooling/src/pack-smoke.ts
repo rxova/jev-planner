@@ -5,8 +5,9 @@
  * This is the only check that catches a `files` entry that dropped dist, or an
  * exports map that resolves for a bundler but not for plain Node. Both ship
  * green through lint, types and unit tests. It also checks the files a reader
- * opens in `node_modules` beside dist: the README, the license, and the
- * `llms.txt` that `check-llms` keeps in step with the exports.
+ * opens in `node_modules` beside dist: the README, the license, the
+ * `llms.txt` that `check-llms` keeps in step with the exports, and the
+ * `config.schema.json` a `jev-planner.json` can point its `$schema` at.
  *
  * Run from a package directory (`pnpm run pack:smoke`). It packs with
  * `--ignore-scripts`, so dist has to be built first: Turbo's `dependsOn` does
@@ -62,7 +63,7 @@ export const probeSource = (name: string): string =>
   ].join('\n')
 
 /** Files the installed package must hold besides dist, which the probe covers. */
-export const SHIPPED = ['LICENSE', 'README.md', 'llms.txt']
+export const SHIPPED = ['LICENSE', 'README.md', 'llms.txt', 'config.schema.json']
 
 /**
  * Runs the whole smoke test and returns the line to print. Throws on any step
