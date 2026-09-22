@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mode-balanced-title mode-balanced-desc" width="240" height="391" viewBox="0 0 240 391" font-size="13" fill="currentColor">
+<title id="mode-balanced-title">balanced</title>
+<desc id="mode-balanced-desc">Every agent drafts and Jev judges the drafts. A cross-review runs only while Jev rates another pass 0.65 or more, two at most by default. After a cross-review, a plan Jev rates 0.7 or more to stand alone is adopted; otherwise one agent merges. The saved run took 239 s, 113 s, 116 s and 53 s.</desc>
+<defs><marker id="mode-balanced-head" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<text class="main" x="120" y="22" text-anchor="middle" font-weight="600" font-size="15">balanced</text>
+<rect class="box" x="8" y="30" width="224" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="53" text-anchor="middle" font-weight="600">Every agent drafts</text>
+<path class="edge" d="M120 63V86" marker-end="url(#mode-balanced-head)"/>
+<rect class="box" x="8" y="93" width="224" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="116" text-anchor="middle" font-weight="600">Jev judges the drafts</text>
+<path class="edge" d="M120 126V178" marker-end="url(#mode-balanced-head)"/>
+<text class="label" x="128" y="152">another pass</text>
+<text class="label" x="128" y="167">≥ 0.65</text>
+<rect class="box optional" x="8" y="185" width="224" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="208" text-anchor="middle" font-weight="600">Cross-review, Jev again</text>
+<text class="note" x="120" y="225" text-anchor="middle">up to twice</text>
+<path class="edge" d="M120 235V250H61.5V266" marker-end="url(#mode-balanced-head)"/>
+<path class="edge" d="M120 235V250H178.5V266" marker-end="url(#mode-balanced-head)"/>
+<rect class="box result" x="8" y="273" width="107" height="84" rx="6" fill="none" stroke="currentColor"/>
+<text class="note" x="61.5" y="296" text-anchor="middle">reviewed,</text>
+<text class="note" x="61.5" y="313" text-anchor="middle">rated ≥ 0.7</text>
+<text class="main" x="61.5" y="330" text-anchor="middle" font-weight="600">Adopt the</text>
+<text class="main" x="61.5" y="347" text-anchor="middle" font-weight="600">strongest</text>
+<rect class="box" x="125" y="273" width="107" height="84" rx="6" fill="none" stroke="currentColor"/>
+<text class="note" x="178.5" y="296" text-anchor="middle">otherwise</text>
+<text class="main" x="178.5" y="313" text-anchor="middle" font-weight="600">One agent</text>
+<text class="main" x="178.5" y="330" text-anchor="middle" font-weight="600">merges</text>
+<text class="note" x="120" y="379" text-anchor="middle">Its run: 239 s, 113 s, 116 s, 53 s</text>
+</svg>

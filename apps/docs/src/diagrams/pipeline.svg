@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-title pipeline-desc" width="340" height="429" viewBox="0 0 340 429" font-size="13" fill="currentColor">
+<title id="pipeline-title">One run, from a task to one plan</title>
+<desc id="pipeline-desc">A task and the repository go to every agent, which draft plans in parallel. Jev judges the drafts. When Jev rates another pass 0.65 or more, the agents cross-review each other and Jev judges again, up to --review-rounds times. Then one plan is adopted or the plans are merged.</desc>
+<defs><marker id="pipeline-head" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<rect class="box" x="8" y="8" width="298" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="157" y="31" text-anchor="middle" font-weight="600">Task and repository</text>
+<path class="edge" d="M157 41V64" marker-end="url(#pipeline-head)"/>
+<rect class="box" x="8" y="71" width="298" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="157" y="94" text-anchor="middle" font-weight="600">Every agent drafts a plan</text>
+<text class="note" x="157" y="111" text-anchor="middle">in parallel; none sees another</text>
+<path class="edge" d="M157 121V144" marker-end="url(#pipeline-head)"/>
+<rect class="box" x="8" y="151" width="298" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="157" y="174" text-anchor="middle" font-weight="600">Jev judges the plans</text>
+<text class="note" x="157" y="191" text-anchor="middle">scores, a finalizer, two probabilities</text>
+<path class="edge" d="M157 201V238" marker-end="url(#pipeline-head)"/>
+<text class="label" x="165" y="227">another pass ≥ 0.65</text>
+<rect class="box optional" x="8" y="245" width="298" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="157" y="268" text-anchor="middle" font-weight="600">Cross-review</text>
+<text class="note" x="157" y="285" text-anchor="middle">each agent revises against the others</text>
+<path class="edge" d="M157 295V318" marker-end="url(#pipeline-head)"/>
+<rect class="box" x="8" y="325" width="298" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="157" y="348" text-anchor="middle" font-weight="600">Adopt one plan, or merge them</text>
+<path class="edge" d="M157 358V381" marker-end="url(#pipeline-head)"/>
+<rect class="box result" x="8" y="388" width="298" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="157" y="411" text-anchor="middle" font-weight="600">One final plan</text>
+<path class="edge" d="M306 270H326V176H313" marker-end="url(#pipeline-head)"/>
+</svg>

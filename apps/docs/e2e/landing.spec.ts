@@ -5,6 +5,8 @@ import { expect, test, type Page } from '@playwright/test'
 // drop it and test the domain root instead of the site.
 const LANDING = './'
 const DOCS = 'guides/getting-started/'
+// The pages with inline diagrams, which take their colours from the theme.
+const DIAGRAMS = ['learn/how-it-works/', 'guides/debate-review/']
 
 /** The pathname every same-site URL must start with. */
 const basePath = (page: Page) => new URL(LANDING, page.url()).pathname
@@ -19,7 +21,7 @@ for (const theme of ['light', 'dark'] as const) {
     await setTheme(page, theme)
     // Reduced motion, so the scan sees the transcript at full opacity.
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    for (const path of [LANDING, DOCS]) {
+    for (const path of [LANDING, DOCS, ...DIAGRAMS]) {
       await page.goto(path)
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       const { violations } = await new AxeBuilder({ page })
@@ -175,12 +177,37 @@ test('shows the whole transcript at once under reduced motion', async ({ page })
 })
 
 test('does not scroll sideways', async ({ page }) => {
-  for (const path of [LANDING, DOCS]) {
+  for (const path of [LANDING, DOCS, ...DIAGRAMS]) {
     await page.goto(path)
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
     expect(overflow, path).toBeLessThanOrEqual(0)
+  }
+})
+
+test('draws the diagrams in the theme, with text a phone can read', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 })
+  for (const path of DIAGRAMS) {
+    await page.goto(path)
+    const svgs = page.locator('figure.diagram svg')
+    expect(await svgs.count(), path).toBeGreaterThan(0)
+    for (const svg of await svgs.all()) {
+      await expect(svg).toHaveAttribute('role', 'img')
+      const { fill, smallest } = await svg.evaluate((el) => {
+        const scale = el.getBoundingClientRect().width / (el as SVGSVGElement).viewBox.baseVal.width
+        const sizes = [...el.querySelectorAll('text')].map(
+          (t) => parseFloat(getComputedStyle(t).fontSize) * scale,
+        )
+        return {
+          fill: getComputedStyle(el.querySelector('.box') ?? el).fill,
+          smallest: Math.min(...sizes),
+        }
+      })
+      // The boxes are painted from theme.css, not left at the SVG default.
+      expect(fill, path).not.toMatch(/^(none|rgb\(0, 0, 0\))$/)
+      expect(smallest, path).toBeGreaterThanOrEqual(12)
+    }
   }
 })
 
