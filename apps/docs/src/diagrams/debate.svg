@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="debate-title debate-desc" width="340" height="620" viewBox="0 0 340 620" font-size="13" fill="currentColor">
+<title id="debate-title">The debate review</title>
+<desc id="debate-desc">Every agent drafts. Each agent critiques the others, up to 5 objections per plan; each author accepts or rejects each objection and revises. Rejected objections become disputes, and Jev rules on up to 8. With --claim-checks, agents that read the repository check the disputed claims about it. Jev judges the revised plans and rules on each dispute; a further pass aims at what is still open; then one agent merges. In the saved run: 10 objections, all accepted, so no disputes and no checks.</desc>
+<defs><marker id="debate-head" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<rect class="box" x="8" y="8" width="324" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="31" text-anchor="middle" font-weight="600">Every agent drafts</text>
+<path class="edge" d="M170 41V64" marker-end="url(#debate-head)"/>
+<rect class="box" x="8" y="71" width="324" height="67" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="94" text-anchor="middle" font-weight="600">Critiques</text>
+<text class="note" x="170" y="111" text-anchor="middle">up to 5 objections per plan</text>
+<text class="note" x="170" y="128" text-anchor="middle">this run: 10 objections</text>
+<path class="edge" d="M170 138V161" marker-end="url(#debate-head)"/>
+<rect class="box" x="8" y="168" width="324" height="67" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="191" text-anchor="middle" font-weight="600">Replies</text>
+<text class="note" x="170" y="208" text-anchor="middle">each author accepts or rejects, and revises</text>
+<text class="note" x="170" y="225" text-anchor="middle">this run: all 10 accepted</text>
+<path class="edge" d="M170 235V258" marker-end="url(#debate-head)"/>
+<rect class="box optional" x="8" y="265" width="324" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="288" text-anchor="middle" font-weight="600">Disputes: the rejected objections</text>
+<text class="note" x="170" y="305" text-anchor="middle">Jev rules on up to 8; this run: none</text>
+<path class="edge" d="M170 315V352" marker-end="url(#debate-head)"/>
+<text class="label" x="178" y="341">with --claim-checks</text>
+<rect class="box optional" x="8" y="359" width="324" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="382" text-anchor="middle" font-weight="600">Claim checks against the repository</text>
+<text class="note" x="170" y="399" text-anchor="middle">this run: skipped, nothing disputed</text>
+<path class="edge" d="M170 409V432" marker-end="url(#debate-head)"/>
+<rect class="box" x="8" y="439" width="324" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="462" text-anchor="middle" font-weight="600">Jev judges, and rules on the disputes</text>
+<path class="edge" d="M170 472V509" marker-end="url(#debate-head)"/>
+<text class="label" x="178" y="498">another pass ≥ 0.65</text>
+<rect class="box optional" x="8" y="516" width="324" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="539" text-anchor="middle" font-weight="600">A pass at what is still open</text>
+<path class="edge" d="M170 549V572" marker-end="url(#debate-head)"/>
+<rect class="box" x="8" y="579" width="324" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="170" y="602" text-anchor="middle" font-weight="600">One agent merges</text>
+</svg>

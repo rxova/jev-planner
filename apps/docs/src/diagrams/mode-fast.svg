@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mode-fast-title mode-fast-desc" width="240" height="282" viewBox="0 0 240 282" font-size="13" fill="currentColor">
+<title id="mode-fast-title">fast</title>
+<desc id="mode-fast-desc">Every agent drafts. Jev judges each draft alone as it arrives; the first rated 0.5 or more is the plan and the other agents stop. If none is, Jev judges the drafts together and one agent merges them. The saved run took 221 s and 54 s.</desc>
+<defs><marker id="mode-fast-head" viewBox="0 0 8 8" refX="1" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head" d="M0 0L8 4L0 8Z"/></marker></defs>
+<text class="main" x="120" y="22" text-anchor="middle" font-weight="600" font-size="15">fast</text>
+<rect class="box" x="8" y="30" width="224" height="33" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="53" text-anchor="middle" font-weight="600">Every agent drafts</text>
+<path class="edge" d="M120 63V86" marker-end="url(#mode-fast-head)"/>
+<rect class="box" x="8" y="93" width="224" height="50" rx="6" fill="none" stroke="currentColor"/>
+<text class="main" x="120" y="116" text-anchor="middle" font-weight="600">Jev judges each draft</text>
+<text class="main" x="120" y="133" text-anchor="middle" font-weight="600">alone, as it arrives</text>
+<path class="edge" d="M120 143V158H61.5V174" marker-end="url(#mode-fast-head)"/>
+<path class="edge" d="M120 143V158H178.5V174" marker-end="url(#mode-fast-head)"/>
+<rect class="box result" x="8" y="181" width="107" height="67" rx="6" fill="none" stroke="currentColor"/>
+<text class="note" x="61.5" y="204" text-anchor="middle">first ≥ 0.5</text>
+<text class="main" x="61.5" y="221" text-anchor="middle" font-weight="600">That draft</text>
+<text class="main" x="61.5" y="238" text-anchor="middle" font-weight="600">is the plan</text>
+<rect class="box" x="125" y="181" width="107" height="67" rx="6" fill="none" stroke="currentColor"/>
+<text class="note" x="178.5" y="204" text-anchor="middle">none ≥ 0.5</text>
+<text class="main" x="178.5" y="221" text-anchor="middle" font-weight="600">All judged,</text>
+<text class="main" x="178.5" y="238" text-anchor="middle" font-weight="600">then merged</text>
+<text class="note" x="120" y="270" text-anchor="middle">Its run: 221 s, 54 s</text>
+</svg>

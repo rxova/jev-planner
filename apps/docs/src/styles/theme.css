@@ -67,3 +67,77 @@ header.header::after {
 .kudos svg {
   color: var(--rx-primary);
 }
+
+/* The diagrams (src/lib/remark-diagrams.mjs): inline SVGs, coloured here so
+   they follow the theme toggle. Strokes use `--rx-muted`, since the brand's
+   rules are under 3:1 against the page. Each SVG keeps its drawn width and only
+   shrinks, so its 13 px text stays 12 px or more on a 360 px screen. */
+.diagram {
+  margin-inline: 0;
+}
+
+.diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.diagram-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 1.5rem 1rem;
+  align-items: start;
+}
+
+/* Starlight spaces every block after the first; in the row that pushes all
+   but the first drawing down. */
+.diagram-row > * {
+  margin: 0 auto;
+}
+
+/* Three drawings fit two to a row in the content column: centre the third. */
+.diagram-row > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.diagram text {
+  fill: var(--rx-fg);
+}
+
+.diagram .note,
+.diagram .label {
+  fill: var(--rx-muted);
+}
+
+.diagram .box {
+  fill: var(--rx-card);
+  stroke: var(--rx-muted);
+  stroke-width: 1.25;
+}
+
+.diagram .box.optional {
+  stroke-dasharray: 5 4;
+}
+
+.diagram .box.result {
+  stroke: var(--rx-primary);
+  stroke-width: 2;
+}
+
+.diagram .edge {
+  fill: none;
+  stroke: var(--rx-muted);
+  stroke-width: 1.25;
+}
+
+.diagram .head {
+  fill: var(--rx-muted);
+}
+
+.diagram figcaption {
+  margin-block-start: 0.75rem;
+  color: var(--rx-muted);
+  font-size: var(--sl-text-sm);
+  text-align: center;
+}
