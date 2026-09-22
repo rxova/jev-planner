@@ -8,10 +8,15 @@
 [TypeSafe Jev](https://docs.typesafe.ai/concepts/system-one):
 
 1. Each agent — Codex and Claude by default — drafts a plan independently, all in parallel.
-2. Each agent sees every other agent's draft and returns a revised, standalone plan.
-3. Jev scores completeness, feasibility, and risk coverage; chooses a finalizer; and decides
-   whether the plans need one more cross-review.
-4. The selected agent merges the revised drafts into one final implementation plan.
+2. Jev scores completeness, feasibility, and risk coverage; chooses a finalizer; and decides
+   whether a cross-review would materially improve the plan.
+3. When it would, each agent sees every other agent's plan and returns a revised, standalone plan,
+   and Jev evaluates again — up to `--review-rounds` times.
+4. The selected agent merges the plans into one final implementation plan, unless Jev judges one
+   cross-reviewed plan final as it stands.
+
+Steps 3 and 4 are the ones a run can skip, and skipping them is most of the wall clock: every agent
+call is minutes, and they happen in sequence. See [Modes](#modes).
 
 **[Documentation →](https://jev-planner.com/)**
 
@@ -136,10 +141,12 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
-- `--finalizer none` to skip the synthesis when Jev rates one revised plan stronger, and keep that
-  plan as it is. It saves the last agent call, at the cost of the merge; on a tie the finalizer
-  still runs.
-- `--review-rounds 1` to disable Jev's optional second review pass.
+- `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
+  merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
+  ran, the finalizer still runs.
+- `--mode ultra` to buy every round rather than let Jev skip one (below).
+- `--review-rounds 0` to skip the cross-review entirely, or `1` to allow only one.
+- `--straggler-grace <seconds>` to change how long a `fast` round waits for a slow agent.
 - `--no-resume` to start every agent call afresh rather than continue its draft session
   ([Agents](#agents)).
 - `--verbose` to watch the agents work, then print Jev's typed verdict to stderr (below).
@@ -152,6 +159,43 @@ an unfilled `<…>`, `{{…}}` or `[…]` slot, or text with no letters — is r
 call. Only the whole text is compared, so a brief that quotes a placeholder, or a short real task
 such as `Add caching`, is planned as usual. `Planner.plan` runs the same check and throws
 `TaskValidationError`; set `allowAnyTask: true` in its options to skip it.
+
+## Modes
+
+A run's wall clock is not the number of agent calls — the agents in a round run in parallel — but
+the number of rounds, because each one waits for the round before it. `--mode` decides how many a
+run is allowed to spend.
+
+| `--mode`         | Cross-review                     | Final merge                        | Agent calls, N agents | Rounds |
+| ---------------- | -------------------------------- | ---------------------------------- | --------------------- | ------ |
+| `fast` (default) | Only when Jev asks for one       | Skipped when one plan stands alone | N + 1 … 3N + 1        | 2 … 4  |
+| `ultra`          | Always, plus Jev's optional pass | Always                             | 2N + 1, or 3N + 1     | 3 or 4 |
+
+With the default two agents, that is three agent calls in two rounds where today's pipeline spends
+five in three.
+
+`fast` puts Jev's typed judgment in front of each round instead of after it:
+
+- **The cross-review is Jev's to order.** It judges the drafts first, and the agents only revise
+  against each other when Jev answers that another pass would materially improve the plan. When the
+  drafts already agree, that is a whole round of agent calls a run does not make.
+- **The merge is Jev's to waive.** After a cross-review every plan already answers the others, so
+  when Jev judges the strongest one final as it stands, the run answers with it rather than paying
+  an agent to rewrite it. A plan that has _not_ been cross-reviewed is never adopted this way: the
+  merge is the only place the agents' material comes together, so it always runs.
+- **A round stops waiting for a straggler.** Once half the agents have answered, the rest get
+  `--straggler-grace` seconds (90 by default) before the round goes on without them, and their calls
+  are aborted rather than left running. A round never drops below two plans, so with two agents a
+  draft is always waited for; an agent dropped from a cross-review keeps its previous plan.
+
+`ultra` is the pipeline as it was: every agent drafts, every agent reviews every other, Jev may ask
+for one more pass, and the finalizer always merges. Use it when the plan matters more than the wait.
+
+Every run prints what it spent on stderr, and `--json` includes it as `cost`:
+
+```text
+[jev-planner] fast mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged
+```
 
 ## Following a run round by round
 
@@ -218,12 +262,14 @@ and in `PlanRound.timings` and `PlanResult.timings` from code.
 
 ## Cost and data flow
 
-With N agents, a normal run makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
-synthesis. If Jev requests another pass, it makes N more. `--finalizer none` drops the synthesis
-when Jev rates one plan stronger. With the default two agents that is five
-calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
+With N agents, `--mode ultra` makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
+synthesis. If Jev requests another pass, it makes N more. With the default two agents that is five
+calls, or seven. `--mode fast`, the default, makes as few as N + 1 — the drafts and the merge, when
+Jev asks for no cross-review — and never more than `ultra` would. `--finalizer none` drops the
+synthesis when Jev rates one cross-reviewed plan stronger. Agent CLIs use the accounts logged into
+them; chat APIs bill the key they are given.
 
-Each evaluation uses one TypeSafe API call; a second review pass causes one re-evaluation. Jev sees
+Each evaluation uses one TypeSafe API call, and `fast` spends one extra to judge the drafts. Jev sees
 the task and the agents' plan text, not a direct repository snapshot. Chat APIs see the snapshot
 described under [Agents](#agents), and every agent sees the other agents' plans, which may contain
 file names or code details. Do not run this on material you are not allowed to send to every

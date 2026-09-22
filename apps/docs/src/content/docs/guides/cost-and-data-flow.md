@@ -7,12 +7,28 @@ sidebar:
 
 ## Calls per run
 
-With N agents, a normal run makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
+With N agents, `--mode ultra` makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
 synthesis. If Jev requests another pass, it makes N more. `--finalizer none` drops the synthesis
-when Jev rates one plan stronger. With the default two agents that is five
+when Jev rates one cross-reviewed plan stronger. With the default two agents that is five
 calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
 
-Each evaluation uses one TypeSafe API call; a second review pass causes one re-evaluation.
+`--mode fast`, the default, makes as few as N + 1 — the drafts and the merge, when Jev asks for no
+cross-review — and never more than `ultra` would:
+
+| What Jev decides                             | Agent calls | Rounds |
+| -------------------------------------------- | ----------- | ------ |
+| The drafts need no cross-review              | N + 1       | 2      |
+| One cross-review, then one plan stands alone | 2N          | 2      |
+| One cross-review, then a merge               | 2N + 1      | 3      |
+| Two cross-reviews, then a merge              | 3N + 1      | 4      |
+
+Each evaluation uses one TypeSafe API call; `fast` spends one extra to judge the drafts, and each
+further review round causes one re-evaluation. Every run reports its own totals on stderr, and
+`--json` includes them as `cost`.
+
+A `fast` round also stops waiting for a slow agent once half the others have answered, and aborts
+its call rather than leave it running, so a dropped call stops billing where the provider bills by
+use.
 
 ## What is sent where
 

@@ -44,10 +44,9 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
   job is editing plans rather than exploring the repository.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
-- `--finalizer none` to skip the synthesis when Jev rates one revised plan stronger, and keep that
-  plan as it is. It saves the last agent call, at the cost of the merge; on a tie the finalizer
-  still runs.
-- `--review-rounds 1` to disable Jev's optional second review pass.
+- `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
+  merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
+  ran, the finalizer still runs.
 - `--no-resume` to start every agent call afresh rather than continue its draft session; the
   [agents reference](../reference/agents.md#sessions) says where sessions are kept.
 
@@ -63,6 +62,30 @@ effort, with Claude at its defaults:
 
 ```sh
 jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the search endpoint"
+```
+
+## How much of the pipeline to run
+
+A run's wall clock is the number of rounds, not the number of agent calls: the agents in a round run
+in parallel, and each round waits for the one before it. `--mode` decides how many rounds a run may
+spend — see [how it works](../learn/how-it-works.md#why-the-mode-matters).
+
+- `--mode fast` (the default) lets Jev skip the rounds a plan does not need: the cross-review when
+  the drafts already agree, and the merge when one cross-reviewed plan is final as it stands.
+- `--mode ultra` always cross-reviews and always merges — 2N + 1 agent calls with N agents, or
+  3N + 1 when Jev asks for a second pass.
+- `--review-rounds <0|1|2>` caps the cross-review rounds either mode may run (default: 2).
+- `--straggler-grace <seconds>` sets how long a `fast` round waits for the agents still working once
+  half have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
+
+```sh
+jev-planner --mode ultra "Migrate the persistence layer from SQLite to Postgres"
+```
+
+Every run reports what it spent on stderr:
+
+```text
+[jev-planner] fast mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged
 ```
 
 ## JSON output
