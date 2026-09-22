@@ -9,7 +9,10 @@ pnpm + Turborepo monorepo. Node >= 22.13 to develop. TypeScript everywhere.
   preset's 22.
 - `packages/core` — `@rxova/planner-core`: the planner, the providers and the shared CLI (`main`),
   parametrized by a `PlannerProgram`. jev-planner is its program, judge and `bin`. Also built for
-  Node 20.
+  Node 20. Private for now: jev-planner bundles it, JavaScript and types, and re-exports its
+  planner API, so nothing on npm depends on it. It has no `prepack`, whose clean rebuild would pull
+  its `dist` from under jev-planner's bundling mid-run. To publish it: drop `private`, restore
+  `prepack: pnpm build`, move it back to jev-planner's `dependencies`, and add it to the changeset.
 - `packages/*` — workspace packages, built dual ESM + CJS with tsdown.
 - `packages/config` — the shared vitest and tsdown presets. Coverage thresholds live here only.
 - `packages/tooling` — repo scripts (`verify`, `pack-smoke`, `check-llms`, `check-changeset`).
@@ -56,7 +59,7 @@ pnpm + Turborepo monorepo. Node >= 22.13 to develop. TypeScript everywhere.
 | `CONTRIBUTING.md`                | People changing the repository                                    | Nothing automatic: keep commands aligned with `package.json`                                          |
 | `packages/jev-planner/llms.txt`  | An agent using the library, from `node_modules`                   | `check-llms`: the `## API` table matches `src/index.ts` both ways; `pack-smoke`: it is in the tarball |
 | `packages/jev-planner/README.md` | People, and agents that follow the `llms.txt` link                | Nothing automatic: type-check and run an example after changing it                                    |
-| `packages/core/llms.txt`         | An agent using the planner core, from `node_modules`              | `check-llms` and `pack-smoke`, as for jev-planner's                                                   |
+| `packages/core/llms.txt`         | An agent using the planner core, once it is published             | Nothing automatic while core is private: `check-llms` checks published packages only                  |
 | `llms.txt`                       | An agent that reaches the repository rather than the package      | `check-llms`: it links every published package's `llms.txt`                                           |
 | `apps/docs/src/content/docs/**`  | People and agents on jev-planner.com; every page has a `.md` twin | The docs build: `starlight-links-validator`, then `check-md-routes.mjs` over the emitted dist         |
 | `apps/docs/src/lib/llms.mjs`     | An agent fetching the site's `llms.txt` or `llms-full.txt`        | Its own unit tests, and the size budgets in `check-md-routes.mjs`                                     |

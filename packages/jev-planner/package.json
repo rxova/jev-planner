@@ -56,12 +56,12 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@rxova/planner-core": "workspace:^",
     "@typesafe-ai/sdk": "^0.6.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@repo/config": "workspace:*",
+    "@rxova/planner-core": "workspace:*",
     "@types/node": "^26.6.1",
     "@vitest/coverage-v8": "^5.0.1",
     "publint": "^0.3.24",
