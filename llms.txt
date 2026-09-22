@@ -1,8 +1,8 @@
 # jev-planner
 
 > A CLI that writes a coding plan with two or more AI agents and a judge: Codex
-> and Claude Code by default draft and cross-review, and Jev picks the finalizer. Two packages
-> published to npm: `jev-planner`, and `@rxova/planner-core`, the planner and CLI it is built on. Node >= 20.19. MIT. Ships ESM and CommonJS.
+> and Claude Code by default draft and cross-review, and Jev picks the finalizer. Published to
+> npm as `jev-planner`. Node >= 20.19. MIT. Ships ESM and CommonJS.
 
 This file is an index. It points to the files that document the package and
 restates none of their content, so there is nothing here to drift from the
@@ -15,8 +15,6 @@ be read from `node_modules/<package>/llms.txt` with no network access.
 
 - [jev-planner](packages/jev-planner/llms.txt): the install line, the API, a
   working example, and the mistakes to avoid.
-- [@rxova/planner-core](packages/core/llms.txt): the planner, the providers, and
-  the CLI machinery, for a program with a judge of its own.
 
 ## Docs
 

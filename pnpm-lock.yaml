@@ -308,9 +308,6 @@ importers:
 
   packages/jev-planner:
     dependencies:
-      '@rxova/planner-core':
-        specifier: workspace:^
-        version: link:../core
       '@typesafe-ai/sdk':
         specifier: ^0.6.0
         version: 0.6.0
@@ -321,6 +318,9 @@ importers:
       '@repo/config':
         specifier: workspace:*
         version: link:../config
+      '@rxova/planner-core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^26.6.1
         version: 26.6.2

@@ -1,6 +1,7 @@
 {
   "name": "@rxova/planner-core",
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "description": "The planner behind jev-planner: agents that draft and cross-review coding plans, a judge that routes the run, and the CLI around them.",
   "keywords": [
@@ -44,8 +45,7 @@
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "check:exports": "publint --strict && attw --pack .",
-    "pack:smoke": "node --import tsx ../tooling/src/pack-smoke/pack-smoke.ts",
-    "prepack": "pnpm build"
+    "pack:smoke": "node --import tsx ../tooling/src/pack-smoke/pack-smoke.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

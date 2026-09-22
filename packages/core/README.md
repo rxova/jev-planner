@@ -11,6 +11,9 @@ TypeSafe's Jev.
 
 Node >= 20.19. MIT. ESM and CommonJS, with type declarations.
 
+Not on npm yet. It is private for now, and jev-planner bundles it and re-exports the planner, the
+providers and the types. The install line below is for when it is published.
+
 ## Install
 
 ```sh
