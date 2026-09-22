@@ -18,6 +18,12 @@
 Steps 3 and 4 are the ones a run can skip, and skipping them is most of the wall clock: every agent
 call is minutes, and they happen in sequence. See [Modes](#modes).
 
+The cross-review is where a run gains the most. Drafts are written blind; reading each other's
+plans, the agents correct each other's facts about the repository, drop the ideas that do not
+survive a second opinion, take the other plan's strengths, and name the questions they still
+disagree on. Compare `round1/` with `round2/` in a run folder to see it.
+[How the cross-review improves a plan →](https://jev-planner.com/learn/how-it-works/#what-the-cross-review-improves)
+
 **[Documentation →](https://jev-planner.com/)**
 
 ## Agents
