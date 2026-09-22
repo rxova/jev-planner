@@ -1,1 +1,1 @@
-export { TypeSafeJevJudge } from './jev.js'
+export { TypeSafeJevJudge } from './jev/jev.js'
