@@ -7,16 +7,41 @@ description: Independent drafts, Jev's typed evaluation, a cross-review when it 
 [TypeSafe Jev](https://docs.typesafe.ai/concepts/system-one). A run has four stages, and in the
 default `balanced` mode Jev decides which of them a plan actually needs.
 
+The words this page uses:
+
+- **Agent**: one AI that writes plans, such as Codex or Claude. See the
+  [agents reference](../reference/agents.md).
+- **Jev**: TypeSafe's typed judge. It reads the plans and answers fixed questions with scores and
+  probabilities; it writes no plan.
+- **Round**: one set of agent calls that run at the same time, such as every agent's draft. A run's
+  wall clock is mostly its rounds, one after another.
+- **Cross-review**: a round in which each agent reads the others' plans and revises its own.
+- **Finalizer**: the agent that merges the plans into one at the end.
+
 ## 1. Independent drafts
 
 Each agent — Codex and Claude by default — drafts a plan independently, all in parallel. None of
-them sees another's work yet. This is the stage where the agents explore the repository; later
-stages are told to open a file only to settle a specific point.
+them sees another's work yet. This is the stage where the agent CLIs explore the repository, read
+only; a chat API gets a fixed snapshot of it instead. The later stages' prompts tell the agents to
+open a file only to settle a specific point.
 
 ## 2. Jev evaluates
 
-Jev scores completeness, feasibility, and risk coverage; chooses a finalizer; and decides whether a
-cross-review would materially improve the plan.
+Jev scores completeness, feasibility, and risk coverage; chooses a finalizer; and answers two
+yes-or-no questions as probabilities, which decide what the run does next:
+
+| Question Jev answers                                                          | Threshold | What it decides                                           |
+| ----------------------------------------------------------------------------- | --------: | --------------------------------------------------------- |
+| Would a cross-review round materially improve the plan?                       |    ≥ 0.65 | Another cross-review runs, in `balanced` and `ultra`      |
+| Could the strongest cross-reviewed plan be final, with no merge?              |     ≥ 0.7 | `balanced` answers with that plan and skips the merge     |
+| Could this one draft, judged alone, be handed to an implementer as it stands? |     ≥ 0.5 | `fast` answers with that draft and stops the other agents |
+
+In the `balanced` run on [Modes compared](modes-compared.md), Jev rated the first question 0.66 for
+the drafts and 0.70 after the first review, so both reviews ran. No verdict saved in those four runs
+rated a plan 0.7 or more to stand alone.
+
+Jev reads the first 40,000 characters of each plan; a longer plan is cut there for Jev, not for the
+agents.
 
 ## 3. Cross-review
 
@@ -31,8 +56,8 @@ and Jev only decides whether to ask for a second pass.
 ### What the cross-review improves
 
 A draft is written blind: each agent knows the repository, but not what the others noticed in it.
-The cross-review is the first time a plan meets a second opinion, and it is where most of a run's
-improvement happens. Reading each other's plans, the agents:
+The cross-review is the first time a plan meets a second opinion, and it is meant to be where a run
+improves most. Reading each other's plans, the agents can:
 
 - **Correct each other's facts.** One plan assumes a function is private; another has read the file
   and shows it is exported. Claims the plans disagree on are exactly the ones an agent reopens the
@@ -63,8 +88,8 @@ asked for under 1,500 words):
 
 Both agents gained a point from the cross-review; the merge gained half of one.
 
-To see it on your own run, compare `round1/` with `round2/` in the run folder. That is also why a
-plan that has not been cross-reviewed is never adopted whole, and why `--review-rounds 0` trades
+To see it on your own run, compare `round1/` with `round2/` in the run folder. That is also why
+`balanced` never adopts a plan that has not been cross-reviewed, and why `--review-rounds 0` trades
 quality for time.
 
 ## 4. Synthesis
@@ -76,18 +101,22 @@ still merges.
 
 In `balanced` mode this stage is skipped when Jev judges the strongest cross-reviewed plan already final
 as it stands: every plan has answered the others by then, so the merge would rewrite what is already
-there. A plan that has not been cross-reviewed is never adopted this way — the merge is the only
-place the agents' material comes together, so it always runs.
+there. `balanced` never adopts a plan that has not been cross-reviewed this way — before a review,
+the merge is the only place the agents' material comes together, so it runs. `fast` is the
+exception, and that is its trade.
+
+`--finalizer <id>` turns this off: naming the agent that merges means the merge runs.
 
 ## Fast, balanced or ultra, in short
 
 All three modes start the same way: every agent writes its own plan, at the same time. They differ in
 what happens next.
 
-- **`ultra` runs every step, every time.** The agents always read each other's plans and improve
-  their own, Jev may ask for a second pass, and one agent always merges the plans. With two agents
-  that is five agent calls in three rounds, or seven in four. Nothing is skipped.
-- **`balanced` asks Jev before each optional step.** When the drafts already agree and look solid, it
+- **`ultra` always runs the first cross-review.** The agents always read each other's plans and
+  improve their own, Jev may ask for a second pass, and one agent merges the plans, unless
+  `--finalizer none` keeps the reviewed plan Jev rates stronger. With two agents that is five agent
+  calls in three rounds, or seven in four.
+- **`balanced` asks Jev before each optional step.** When Jev rates another pass below 0.65, it
   skips the cross-review and goes straight to the merge: three calls in two rounds. After a
   cross-review, when one plan is already final, it answers with that plan and skips the merge. It
   also stops waiting for a slow agent once the others have answered.
@@ -96,8 +125,10 @@ what happens next.
   With two agents that can be two calls in one round. When Jev accepts none, the drafts are merged
   with no cross-review.
 
-`balanced` is quicker because rounds, not calls, are what take the time. The price is trusting Jev's
-call on which steps a plan can do without. Use `ultra` when the plan matters more than the wait.
+`balanced` is quicker only when Jev skips a round, because rounds, not calls, are what take the
+time. When Jev asks for every round, as in the run on [Modes compared](modes-compared.md), it runs
+what `ultra` does. The price of the saving is trusting Jev's call on which steps a plan can do
+without. Use `ultra` when the plan matters more than the wait.
 
 `fast` goes further and pays for it: an accepted plan is one agent's work that no other agent has
 read, and the quickest agent is judged first, so a quick plan that clears the bar beats a slower,
@@ -107,14 +138,15 @@ when one good plan is enough. [Modes compared](modes-compared.md) runs one real 
 ## Why the mode matters
 
 The agents in a round run in parallel, so a run's wall clock is not the number of agent calls but
-the number of rounds: each one waits for the one before it, and each is minutes long. `balanced` spends
-two rounds where `ultra` spends three, and asks Jev — one cheap, typed call — whether a third is
-worth it.
+the number of rounds: each one waits for the one before it, and for its slowest agent. In the runs
+on [Modes compared](modes-compared.md) a round took from 49 seconds to four minutes, and a Jev call
+from about 1 to 1.6 seconds. At best `balanced` spends two rounds where `ultra` spends three, and asks
+Jev — one quick, typed call — whether each further round is worth it.
 
 `balanced` also stops a round waiting on one slow agent: once half of them have answered, the rest get
 `--straggler-grace` seconds (90 by default) and are then dropped, with their calls aborted rather
-than left running and billing. A round never falls below two plans, and an agent dropped from a
-cross-review keeps the plan it had. `fast` applies the same grace to its drafts. `ultra` always
+than left running and billing. A round never falls below two plans, so with two agents every draft
+is waited for, and an agent dropped from a cross-review keeps the plan it had. `fast` applies the same grace to its drafts. `ultra` always
 waits for every agent.
 
 Every run reports what it spent on stderr, and `--json` includes it as `cost`:

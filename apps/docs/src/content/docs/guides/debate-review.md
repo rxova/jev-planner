@@ -48,6 +48,20 @@ round, so it rejects `--review-mode debate` and `--claim-checks`.
 5. **The merge** sees every dispute and Jev's ruling on it, and follows a ruling unless the plans
    show it wrong.
 
+### In a real run
+
+In the debate run on [Modes compared](../learn/modes-compared.md), Codex objected to Claude's plan:
+Starlight's `hero.image.html` is a string rendered with `set:html`, so a diagram component cannot be
+passed to it. Claude accepted and moved the diagram into the page body. All 10 objections in that
+run were accepted, so there was nothing left for Jev to rule on and no claim to check. After the replies, Jev rated
+Codex's plan stronger, with a low 0.30 confidence, and still chose Claude to merge: the stronger
+plan and the finalizer are separate answers.
+
+A later run, planning this page's own rewrite, had one dispute. Codex objected that a build plugin
+Claude proposed broke the brief's "no code changes"; Claude rejected it, since the brief named
+build-time rendering as an option. The claim check answered UNKNOWN, because the claim turned on how
+the brief reads, and Jev ruled for the author at 0.72.
+
 The adoption rules do not change: in `balanced`, a reviewed plan Jev judges final as it stands is
 still used without a merge, and `--finalizer none` still keeps the stronger plan.
 
@@ -70,10 +84,11 @@ the run says so on stderr.
 
 With N agents, the debate spends 2N agent calls where a cross-review spends N: a critique and a
 reply from each. Claim checks add one call per agent that has a claim to check. Jev calls are
-unchanged. The cost line on stderr names the review mode:
+unchanged. The cost line on stderr names the review mode. The debate run on Modes compared spent
+two drafts, two critiques, two replies, a targeted pass from each agent and one merge:
 
 ```text
-[jev-planner] ultra mode, debate review, 7 agent calls, 1 Jev call, 1 cross-review round, merged
+[jev-planner] ultra mode, debate review, 9 agent calls, 2 Jev calls, 2 cross-review rounds, merged
 ```
 
 A debate is a review round, so it cannot run with `--review-rounds 0`, and `--claim-checks` cannot
@@ -99,7 +114,7 @@ round3/                 the replies and the revised plans
   jev-verdict.json      with a ruling for each dispute
 ```
 
-With claim checks, the replies round has no verdict, and a round after it holds each checker's
+When claim checks run, the replies round has no verdict, and a round after it holds each checker's
 `<agent>.check.md`, `disputes.json` with each check, and Jev's verdict.
 
 From code, pass `reviewMode: 'debate'` and `claimChecks: true` in `PlanOptions`. Each round's

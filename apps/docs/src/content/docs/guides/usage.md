@@ -40,8 +40,8 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
 - `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
 - `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
-  and synthesis only, while its draft keeps `--effort`. A lower one shortens the later stages, whose
-  job is editing plans rather than exploring the repository.
+  and synthesis only, while its draft keeps `--effort`. The later stages edit plans rather than
+  explore the repository, so a lower effort is meant to make them quicker; that is not measured.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
 - `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
@@ -71,15 +71,18 @@ in parallel, and each round waits for the one before it. `--mode` decides how ma
 spend — see [how it works](../learn/how-it-works.md#why-the-mode-matters).
 
 - `--mode balanced` (the default) lets Jev skip the rounds a plan does not need: the cross-review when
-  the drafts already agree, and the merge when one cross-reviewed plan is final as it stands.
-- `--mode fast` has Jev judge each draft alone, as it arrives, and answers with the first it accepts,
+  Jev rates another pass below 0.65, and the merge when it rates one cross-reviewed plan 0.7 or more
+  to stand alone.
+- `--mode fast` has Jev judge each draft alone, as it arrives, and answers with the first it rates
+  0.5 or more,
   stopping the other agents; when it accepts none, the drafts are merged with no cross-review. The
   accepted plan was read by no other agent, and `--finalizer` only picks who merges.
-- `--mode ultra` always cross-reviews and always merges — 2N + 1 agent calls with N agents, or
-  3N + 1 when Jev asks for a second pass.
+- `--mode ultra` always runs the first cross-review, then merges — 2N + 1 agent calls with N agents,
+  or 3N + 1 when Jev asks for a second pass. `--finalizer none` can still skip the merge. The
+  [cost guide](cost-and-data-flow.md#calls-per-run) has every case.
 - `--review-rounds <0|1|2>` caps the cross-review rounds `balanced` and `ultra` may run (default: 2); `fast` runs none.
 - `--straggler-grace <seconds>` sets how long a `balanced` or `fast` round waits for the agents still working once
-  half have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
+  half (rounded up) have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
 - `--review-mode debate` (experimental) runs the first cross-review as critiques, replies and Jev's
   ruling on each disagreement, and `--claim-checks` checks the disputed repository claims — see
   [debate review](debate-review.md). Neither works with `--mode fast`, which has no review.
@@ -120,14 +123,17 @@ stream-json`), so every message, command and file read is shown as the agent rea
 agent answers in one response, so it shows only which model it is waiting on.
 
 After each round, `--verbose` prints how long it took and how long each call in it took, and a
-total at the end:
+total at the end. These are the rounds of the `ultra` run on
+[Modes compared](../learn/modes-compared.md):
 
 ```text
-[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)
-[jev-planner] Review: 1m05s (Codex 58s, Claude 41s, Jev 7.0s)
-[jev-planner] Final plan: 49s (Claude 49s)
-[jev-planner] Total: 6m06s
+[jev-planner] Drafts: 2m58s (Claude 1m18s, Codex 2m58s)
+[jev-planner] Review: 1m20s (Claude 1m01s, Codex 1m18s, Jev 1.4s)
+[jev-planner] Review: 1m25s (Claude 1m04s, Codex 1m24s, Jev 1.2s)
+[jev-planner] Final plan: 54s (Claude 54s)
 ```
+
+Each round waits for its slowest agent, here Codex, so a round's time is that agent's.
 
 The same numbers, in milliseconds, are in each round's `timings.json`, in `--json`'s `timings`,
 and in `PlanRound.timings` and `PlanResult.timings` from code.
@@ -155,6 +161,10 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
       plan.md         the merged plan, headed by the agent that merged it, or selected from
       jev-verdict.json  the verdict the merge followed
 ```
+
+In `fast` mode, `round1/jev-verdict.json` is the verdict that decided the run: the accepted draft's,
+or the one Jev gave the drafts together. The verdicts of drafts it turned down alone are not saved.
+A debate adds its own files; see [debate review](debate-review.md).
 
 `--rounds-dir <path>` writes them somewhere else instead, relative to `--cwd`; that folder must be
 new or empty, so two runs never mix. `--no-rounds` writes nothing.
