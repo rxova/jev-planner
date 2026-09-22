@@ -102,7 +102,7 @@ export function eagerAssets(html) {
 
   const js = []
   const inline = []
-  for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+  for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi)) {
     if (/\btype=["']?application\/(?:ld\+)?json/i.test(attrs)) continue
     const src = /\bsrc=["']?([^"'\s>]+)/i.exec(attrs)?.[1]
     if (src) js.push(src)
@@ -110,7 +110,9 @@ export function eagerAssets(html) {
   }
 
   // Styles inlined into the page count against the CSS budget too.
-  const inlineCss = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)].map(([, s]) => s)
+  const inlineCss = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\b[^>]*>/gi)].map(
+    ([, s]) => s,
+  )
 
   return { css, js, inline, inlineCss }
 }
