@@ -38,7 +38,6 @@ const deps: CliDeps = {
       new TypeSafeJevJudge(),
     ),
   doctor: runDoctor,
-  now: () => new Date(),
 }
 
 // No top-level await: this entry is also built as CJS.
