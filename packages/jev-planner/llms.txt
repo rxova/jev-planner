@@ -2,9 +2,10 @@
 
 > A CLI, and the library behind it, that writes a coding plan with two or more
 > AIs and a judge. Each agent — Codex and Claude Code by default; DeepSeek,
-> Kimi and GLM too — drafts a plan for the same task, reviews every other
-> draft, and Jev — TypeSafe's typed judge — picks the stronger plan and the
-> agent that writes the final version. Every agent runs read-only. Node >=
+> Kimi and GLM too — drafts a plan for the same task, and Jev — TypeSafe's
+> typed judge — scores the drafts, orders a cross-review when one would help,
+> picks the stronger plan and the agent that writes the final version, and
+> decides when a plan needs no merge at all. Every agent runs read-only. Node >=
 > 20.19. MIT. Ships ESM and CommonJS with type declarations.
 
 ## Install
@@ -27,11 +28,17 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add a CSV export"
 ```
 
 The plan goes to stdout, or to the file given with `-o`; progress goes to
-stderr. `--json` prints `{ plan, verdict, finalizer, selected?, timings }`
+stderr. `--json` prints `{ plan, verdict, finalizer, selected?, timings, cost }`
 instead. Every round's plans are also written as the run goes, to `round1/`,
 `round2/`, …, `final/` in a new `.jev-planner/<UTC start time>/` folder in
 the repository (git-ignored by its own `.gitignore`). `--rounds-dir <path>`
 writes them there instead; `--no-rounds` writes none.
+
+`--mode fast` (the default) lets Jev skip a round the plan does not need: the
+cross-review when the drafts already agree, and the merge when one
+cross-reviewed plan is final as it stands. `--mode ultra` always cross-reviews
+and always merges. `--straggler-grace <seconds>` is how long a fast round waits
+for the agents still working once half have answered.
 
 The same flow from code:
 
@@ -52,42 +59,49 @@ const { plan, verdict, finalizer } = await planner.plan({
 
 ## API
 
-| Export                     | Kind     | What it does                                                                                                                                                       |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Planner`                  | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize                                                                         |
-| `TypeSafeJevJudge`         | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                                                                                                |
-| `PROVIDERS`                | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                                                                            |
-| `DEFAULT_AGENTS`           | const    | The ids used without `--agents`: `['codex', 'claude']`                                                                                                             |
-| `cliProvider`              | function | Builds a `Provider` for an agent CLI run read-only in the repository                                                                                               |
-| `openAICompatibleProvider` | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                                                                                        |
-| `runDoctor`                | function | `runDoctor(cwd, providers, env?)` runs each provider's checks and the Jev key check                                                                                |
-| `ProcessError`             | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                                                                                   |
-| `TaskValidationError`      | class    | Thrown by `plan` before any call when the task is empty or a placeholder                                                                                           |
-| `Provider`                 | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                                                                                  |
-| `AgentSetup`               | type     | `{ model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given                                                                                       |
-| `CliProviderConfig`        | type     | `{ id, label, command, args({ model?, effort? }), effort?, events?, sessions?, auth? }`, `cliProvider`'s input                                                     |
-| `OpenAICompatibleConfig`   | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                                                                                     |
-| `ProcessResult`            | type     | `{ stdout, stderr }` of a finished agent process                                                                                                                   |
-| `CheckResult`              | type     | `{ name, ok, detail }`, one `runDoctor` check                                                                                                                      |
-| `AgentName`                | type     | `string`: a provider id                                                                                                                                            |
-| `AgentRequest`             | type     | `{ prompt, resumePrompt?, session?, effort?, cwd, timeoutMs, onProgress? }`, what a `PlanningAgent` is given                                                       |
-| `AgentSession`             | type     | `{ id? }`: one agent's conversation, carried from its draft to its later calls in a run                                                                            |
-| `PlanningAgent`            | type     | `{ name, label, generate(request) }`, the agent interface `Planner` drives                                                                                         |
-| `JudgedPlan`               | type     | `{ agent, label, plan }`, one revised plan as Jev sees it                                                                                                          |
-| `JevJudge`                 | type     | `{ judge({ task, plans, model? }) }`, returns a `JevVerdict`                                                                                                       |
-| `JevVerdict`               | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer                                                                                    |
-| `PlanOptions`              | type     | `{ task, cwd, timeoutMs, maxReviewRounds?, jevModel?, finalizer?, selectStronger?, allowAnyTask?, resume?, reviewEfforts?, onStage?, onAgentProgress?, onRound? }` |
-| `PlanResult`               | type     | `{ plan, verdict, finalizer, selected?, drafts, timings }`; `drafts` maps agent name to revised plan                                                               |
-| `PlanRound`                | type     | `{ round, stage, plans, verdict?, timings, selected? }`, one round's plans as `onRound` receives them                                                              |
-| `RoundTimings`             | type     | `{ totalMs, agents, jevMs? }`: one round, and each agent call and Jev call in it, in ms                                                                            |
-| `RunTimings`               | type     | `{ totalMs, rounds }`: the whole run, and each round's `RoundTimings` with its `round` and `stage`                                                                 |
+| Export                       | Kind     | What it does                                                                                                                                                                                 |
+| ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Planner`                    | class    | `new Planner(agents, jev).plan(options)`: two or more agents draft, cross-review, finalize                                                                                                   |
+| `DEFAULT_STRAGGLER_GRACE_MS` | const    | 90_000: what a `fast` round waits for a straggler before going on without it                                                                                                                 |
+| `TypeSafeJevJudge`           | class    | A `JevJudge` backed by `@typesafe-ai/sdk`; reads `TYPESAFE_API_KEY`                                                                                                                          |
+| `PROVIDERS`                  | const    | Every built-in `Provider`: `codex`, `claude`, `deepseek`, `kimi`, `glm`                                                                                                                      |
+| `DEFAULT_AGENTS`             | const    | The ids used without `--agents`: `['codex', 'claude']`                                                                                                                                       |
+| `cliProvider`                | function | Builds a `Provider` for an agent CLI run read-only in the repository                                                                                                                         |
+| `openAICompatibleProvider`   | function | Builds a `Provider` for an OpenAI-compatible chat API, sent a repo snapshot                                                                                                                  |
+| `runDoctor`                  | function | `runDoctor(cwd, providers, env?)` runs each provider's checks and the Jev key check                                                                                                          |
+| `ProcessError`               | class    | Thrown when an agent CLI exits non-zero, is killed, or times out                                                                                                                             |
+| `TaskValidationError`        | class    | Thrown by `plan` before any call when the task is empty or a placeholder                                                                                                                     |
+| `Provider`                   | type     | `{ id, label, kind, secretEnv, effort, create(setup), doctor(cwd, env) }`, one AI                                                                                                            |
+| `AgentSetup`                 | type     | `{ model?, effort?, omitEnv, env, fetch? }`, what `Provider.create` is given                                                                                                                 |
+| `CliProviderConfig`          | type     | `{ id, label, command, args({ model?, effort? }), effort?, events?, sessions?, auth? }`, `cliProvider`'s input                                                                               |
+| `OpenAICompatibleConfig`     | type     | `{ id, label, baseUrl, apiKeyEnv, model }`, `openAICompatibleProvider`'s input                                                                                                               |
+| `ProcessResult`              | type     | `{ stdout, stderr }` of a finished agent process                                                                                                                                             |
+| `CheckResult`                | type     | `{ name, ok, detail }`, one `runDoctor` check                                                                                                                                                |
+| `AgentName`                  | type     | `string`: a provider id                                                                                                                                                                      |
+| `AgentRequest`               | type     | `{ prompt, resumePrompt?, session?, effort?, cwd, timeoutMs, onProgress?, signal? }`, what a `PlanningAgent` is given                                                                        |
+| `AgentSession`               | type     | `{ id? }`: one agent's conversation, carried from its draft to its later calls in a run                                                                                                      |
+| `PlanningAgent`              | type     | `{ name, label, generate(request) }`, the agent interface `Planner` drives                                                                                                                   |
+| `JudgedPlan`                 | type     | `{ agent, label, plan }`, one plan as Jev sees it                                                                                                                                            |
+| `JevJudge`                   | type     | `{ judge({ task, plans, stage, model? }) }`, returns a `JevVerdict`                                                                                                                          |
+| `JevVerdict`                 | type     | Scores and confidences, the stronger plan (an agent or `tie`) and the finalizer                                                                                                              |
+| `PlanMode`                   | type     | `'fast'` (Jev skips the rounds a plan does not need) or `'ultra'` (every round, always)                                                                                                      |
+| `PlanOptions`                | type     | `{ task, cwd, timeoutMs, mode?, maxReviewRounds?, stragglerGraceMs?, jevModel?, finalizer?, selectStronger?, allowAnyTask?, resume?, reviewEfforts?, onStage?, onAgentProgress?, onRound? }` |
+| `PlanResult`                 | type     | `{ plan, verdict, finalizer, selected?, drafts, timings, cost }`; `drafts` maps agent name to its last plan                                                                                  |
+| `PlanCost`                   | type     | `{ mode, reviewRounds, synthesized, agentCalls, jevCalls, dropped }`, what the run spent                                                                                                     |
+| `PlanRound`                  | type     | `{ round, stage, plans, verdict?, timings, selected? }`, one round's plans as `onRound` receives them                                                                                        |
+| `RoundTimings`               | type     | `{ totalMs, agents, jevMs? }`: one round, and each agent call and Jev call in it, in ms                                                                                                      |
+| `RunTimings`                 | type     | `{ totalMs, rounds }`: the whole run, and each round's `RoundTimings` with its `round` and `stage`                                                                                           |
 
 ## Mistakes to avoid
 
-- **Treating a run as free.** With N agents one plan is 2N + 1 agent calls,
-  or 3N + 1 with a second review, and 1 or 2 Jev calls, each billed to the
-  account or key it runs under. Run `jev-planner doctor`
-  first rather than a real task to check the setup.
+- **Treating a run as free.** With N agents one plan is N + 1 to 3N + 1 agent
+  calls — `--mode ultra` always spends 2N + 1, or 3N + 1 with a second review —
+  and one Jev call per judged round, each billed to the account or key it runs
+  under. Run `jev-planner doctor` first rather than a real task to check the
+  setup.
+- **Reaching for `--mode ultra` to make a plan better.** It buys every round
+  whether or not it changes the plan. `fast` runs the same rounds whenever Jev
+  says they would help, so `ultra` mostly buys the ones it says would not.
 - **Sending a template as the task.** A placeholder — `TODO`, `<coding task>`,
   `{{task}}`, text with no letters — is rejected with `TaskValidationError`
   before any billed call. Pass `--allow-any-task` (`allowAnyTask: true` in the

@@ -46,6 +46,7 @@ function fakeClient(): { client: TypeSafeClient; requests: Record<string, unknow
               probabilities: { 0: 0, 1: 0, 2: 0.3, 3: 0.7 },
             },
             needs_another_pass: { type: 'noul', noul: 0.1 },
+            stands_alone: { type: 'noul', noul: 0.85 },
           },
           usage: { input_tokens: 100, output_tokens: 20 },
         }),
@@ -65,6 +66,7 @@ describe('TypeSafeJevJudge', () => {
         { agent: 'codex', label: 'Codex', plan: 'codex' },
         { agent: 'claude', label: 'Claude', plan: 'claude' },
       ],
+      stage: 'review',
       model: 'jev-test',
     })
 
@@ -73,10 +75,11 @@ describe('TypeSafeJevJudge', () => {
       finalizer: 'claude',
       completeness: 2.8,
       needsAnotherPassProbability: 0.1,
+      standsAloneProbability: 0.85,
       model: 'jev-test',
     })
     expect(requests[0]?.model).toBe('jev-test')
-    expect(Object.keys(requests[0]?.questions as object)).toHaveLength(6)
+    expect(Object.keys(requests[0]?.questions as object)).toHaveLength(7)
   })
 
   it("offers each agent's name as a choice, and keys the plans by it", async () => {
@@ -88,6 +91,7 @@ describe('TypeSafeJevJudge', () => {
         { agent: 'deepseek', label: 'DeepSeek', plan: 'b' },
         { agent: 'glm', label: 'GLM', plan: 'c' },
       ],
+      stage: 'draft',
     })
 
     const request = JSON.stringify(requests[0])
@@ -98,11 +102,29 @@ describe('TypeSafeJevJudge', () => {
     ]) {
       expect(request).toContain(option)
     }
-    expect((requests[0]?.state as { revised_plans: unknown }).revised_plans).toEqual({
+    expect((requests[0]?.state as { plans: unknown }).plans).toEqual({
       codex: { author: 'Codex', plan: 'a' },
       deepseek: { author: 'DeepSeek', plan: 'b' },
       glm: { author: 'GLM', plan: 'c' },
     })
+  })
+
+  it('tells Jev whether it is looking at drafts or at cross-reviewed plans', async () => {
+    const judged = async (stage: 'draft' | 'review') => {
+      const { client, requests } = fakeClient()
+      await new TypeSafeJevJudge(client).judge({
+        task: 'task',
+        plans: [
+          { agent: 'codex', label: 'Codex', plan: 'a' },
+          { agent: 'claude', label: 'Claude', plan: 'b' },
+        ],
+        stage,
+      })
+      return (requests[0]?.state as { stage: string }).stage
+    }
+
+    await expect(judged('draft')).resolves.toContain('no agent has seen another')
+    await expect(judged('review')).resolves.toContain('each agent has read every other plan')
   })
 
   it("leaves the model to the SDK's default and truncates oversized plans", async () => {
@@ -113,10 +135,10 @@ describe('TypeSafeJevJudge', () => {
         { agent: 'codex', label: 'Codex', plan: 'x'.repeat(40_001) },
         { agent: 'claude', label: 'Claude', plan: 'short' },
       ],
+      stage: 'review',
     })
 
-    const plans = (requests[0]?.state as { revised_plans: Record<string, { plan: string }> })
-      .revised_plans
+    const plans = (requests[0]?.state as { plans: Record<string, { plan: string }> }).plans
     // No override is passed, so the SDK's own default goes out.
     expect(requests[0]?.model).toBe('jev-latest')
     expect(plans.codex?.plan).toBe(`${'x'.repeat(40_000)}\n[truncated for Jev evaluation]`)

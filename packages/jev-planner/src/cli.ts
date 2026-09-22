@@ -6,7 +6,7 @@ import type { CheckResult } from './doctor.js'
 import type { Provider } from './provider.js'
 import { DEFAULT_AGENTS, PROVIDERS } from './providers.js'
 import { requireNonEmptyTask, validateTask } from './task.js'
-import type { PlanOptions, PlanResult, PlanRound } from './types.js'
+import type { PlanCost, PlanMode, PlanOptions, PlanResult, PlanRound } from './types.js'
 
 export const VERSION: string = packageJson.version
 
@@ -35,8 +35,13 @@ Options:
                               The effort for its cross-review and synthesis only; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
       --finalizer <id>        auto, none, or one of the agents (default: auto/Jev decides);
-                              none skips the synthesis and keeps the plan Jev rates stronger
-      --review-rounds <1|2>   Maximum cross-review rounds (default: 2)
+                              none keeps a cross-reviewed plan Jev rates stronger, unmerged
+      --mode <fast|ultra>     fast: Jev skips the rounds a run does not need
+                              ultra: always cross-review, always merge (default: fast)
+      --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
+      --straggler-grace <s>   In fast mode, how long a round waits for the agents
+                              still working once half have answered; 0 waits for
+                              every agent (default: 90)
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --no-resume             Start each agent call afresh, not from its draft session
       --json                  Emit plan metadata as JSON
@@ -239,6 +244,21 @@ function roundTimingLine(round: PlanRound, labels: ReadonlyMap<string, string>):
   return calls.length > 0 ? `${line} (${calls.join(', ')})` : line
 }
 
+/** What the run spent, on one line, so the cost of a mode is visible without `--json`. */
+export function costLine(cost: PlanCost): string {
+  const plural = (count: number, thing: string) =>
+    `${String(count)} ${thing}${count === 1 ? '' : 's'}`
+  const parts = [
+    `${cost.mode} mode`,
+    plural(cost.agentCalls, 'agent call'),
+    plural(cost.jevCalls, 'Jev call'),
+    plural(cost.reviewRounds, 'cross-review round'),
+    cost.synthesized ? 'merged' : 'adopted whole',
+  ]
+  if (cost.dropped.length > 0) parts.push(`not waited for: ${cost.dropped.join(', ')}`)
+  return parts.join(', ')
+}
+
 function parseTimeout(value: string | undefined): number {
   const seconds = Number(value ?? '600')
   if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -247,10 +267,28 @@ function parseTimeout(value: string | undefined): number {
   return Math.round(seconds * 1_000)
 }
 
-function parseReviewRounds(value: string | undefined): 1 | 2 {
+function parseReviewRounds(value: string | undefined): 0 | 1 | 2 {
   if (value === undefined || value === '2') return 2
   if (value === '1') return 1
-  throw new Error('--review-rounds must be 1 or 2')
+  if (value === '0') return 0
+  throw new Error('--review-rounds must be 0, 1 or 2')
+}
+
+function parseMode(value: string | undefined): PlanMode {
+  if (value === undefined || value === 'fast') return 'fast'
+  if (value === 'ultra') return 'ultra'
+  throw new Error(`Invalid --mode value: ${value}. Expected fast or ultra.`)
+}
+
+function parseStragglerGrace(value: string | undefined, mode: PlanMode): number | undefined {
+  if (value === undefined) return undefined
+  if (mode === 'ultra')
+    throw new Error('--straggler-grace is for --mode fast; ultra never drops an agent')
+  const seconds = Number(value)
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new Error('--straggler-grace must be a number of seconds, 0 or more')
+  }
+  return Math.round(seconds * 1_000)
 }
 
 function parse(argv: readonly string[]) {
@@ -268,7 +306,9 @@ function parse(argv: readonly string[]) {
       'review-effort': { type: 'string', multiple: true, default: [] },
       'jev-model': { type: 'string' },
       finalizer: { type: 'string' },
+      mode: { type: 'string' },
       'review-rounds': { type: 'string' },
+      'straggler-grace': { type: 'string' },
       timeout: { type: 'string' },
       'no-resume': { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
@@ -337,6 +377,8 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   )
   const finalizer = parseFinalizer(values.finalizer, agents)
   const jevModel = values['jev-model']
+  const mode = parseMode(values.mode)
+  const stragglerGraceMs = parseStragglerGrace(values['straggler-grace'], mode)
   if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
     throw new Error('Pass --rounds-dir or --no-rounds, not both')
   }
@@ -354,7 +396,9 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     task,
     cwd,
     timeoutMs: parseTimeout(values.timeout),
+    mode,
     maxReviewRounds: parseReviewRounds(values['review-rounds']),
+    ...(stragglerGraceMs === undefined ? {} : { stragglerGraceMs }),
     ...(jevModel ? { jevModel } : {}),
     ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
@@ -384,6 +428,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     deps.stderr(`[jev-planner] Total: ${formatDuration(result.timings.totalMs)}\n`)
     deps.stderr(`[jev-planner] Jev verdict:\n${JSON.stringify(result.verdict, null, 2)}\n`)
   }
+  deps.stderr(`[jev-planner] ${costLine(result.cost)}\n`)
 
   const rendered = values.json
     ? `${JSON.stringify(
@@ -393,6 +438,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
           finalizer: result.finalizer,
           ...(result.selected ? { selected: true } : {}),
           timings: result.timings,
+          cost: result.cost,
         },
         null,
         2,

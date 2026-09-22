@@ -18,14 +18,19 @@ export class TypeSafeJevJudge implements JevJudge {
   async judge(input: {
     task: string
     plans: readonly JudgedPlan[]
+    stage: 'draft' | 'review'
     model?: string
   }): Promise<JevVerdict> {
     const response = await this.client.systemOne({
       ...(input.model ? { model: input.model } : {}),
       state: {
         task: input.task,
+        stage:
+          input.stage === 'draft'
+            ? 'Independent drafts: no agent has seen another agent’s plan yet'
+            : 'Cross-reviewed plans: each agent has read every other plan and revised its own',
         // Keyed by agent name: the names the choices below answer with.
-        revised_plans: Object.fromEntries(
+        plans: Object.fromEntries(
           input.plans.map(({ agent, label, plan }) => [
             agent,
             { author: label, plan: bounded(plan) },
@@ -34,7 +39,7 @@ export class TypeSafeJevJudge implements JevJudge {
       },
       questions: {
         stronger_plan: choice(
-          'Which revised plan is most likely to lead to a correct, efficient implementation of the task?',
+          'Which plan is most likely to lead to a correct, efficient implementation of the task?',
           {
             ...agentOptions(
               input.plans,
@@ -44,7 +49,7 @@ export class TypeSafeJevJudge implements JevJudge {
           },
         ),
         finalizer: choice(
-          "Which agent's revised plan demonstrates the best judgment for merging all the plans into the final plan?",
+          "Which agent's plan demonstrates the best judgment for merging all the plans into the final plan?",
           agentOptions(input.plans, (label) => `${label} should perform the final synthesis`),
         ),
         completeness: score(
@@ -72,10 +77,17 @@ export class TypeSafeJevJudge implements JevJudge {
           'Risk, testing, and rollout coverage is thorough',
         ]),
         needs_another_pass: noul(
-          'Would another cross-review round materially improve the final implementation plan?',
+          'Would a cross-review round, each agent revising its plan against all the others, materially improve the final implementation plan?',
           {
             true: 'Important contradictions, omissions, or unsupported assumptions remain',
             false: 'The material is ready for final synthesis',
+          },
+        ),
+        stands_alone: noul(
+          'Could the strongest plan be handed to an implementer as the final plan, with no merge of the others?',
+          {
+            true: 'One plan is already complete and self-contained; merging would add nothing material',
+            false: 'The plans hold complementary material that a final merge has to combine',
           },
         ),
       },
@@ -94,6 +106,7 @@ export class TypeSafeJevJudge implements JevJudge {
       riskCoverage: answers.risk_coverage.score,
       riskCoverageConfidence: answers.risk_coverage.confidence,
       needsAnotherPassProbability: answers.needs_another_pass.noul,
+      standsAloneProbability: answers.stands_alone.noul,
       model: response.model,
     }
   }
