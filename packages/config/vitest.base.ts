@@ -17,12 +17,18 @@ export const COVERAGE_THRESHOLDS = {
 
 /**
  * Each feature lives in `src/<feature>/`: `<feature>.ts`, its tests in
- * `<feature>.test.ts`, its types in `<feature>.types.ts`. `index.ts` is a
+ * `<feature>.test.ts`, its types in `<feature>.types.ts`, and fakes that several
+ * suites share in `<feature>.fixtures.ts`, which is test code. `index.ts` is a
  * re-export barrel and a `.types.ts` file is types only; neither has executable
  * lines worth a threshold. Logic that lands in either one is logic the
  * thresholds cannot see, so keep them to re-exports and types.
  */
-const BASE_EXCLUSIONS = ['src/**/*.test.{ts,tsx}', 'src/**/*.types.ts', 'src/index.ts'] as const
+const BASE_EXCLUSIONS = [
+  'src/**/*.test.{ts,tsx}',
+  'src/**/*.fixtures.ts',
+  'src/**/*.types.ts',
+  'src/index.ts',
+] as const
 
 export interface BaseVitestOptions {
   /** Vitest `environment`. `jsdom` needs `jsdom` installed in the package. */
