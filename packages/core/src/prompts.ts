@@ -1,5 +1,5 @@
 import { MAX_OBJECTIONS } from './debate.js'
-import type { AgentName, Dispute, DisputeRuling, JevVerdict, Objection } from './types.js'
+import type { AgentName, Dispute, DisputeRuling, Verdict, Objection } from './types.js'
 
 /** A plan and the agent that wrote it, as a prompt shows it. */
 export interface AuthoredPlan {
@@ -68,7 +68,7 @@ export function revisionPrompt(input: {
   ownPlan: string
   peerPlans: readonly AuthoredPlan[]
   feedback?: string
-  /** `feedback` is the disagreements a debate left open, not Jev's verdict. */
+  /** `feedback` is the disagreements a debate left open, not the judge's verdict. */
   targeted?: boolean
   resumed?: boolean
 }): string {
@@ -88,7 +88,7 @@ ${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, '
       ? ''
       : input.targeted
         ? `\n\nThe debate left these disagreements open. Settle each one in your revised plan, checking the repository where a claim is about it:\n<open-disagreements>\n${input.feedback}\n</open-disagreements>`
-        : `\n\nJev identified remaining uncertainty. Use this typed feedback to target the revision:\n<jev-feedback>\n${input.feedback}\n</jev-feedback>`
+        : `\n\nThe judge identified remaining uncertainty. Use this typed feedback to target the revision:\n<judge-feedback>\n${input.feedback}\n</judge-feedback>`
   }`
 }
 
@@ -97,27 +97,27 @@ export function finalPlanPrompt(input: {
   task: string
   plans: readonly AuthoredPlan[]
   verdict: string
-  /** In `debate` review: the disputes and Jev's rulings on them. */
+  /** In `debate` review: the disputes and the judge's rulings on them. */
   disputes?: string
   resumed?: boolean
 }): string {
   return `${planContract(SETTLE_CONTRADICTIONS)}
 
-Act as the final editor. Merge the best concrete parts of all the revised plans, guided by Jev's typed verdict.
+Act as the final editor. Merge the best concrete parts of all the revised plans, guided by the judge's typed verdict.
 Resolve contradictions explicitly. Return one self-contained execution plan—no discussion of the planning process,
-no winner announcement, and no Jev commentary.
+no winner announcement, and no judge commentary.
 
 ${taskBlock(input.task, input.resumed)}${planBlocks(input.plans, 'revised-plan')}
 
-Jev verdict:
-<jev-verdict>
+Judge verdict:
+<judge-verdict>
 ${input.verdict}
-</jev-verdict>${
+</judge-verdict>${
     input.disputes === undefined
       ? ''
       : `
 
-The agents' disagreements, and Jev's ruling on each. Follow a ruling unless the plans show it wrong:
+The agents' disagreements, and the judge's ruling on each. Follow a ruling unless the plans show it wrong:
 <disputes>
 ${input.disputes}
 </disputes>`
@@ -153,7 +153,7 @@ ${CRITIQUE_FORMAT}
 
 Mark an objection [repo] only when it makes a claim about the repository that someone could check
 by opening a file. Say why each objection matters after a dash. Raise only objections you would
-defend; an author will accept or reject each one, and Jev will rule on the rejected ones.
+defend; an author will accept or reject each one, and the judge will rule on the rejected ones.
 
 ${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, 'peer-plan')}`
 }
@@ -254,12 +254,12 @@ const RULING_TEXT: Record<DisputeRuling['choice'], (critics: string, author: str
   unclear: () => 'the material does not settle it',
 }
 
-/** Whether a dispute is settled: Jev ruled for a side, and with at least `SETTLED` confidence. */
+/** Whether a dispute is settled: the judge ruled for a side, and with at least `SETTLED` confidence. */
 export function isSettled(ruling: DisputeRuling | undefined): boolean {
   return ruling !== undefined && ruling.choice !== 'unclear' && ruling.confidence >= SETTLED
 }
 
-/** `D1 (Codex → Claude): <claim>. Jev: Claude's position holds (0.72). Check: REFUTE src/jev.ts.` */
+/** `D1 (Codex → Claude): <claim>. Judge: Claude's position holds (0.72). Check: REFUTE src/jev.ts.` */
 function disputeLine(
   dispute: Dispute,
   ruling: DisputeRuling | undefined,
@@ -270,8 +270,8 @@ function disputeLine(
   const parts = [`${dispute.id} (${critics} → ${author}): ${dispute.claim.replace(/\.$/, '')}.`]
   parts.push(
     ruling
-      ? `Jev: ${RULING_TEXT[ruling.choice](critics, author)} (${ruling.confidence.toFixed(2)}).`
-      : 'Jev: not judged.',
+      ? `Judge: ${RULING_TEXT[ruling.choice](critics, author)} (${ruling.confidence.toFixed(2)}).`
+      : 'Judge: not judged.',
   )
   if (dispute.check) {
     const evidence = dispute.check.evidence ? ` ${dispute.check.evidence.replace(/\.$/, '')}` : ''
@@ -280,7 +280,7 @@ function disputeLine(
   return parts.join(' ')
 }
 
-/** Every dispute and Jev's ruling on it, one per line, for the final merge. */
+/** Every dispute and the judge's ruling on it, one per line, for the final merge. */
 export function disputeSummary(input: {
   disputes: readonly Dispute[]
   overflow: readonly Dispute[]
@@ -300,15 +300,15 @@ const SCORE_NAMES = {
 } as const
 
 /**
- * What a second pass after a debate aims at: the disputes Jev's rulings left
+ * What a second pass after a debate aims at: the disputes the judge's rulings left
  * open, and those past the cap that it never judged. With none open, a note
- * saying so and the weakest of Jev's scores, since Jev asking for another pass
+ * saying so and the weakest of the judge's scores, since the judge asking for another pass
  * can also mean something is missing that nobody disputed.
  */
 export function disputeFeedback(input: {
   disputes: readonly Dispute[]
   overflow: readonly Dispute[]
-  verdict: JevVerdict
+  verdict: Verdict
   label: (name: AgentName) => string
 }): string {
   const rulings = input.verdict.disputes ?? []
@@ -322,5 +322,5 @@ export function disputeFeedback(input: {
   const name = (Object.keys(SCORE_NAMES) as (keyof typeof SCORE_NAMES)[]).reduce((weakest, next) =>
     input.verdict[next] < input.verdict[weakest] ? next : weakest,
   )
-  return `No disagreement is left open, but Jev still expects another pass to improve the plan. Its weakest score is ${SCORE_NAMES[name]}: ${input.verdict[name].toFixed(1)} of 3. Strengthen that.`
+  return `No disagreement is left open, but the judge still expects another pass to improve the plan. Its weakest score is ${SCORE_NAMES[name]}: ${input.verdict[name].toFixed(1)} of 3. Strengthen that.`
 }

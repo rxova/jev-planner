@@ -16,7 +16,7 @@ describe('requireNonEmptyTask', () => {
       expect(() => requireNonEmptyTask(raw)).toThrow(new TaskValidationError(MISSING_TASK_MESSAGE))
     }
     expect(MISSING_TASK_MESSAGE).toBe(
-      'Missing coding task. Pass it as an argument, with --file, on stdin, or as task in jev-planner.json.',
+      'Missing coding task. Pass it as an argument, with --file, on stdin, or as task in the config file.',
     )
   })
 
@@ -76,7 +76,7 @@ describe('validateTask', () => {
   it('names the placeholder and the override in its message', () => {
     expect(() => validateTask('TODO')).toThrow(
       'The task looks like a placeholder: "TODO". Pass the change to plan as an argument, ' +
-        'with --file, on stdin or in jev-planner.json, or use --allow-any-task to plan it anyway.',
+        'with --file, on stdin or in the config file, or use --allow-any-task to plan it anyway.',
     )
   })
 

@@ -6,8 +6,14 @@
  * exports map that resolves for a bundler but not for plain Node. Both ship
  * green through lint, types and unit tests. It also checks the files a reader
  * opens in `node_modules` beside dist: the README, the license, the
- * `llms.txt` that `check-llms` keeps in step with the exports, and the
- * `config.schema.json` a `jev-planner.json` can point its `$schema` at.
+ * `llms.txt` that `check-llms` keeps in step with the exports, and whatever
+ * else its `files` lists, such as the `config.schema.json` a `jev-planner.json`
+ * can point its `$schema` at.
+ *
+ * `npm pack` keeps a `workspace:` dependency as written, which no npm install
+ * resolves. So each one is packed too, and the package's tarball is repacked
+ * with those dependencies pointing at their tarballs: what `pnpm publish` does
+ * with the published versions, done with npm alone.
  *
  * Run from a package directory (`pnpm run pack:smoke`). It packs with
  * `--ignore-scripts`, so dist has to be built first: Turbo's `dependsOn` does
@@ -49,6 +55,8 @@ export const workspace: Workspace = {
 export interface Manifest {
   name: string
   version: string
+  files?: string[]
+  dependencies?: Record<string, string>
 }
 
 /** The probe a consumer's Node would run, with no bundler in the way. */
@@ -63,7 +71,62 @@ export const probeSource = (name: string): string =>
   ].join('\n')
 
 /** Files the installed package must hold besides dist, which the probe covers. */
-export const SHIPPED = ['LICENSE', 'README.md', 'llms.txt', 'config.schema.json']
+export const shippedFiles = (manifest: Manifest): string[] => [
+  'LICENSE',
+  'README.md',
+  ...(manifest.files ?? []).filter((file) => file !== 'dist'),
+]
+
+const WORKSPACE = 'workspace:'
+
+/** The directory beside `pkgDir` holding the workspace package `name`. */
+const workspaceDir = (pkgDir: string, name: string, fs: Workspace): string => {
+  const parent = join(pkgDir, '..')
+  for (const dir of fs.list(parent)) {
+    try {
+      const { name: found } = JSON.parse(fs.read(join(parent, dir, 'package.json'))) as Manifest
+      if (found === name) return join(parent, dir)
+    } catch {
+      // Not a package: no manifest, or not JSON.
+    }
+  }
+  throw new Error(`no workspace package named ${name} beside ${pkgDir}`)
+}
+
+/** Packs `dir` into `destination` and returns the tarball's path. */
+const packInto = (dir: string, destination: string, sh: Shell): string => {
+  const [packed] = JSON.parse(
+    sh('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', destination], dir),
+  ) as { filename: string }[]
+  if (packed === undefined) throw new Error(`npm pack produced no tarball for ${dir}`)
+  return join(destination, packed.filename)
+}
+
+/**
+ * Packs each `workspace:` dependency, then repacks `tarball` with those
+ * dependencies pointing at their tarballs. Leaves a package without one alone.
+ */
+const resolveWorkspaceDeps = (
+  pkgDir: string,
+  manifest: Manifest,
+  tarball: string,
+  scratch: string,
+  { sh, fs }: { sh: Shell; fs: Workspace },
+): void => {
+  const local = Object.entries(manifest.dependencies ?? {}).filter(([, spec]) =>
+    spec.startsWith(WORKSPACE),
+  )
+  if (local.length === 0) return
+  sh('tar', ['-xzf', tarball, '-C', scratch], scratch)
+  const unpacked = join(scratch, 'package')
+  const packed = JSON.parse(fs.read(join(unpacked, 'package.json'))) as Manifest
+  const dependencies = { ...packed.dependencies }
+  for (const [name] of local) {
+    dependencies[name] = `file:${packInto(workspaceDir(pkgDir, name, fs), scratch, sh)}`
+  }
+  fs.write(join(unpacked, 'package.json'), JSON.stringify({ ...packed, dependencies }, null, 2))
+  sh('npm', ['pack', '--ignore-scripts', '--pack-destination', scratch], unpacked)
+}
 
 /**
  * Runs the whole smoke test and returns the line to print. Throws on any step
@@ -85,12 +148,13 @@ export const packSmoke = ({
     sh('npm', ['pack', '--ignore-scripts', '--pack-destination', scratch], pkgDir)
     const tarball = fs.list(scratch).find((file) => file.endsWith('.tgz'))
     if (tarball === undefined) throw new Error('npm pack produced no tarball')
+    resolveWorkspaceDeps(pkgDir, manifest, join(scratch, tarball), scratch, { sh, fs })
 
     fs.write(join(scratch, 'package.json'), JSON.stringify({ name: 'scratch', private: true }))
     sh('npm', ['install', '--no-audit', '--no-fund', join(scratch, tarball)], scratch)
 
     const installed = fs.list(join(scratch, 'node_modules', manifest.name))
-    const missing = SHIPPED.filter((file) => !installed.includes(file))
+    const missing = shippedFiles(manifest).filter((file) => !installed.includes(file))
     if (missing.length > 0) throw new Error(`the tarball does not contain ${missing.join(', ')}`)
 
     const probe = join(scratch, 'probe.mjs')

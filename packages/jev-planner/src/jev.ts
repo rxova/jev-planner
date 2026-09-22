@@ -6,12 +6,20 @@ import type {
   ScoreCriteria,
   ScoreResponse,
 } from '@typesafe-ai/sdk'
-import { disputeKey, jevQuestions, judgedPlans, STAGE_TEXT } from './jev-questions.js'
-import type { DisputeKey, JevQuestion, Stage } from './jev-questions.js'
-import type { Dispute, DisputeRuling, JevJudge, JevVerdict, JudgedPlan } from './types.js'
+import { disputeKey, judgedPlans, planQuestions, STAGE_TEXT } from '@rxova/planner-core'
+import type {
+  Dispute,
+  DisputeKey,
+  DisputeRuling,
+  JudgedPlan,
+  JudgeStage,
+  PlanJudge,
+  PlanQuestion,
+  Verdict,
+} from '@rxova/planner-core'
 
 /** A neutral question as the SDK asks it. */
-function toTypeSafe(question: JevQuestion): Question {
+function toTypeSafe(question: PlanQuestion): Question {
   if (question.kind === 'choice') {
     const instructions = question.details
       ? { question: question.ask, ...question.details }
@@ -25,7 +33,7 @@ function toTypeSafe(question: JevQuestion): Question {
   return noul(question.ask, { true: question.yes, false: question.no })
 }
 
-/** Jev's answers, keyed as `jevQuestions` keys the questions. */
+/** Jev's answers, keyed as `planQuestions` keys the questions. */
 type Answers = {
   readonly stronger_plan: ChoiceResponse
   readonly finalizer: ChoiceResponse
@@ -36,18 +44,21 @@ type Answers = {
   readonly stands_alone: NoulResponse
 } & Partial<Record<DisputeKey, ChoiceResponse<Record<DisputeRuling['choice'], string>>>>
 
-export class TypeSafeJevJudge implements JevJudge {
+/** TypeSafe Jev, asked the planner's questions in one `systemOne` call per judged round. */
+export class TypeSafeJevJudge implements PlanJudge {
+  readonly name = 'Jev'
+
   constructor(private readonly client: TypeSafeClient = new TypeSafeClient()) {}
 
   async judge(input: {
     task: string
     plans: readonly JudgedPlan[]
-    stage: Stage
+    stage: JudgeStage
     disputes?: readonly Dispute[]
     model?: string
-  }): Promise<JevVerdict> {
+  }): Promise<Verdict> {
     const disputes = input.disputes ?? []
-    const questions = jevQuestions({ plans: input.plans, stage: input.stage, disputes })
+    const questions = planQuestions({ plans: input.plans, stage: input.stage, disputes })
     const response = await this.client.systemOne({
       ...(input.model ? { model: input.model } : {}),
       state: {

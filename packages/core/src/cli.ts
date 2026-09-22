@@ -1,9 +1,9 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import packageJson from '../package.json' with { type: 'json' }
-import { CONFIG_FILE, findConfig, validateAgentName } from './config.js'
+import { findConfig, validateAgentName } from './config.js'
 import type { ConfigValues } from './config.js'
+import { envCheck } from './doctor.js'
 import type { CheckResult } from './doctor.js'
 import { agentLabel } from './provider.js'
 import type { AgentSetup, Provider } from './provider.js'
@@ -19,7 +19,53 @@ import type {
   ReviewMode,
 } from './types.js'
 
-export const VERSION: string = packageJson.version
+/**
+ * The program a CLI built on this package is: its name, and the judge it
+ * plans with. `jev-planner` is one; each is a `bin` that calls `main` with it.
+ */
+export interface PlannerProgram {
+  /**
+   * The command, `jev-planner`: it names the help, every message, the config
+   * file `<name>.json` and the runs folder `.<name>/`.
+   */
+  name: string
+  version: string
+  /** The help's first line, after the name. */
+  summary: string
+  /** How the help, the cost line and `--verbose` refer to the judge: `Jev`. */
+  judge: string
+  /** What `--judge-model` defaults to, for the help: `SDK's jev-latest`. */
+  judgeModelDefault: string
+  /**
+   * The variables the judge reads: required before a paid call, checked by
+   * `doctor`, stripped from every agent subprocess, and never read from a config.
+   */
+  judgeEnv: readonly JudgeEnv[]
+}
+
+/** A variable the judge reads, such as `TYPESAFE_API_KEY`. */
+export interface JudgeEnv {
+  variable: string
+  /** What `doctor` calls the check: `TypeSafe key`. */
+  check: string
+  /** The error when it is not set: where to get one, and that it goes in the environment. */
+  missing: string
+}
+
+/** The file a program's CLI looks for in the repository. */
+const configFile = (program: PlannerProgram): string => `${program.name}.json`
+
+/** Where a program's runs keep their rounds by default, relative to the repository. */
+const runsDir = (program: PlannerProgram): string => `.${program.name}`
+
+/**
+ * Every secret the program knows of, the judge's and every provider's: what
+ * `createAgents` is given as `omitEnv`, so no agent subprocess inherits one.
+ */
+export const secretEnv = (program: PlannerProgram): string[] => [
+  ...program.judgeEnv.map(({ variable }) => variable),
+  ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv),
+]
 
 function agentLine(provider: Provider): string {
   const access =
@@ -29,15 +75,23 @@ function agentLine(provider: Provider): string {
   return `  ${provider.id.padEnd(26)}${provider.label}: ${access}`
 }
 
-export const HELP = `jev-planner — collaborative coding plans from two or more agents, judged by Jev
+/** `--help`'s text for `program`. */
+export function helpText(program: PlannerProgram): string {
+  const { name, judge } = program
+  const variables = program.judgeEnv.map(({ variable }) => variable)
+  const requires =
+    variables.length > 0
+      ? ` ${judge} requires ${variables.join(', ')}, which the config never holds.`
+      : ''
+  return `${name} — ${program.summary}
 
 Usage:
-  jev-planner [plan] [options] "<coding task>"
-  jev-planner doctor [--agents <agents>] [--cwd <directory>]
+  ${name} [plan] [options] "<coding task>"
+  ${name} doctor [--agents <agents>] [--cwd <directory>]
 
 Options:
   -c, --config <path>         Read the run's settings from this JSON file
-                              (default: ${CONFIG_FILE} in the repository, if there is one)
+                              (default: ${configFile(program)} in the repository, if there is one)
       --no-config             Read no config file
   -C, --cwd <directory>       Repository to inspect (default: current directory)
   -f, --file <path>           Read the coding task from a UTF-8 file
@@ -50,17 +104,17 @@ Options:
   -e, --effort <name>=<level> Override one agent's reasoning effort; repeatable
       --review-effort <name>=<level>
                               The effort for its cross-review and synthesis only; repeatable
-      --jev-model <model>     Override Jev (default: SDK's jev-latest)
-      --finalizer <name>      auto, none, or one of the agents (default: auto/Jev decides);
-                              none keeps a cross-reviewed plan Jev rates stronger, unmerged
+      --judge-model <model>   Override ${judge}'s model (default: ${program.judgeModelDefault})
+      --finalizer <name>      auto, none, or one of the agents (default: auto/${judge} decides);
+                              none keeps a cross-reviewed plan ${judge} rates stronger, unmerged
       --mode <fast|balanced|ultra>
-                              fast: answer with the first draft Jev accepts alone
-                              balanced: Jev skips the rounds a run does not need
+                              fast: answer with the first draft ${judge} accepts alone
+                              balanced: ${judge} skips the rounds a run does not need
                               ultra: always cross-review, then merge (default: balanced)
       --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
       --review-mode <standard|debate>
                               debate: agents critique each other, authors answer,
-                              Jev rules on the disagreements (experimental; default: standard)
+                              ${judge} rules on the disagreements (experimental; default: standard)
       --claim-checks          In a debate, have two agents that read the repository
                               check the disputed claims about it; implies debate
       --straggler-grace <s>   In balanced and fast mode, how long a round waits for the agents
@@ -69,9 +123,9 @@ Options:
       --timeout <seconds>     Timeout for each agent call (default: 600)
       --no-resume             Start each agent call afresh, not from its draft session
       --json                  Emit plan metadata as JSON
-      --verbose               Stream each agent's work, then Jev's verdict, to stderr
+      --verbose               Stream each agent's work, then ${judge}'s verdict, to stderr
       --rounds-dir <path>     Write every round's plans to round1/, round2/, …, final/
-                              (default: .jev-planner/<run>/ in the repository)
+                              (default: .${name}/<run>/ in the repository)
       --no-rounds             Do not write the rounds anywhere
       --allow-any-task        Plan the task even if it looks like a placeholder
   -h, --help                  Show help
@@ -83,7 +137,8 @@ ${PROVIDERS.map(agentLine).join('\n')}
 The task can also be piped on stdin. A flag given here beats the config; --json,
 --verbose, --claim-checks and --allow-any-task each have a --no- form, and --resume
 and --rounds turn back on what the config turned off. Agent CLIs use their existing
-logins. Jev requires TYPESAFE_API_KEY, which the config never holds.`
+logins.${requires}`
+}
 
 /** The planner surface the CLI drives; `Planner` in production, a fake in tests. */
 export interface PlanRunner {
@@ -98,7 +153,7 @@ export interface AgentSpec {
 }
 
 /**
- * The run's agents and model overrides, from the flags and `jev-planner.json`,
+ * The run's agents and model overrides, from the flags and the config,
  * handed to the planner factory.
  */
 export interface PlannerSetup {
@@ -136,13 +191,12 @@ export interface CliDeps {
   /** The piped task, or `undefined` when stdin is a terminal. */
   readStdin: () => Promise<string | undefined>
   createPlanner: (setup: PlannerSetup) => PlanRunner
+  /** The providers' checks; `main` adds one per `PlannerProgram.judgeEnv` variable. */
   doctor: (cwd: string, providers: readonly Provider[]) => Promise<CheckResult[]>
-  /** The clock that names a run's folder under `.jev-planner/`. */
+  /** The clock that names a run's folder under `.<name>/`. */
   now: () => Date
+  program: PlannerProgram
 }
-
-/** Where runs keep their rounds by default, relative to the repository. */
-export const RUNS_DIR = '.jev-planner'
 
 async function assertDirectory(path: string): Promise<void> {
   const info = await stat(path).catch(() => undefined)
@@ -252,7 +306,7 @@ async function prepareRoundsDir(dir: string): Promise<void> {
 }
 
 /**
- * A new folder for this run under `home`, `<cwd>/.jev-planner/` unless the
+ * A new folder for this run under `home`, `<cwd>/.<name>/` unless the
  * config names a `runsDir`, named by its UTC start time with no `:` so it is a valid name on Windows too. A second run in the
  * same second gets `-2`, and so on: `mkdir` without `recursive` fails on an
  * existing folder, so two runs can never claim the same one.
@@ -261,15 +315,11 @@ async function prepareRoundsDir(dir: string): Promise<void> {
  * never shows up as untracked in the repository being planned. One that is
  * already there is left alone.
  */
-async function newRunDir(home: string, now: Date): Promise<string> {
+async function newRunDir(home: string, now: Date, name: string): Promise<string> {
   await mkdir(home, { recursive: true })
-  await writeFile(
-    join(home, '.gitignore'),
-    '# Written by jev-planner: run output, not source.\n*\n',
-    {
-      flag: 'wx',
-    },
-  ).catch((error: unknown) => {
+  await writeFile(join(home, '.gitignore'), `# Written by ${name}: run output, not source.\n*\n`, {
+    flag: 'wx',
+  }).catch((error: unknown) => {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
   })
   const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
@@ -295,8 +345,8 @@ const ARTIFACT_SUFFIX: Partial<Record<PlanRound['stage'], string>> = {
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 
 /**
- * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
- * `jev-verdict.json` beside a judged round's plans, `timings.json` in every
+ * One folder per round: `round<N>/<agent>.md` for each agent's plan, with the judge's
+ * `verdict.json` beside a judged round's plans, `timings.json` in every
  * round, and `final/plan.md` last. A debate round adds each agent's raw answer
  * as `<agent>.critique.md`, `.reply.md` or `.check.md`, and what was parsed
  * from them as `objections.json`, `replies.json` and `disputes.json`; its
@@ -340,7 +390,7 @@ async function writeRound(dir: string, round: PlanRound): Promise<void> {
       ])
     }
   }
-  if (round.verdict) files.push(['jev-verdict.json', json(round.verdict)])
+  if (round.verdict) files.push(['verdict.json', json(round.verdict)])
   files.push(['timings.json', `${JSON.stringify(round.timings, null, 2)}\n`])
   await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
 }
@@ -363,27 +413,36 @@ const STAGE_NAMES: Record<PlanRound['stage'], string> = {
   final: 'Final plan',
 }
 
-/** One line per round for `--verbose`: the round, then each agent call and Jev's. */
-function roundTimingLine(round: PlanRound, labels: ReadonlyMap<string, string>): string {
+/** One line per round for `--verbose`: the round, then each agent call and the judge's. */
+function roundTimingLine(
+  round: PlanRound,
+  labels: ReadonlyMap<string, string>,
+  judge: string,
+): string {
   const calls = [
     ...Object.entries(round.timings.agents).map(
       ([agent, ms]) => `${labels.get(agent) ?? agent} ${formatDuration(ms)}`,
     ),
-    ...(round.timings.jevMs === undefined ? [] : [`Jev ${formatDuration(round.timings.jevMs)}`]),
+    ...(round.timings.judgeMs === undefined
+      ? []
+      : [`${judge} ${formatDuration(round.timings.judgeMs)}`]),
   ]
   const line = `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)}`
   return calls.length > 0 ? `${line} (${calls.join(', ')})` : line
 }
 
-/** What the run spent, on one line, so the cost of a mode is visible without `--json`. */
-export function costLine(cost: PlanCost): string {
+/**
+ * What the run spent, on one line, so the cost of a mode is visible without
+ * `--json`. `judge` names the judge's calls: `Jev`.
+ */
+export function costLine(cost: PlanCost, judge: string): string {
   const plural = (count: number, thing: string) =>
     `${String(count)} ${thing}${count === 1 ? '' : 's'}`
   const parts = [
     `${cost.mode} mode`,
     ...(cost.reviewMode === 'debate' ? ['debate review'] : []),
     plural(cost.agentCalls, 'agent call'),
-    plural(cost.jevCalls, 'Jev call'),
+    plural(cost.judgeCalls, `${judge} call`),
     plural(cost.reviewRounds, 'cross-review round'),
     cost.synthesized ? 'merged' : cost.mode === 'fast' ? 'selected' : 'adopted whole',
   ]
@@ -525,7 +584,7 @@ function parse(argv: readonly string[]) {
       model: { type: 'string', short: 'm', multiple: true, default: [] },
       effort: { type: 'string', short: 'e', multiple: true, default: [] },
       'review-effort': { type: 'string', multiple: true, default: [] },
-      'jev-model': { type: 'string' },
+      'judge-model': { type: 'string' },
       finalizer: { type: 'string' },
       mode: { type: 'string' },
       'review-rounds': { type: 'string' },
@@ -554,12 +613,16 @@ function parse(argv: readonly string[]) {
 async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const { values, positionals } = parse(argv)
 
+  const { program } = deps
+  const say = (message: string) => {
+    deps.stderr(`[${program.name}] ${message}\n`)
+  }
   if (values.help) {
-    deps.stdout(`${HELP}\n`)
+    deps.stdout(`${helpText(program)}\n`)
     return 0
   }
   if (values.version) {
-    deps.stdout(`${VERSION}\n`)
+    deps.stdout(`${program.version}\n`)
     return 0
   }
 
@@ -572,8 +635,12 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     : await findConfig(
         resolve(invoked, values.cwd ?? '.'),
         values.config === undefined ? undefined : resolve(invoked, values.config),
+        {
+          file: configFile(program),
+          judgeEnv: program.judgeEnv.map(({ variable }) => variable),
+        },
       )
-  if (config) deps.stderr(`[jev-planner] Using config ${config.path}\n`)
+  if (config) say(`Using config ${config.path}`)
   const configured = config?.values ?? NO_CONFIG
 
   const cwd = values.cwd === undefined ? (configured.cwd ?? invoked) : resolve(invoked, values.cwd)
@@ -583,7 +650,10 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   if (positionals[0] === 'doctor') {
     if (positionals.length > 1) throw new Error('doctor does not accept a task')
     const providers = [...new Set(agents.map(({ provider }) => provider))]
-    const checks = await deps.doctor(cwd, providers)
+    const checks = [
+      ...(await deps.doctor(cwd, providers)),
+      ...program.judgeEnv.map(({ check, variable }) => envCheck(check, variable, deps.env)),
+    ]
     for (const check of checks) {
       deps.stdout(`${check.ok ? '✓' : '✗'} ${check.name}: ${check.detail}\n`)
     }
@@ -618,11 +688,8 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     configured['allow-any-task'] ??
     false
   task = allowAnyTask ? requireNonEmptyTask(task) : validateTask(task)
-  if (!deps.env.TYPESAFE_API_KEY?.trim()) {
-    throw new Error(
-      'TYPESAFE_API_KEY is not set. Create a key at https://console.typesafe.ai/keys and export it first.',
-    )
-  }
+  const unset = program.judgeEnv.find(({ variable }) => !deps.env[variable]?.trim())
+  if (unset) throw new Error(unset.missing)
 
   const models = parseOverrides(
     '--model',
@@ -642,7 +709,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     (provider) => provider.effort,
   )
   const finalizer = parseFinalizer(values.finalizer ?? configured.finalizer, agents)
-  const jevModel = values['jev-model'] ?? configured['jev-model']
+  const judgeModel = values['judge-model'] ?? configured['judge-model']
   const mode = parseMode(values.mode ?? configured.mode)
   const stragglerGraceMs = parseStragglerGrace(
     values['straggler-grace'] ?? configured['straggler-grace'],
@@ -672,12 +739,16 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     roundsDir = resolve(cwd, values['rounds-dir'])
     await prepareRoundsDir(roundsDir)
   } else if (rounds ?? configured.rounds ?? true) {
-    roundsDir = await newRunDir(configured.runsDir ?? join(cwd, RUNS_DIR), deps.now())
+    roundsDir = await newRunDir(
+      configured.runsDir ?? join(cwd, runsDir(program)),
+      deps.now(),
+      program.name,
+    )
   }
-  if (roundsDir !== undefined) deps.stderr(`[jev-planner] Writing rounds to ${roundsDir}\n`)
+  if (roundsDir !== undefined) say(`Writing rounds to ${roundsDir}`)
   // Before the planner and any paid call, so it is read while there is time to stop.
   const warning = identicalWarning(agents, models, efforts)
-  if (warning !== undefined) deps.stderr(`[jev-planner] ${warning}\n`)
+  if (warning !== undefined) say(warning)
   const planner = deps.createPlanner({ agents, models, efforts })
   const labels = new Map(agents.map(({ name, label }) => [name, label]))
   const result = await planner.plan({
@@ -689,14 +760,12 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     ...(reviewMode === 'debate' ? { reviewMode } : {}),
     ...(claimChecks ? { claimChecks } : {}),
     ...(stragglerGraceMs === undefined ? {} : { stragglerGraceMs }),
-    ...(jevModel ? { jevModel } : {}),
+    ...(judgeModel ? { judgeModel } : {}),
     ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
     ...(Object.keys(reviewEfforts).length > 0 ? { reviewEfforts } : {}),
     ...(resume ? {} : { resume: false }),
-    onStage: (message) => {
-      deps.stderr(`[jev-planner] ${message}\n`)
-    },
+    onStage: say,
     ...(verbose
       ? {
           onAgentProgress: (agent: string, progress: string) => {
@@ -708,17 +777,17 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
       ? {}
       : {
           onRound: async (round: PlanRound) => {
-            if (verbose) deps.stderr(`[jev-planner] ${roundTimingLine(round, labels)}\n`)
+            if (verbose) say(roundTimingLine(round, labels, program.judge))
             if (roundsDir !== undefined) await writeRound(roundsDir, round)
           },
         }),
   })
 
   if (verbose) {
-    deps.stderr(`[jev-planner] Total: ${formatDuration(result.timings.totalMs)}\n`)
-    deps.stderr(`[jev-planner] Jev verdict:\n${JSON.stringify(result.verdict, null, 2)}\n`)
+    say(`Total: ${formatDuration(result.timings.totalMs)}`)
+    say(`${program.judge} verdict:\n${JSON.stringify(result.verdict, null, 2)}`)
   }
-  deps.stderr(`[jev-planner] ${costLine(result.cost)}\n`)
+  say(costLine(result.cost, program.judge))
 
   const rendered = asJson
     ? `${JSON.stringify(
@@ -742,20 +811,20 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   } else {
     const outputPath = resolve(cwd, output)
     await writeFile(outputPath, rendered, 'utf8')
-    deps.stderr(`[jev-planner] Wrote ${outputPath}\n`)
+    say(`Wrote ${outputPath}`)
   }
   return 0
 }
 
 /**
  * Runs the CLI and resolves to its exit code. Never rejects: every failure is
- * reported on stderr as `jev-planner: <message>` with exit code 1.
+ * reported on stderr as `<name>: <message>` with exit code 1.
  */
 export async function main(argv: readonly string[], deps: CliDeps): Promise<number> {
   try {
     return await run(argv, deps)
   } catch (error) {
-    deps.stderr(`jev-planner: ${error instanceof Error ? error.message : String(error)}\n`)
+    deps.stderr(`${deps.program.name}: ${error instanceof Error ? error.message : String(error)}\n`)
     return 1
   }
 }

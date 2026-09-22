@@ -4,7 +4,7 @@ export class TaskValidationError extends Error {
 }
 
 export const MISSING_TASK_MESSAGE =
-  'Missing coding task. Pass it as an argument, with --file, on stdin, or as task in jev-planner.json.'
+  'Missing coding task. Pass it as an argument, with --file, on stdin, or as task in the config file.'
 
 /** Piped text and a configured task at once: the pipe is never silently ignored. */
 export const STDIN_CONFLICT_MESSAGE =
@@ -61,7 +61,7 @@ export function validateTask(raw: string): string {
   ) {
     throw new TaskValidationError(
       `The task looks like a placeholder: "${preview(task)}". ` +
-        'Pass the change to plan as an argument, with --file, on stdin or in jev-planner.json, ' +
+        'Pass the change to plan as an argument, with --file, on stdin or in the config file, ' +
         'or use --allow-any-task to plan it anyway.',
     )
   }

@@ -9,7 +9,7 @@ export interface Peer {
 /** Objections kept per critic and target; the prompt asks for no more. */
 export const MAX_OBJECTIONS = 5
 
-/** Disputes Jev rules on in one debate; the rest are reported as not judged. */
+/** Disputes the judge rules on in one debate; the rest are reported as not judged. */
 export const MAX_DISPUTES = 8
 
 const TARGET = /^[\s#>*_-]*target\s*:\s*[*_`]*\s*(.+?)\s*[*_`]*\s*$/i
@@ -168,10 +168,10 @@ function normalizeClaim(claim: string): string {
 }
 
 /**
- * The objections their authors rejected, as disputes for Jev: the same claim
+ * The objections their authors rejected, as disputes for the judge: the same claim
  * against the same plan is merged, whoever raised it, and nothing else is.
  * Ranked by how many critics raised it, then claims about the repository,
- * then the order they were raised; the first `cap` are for Jev to rule on.
+ * then the order they were raised; the first `cap` are for the judge to rule on.
  */
 export function buildDisputes(
   objections: readonly Objection[],

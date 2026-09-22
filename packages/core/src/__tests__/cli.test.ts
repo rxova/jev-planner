@@ -2,12 +2,30 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import packageJson from '../../package.json' with { type: 'json' }
-import { costLine, createAgents, HELP, main, VERSION } from '../cli.js'
-import type { CliDeps } from '../cli.js'
+import { costLine, createAgents, helpText, main } from '../cli.js'
+import type { CliDeps, PlannerProgram } from '../cli.js'
 import type { CheckResult } from '../doctor.js'
 import { PROVIDERS } from '../providers.js'
-import type { JevVerdict, PlanCost, PlanOptions, PlanResult, PlanRound } from '../types.js'
+import type { Verdict, PlanCost, PlanOptions, PlanResult, PlanRound } from '../types.js'
+
+/** A program shaped like jev-planner, so the expectations read like its output. */
+const program: PlannerProgram = {
+  name: 'jev-planner',
+  version: '1.2.3',
+  summary: 'collaborative coding plans from two or more agents, judged by Jev',
+  judge: 'Jev',
+  judgeModelDefault: "SDK's jev-latest",
+  judgeEnv: [
+    {
+      variable: 'TYPESAFE_API_KEY',
+      check: 'TypeSafe key',
+      missing:
+        'TYPESAFE_API_KEY is not set. Create a key at https://console.typesafe.ai/keys and export it first.',
+    },
+  ],
+}
+
+const HELP = helpText(program)
 
 /** A rejection with a non-Error reason: what the `String(error)` fallback is for. */
 function rejectWith(reason: unknown): Promise<never> {
@@ -15,7 +33,7 @@ function rejectWith(reason: unknown): Promise<never> {
   return Promise.reject(reason)
 }
 
-const verdict: JevVerdict = {
+const verdict: Verdict = {
   strongerPlan: 'codex',
   strongerPlanConfidence: 0.7,
   finalizer: 'codex',
@@ -37,7 +55,7 @@ const cost: PlanCost = {
   reviewRounds: 0,
   synthesized: true,
   agentCalls: 3,
-  jevCalls: 1,
+  judgeCalls: 1,
   dropped: [],
 }
 
@@ -102,6 +120,7 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
     },
     doctor: () => Promise.resolve([]),
     now: () => NOW,
+    program,
     ...overrides,
   }
   return {
@@ -131,8 +150,7 @@ describe('main', () => {
   it("prints the package's version", async () => {
     const h = harness()
     await expect(main(['-v'], h.deps)).resolves.toBe(0)
-    expect(VERSION).toBe(packageJson.version)
-    expect(h.stdout()).toBe(`${VERSION}\n`)
+    expect(h.stdout()).toBe(`${program.version}\n`)
   })
 
   it('plans a task given as arguments, with defaults', async () => {
@@ -145,14 +163,14 @@ describe('main', () => {
       mode: 'balanced',
       maxReviewRounds: 2,
     })
-    expect(h.planned()).not.toHaveProperty('jevModel')
+    expect(h.planned()).not.toHaveProperty('judgeModel')
     expect(h.planned()).not.toHaveProperty('finalizer')
     expect(h.planned()).not.toHaveProperty('allowAnyTask')
     expect(h.planned()).not.toHaveProperty('stragglerGraceMs')
     expect(h.setup()).toEqual({ agents: ['codex', 'claude'], models: {}, efforts: {} })
     expect(h.stdout()).toBe('# The plan\n')
     expect(h.stderr()).toBe(
-      `[jev-planner] Writing rounds to ${join(dir, '.jev-planner', RUN)}\n[jev-planner] Drafting…\n[jev-planner] ${costLine(cost)}\n`,
+      `[jev-planner] Writing rounds to ${join(dir, '.jev-planner', RUN)}\n[jev-planner] Drafting…\n[jev-planner] ${costLine(cost, 'Jev')}\n`,
     )
   })
 
@@ -171,7 +189,7 @@ describe('main', () => {
         'codex=low',
         '-e',
         'Claude=high',
-        '--jev-model',
+        '--judge-model',
         'jev-custom',
         '--finalizer',
         'claude',
@@ -199,7 +217,7 @@ describe('main', () => {
       mode: 'balanced',
       maxReviewRounds: 1,
       stragglerGraceMs: 30_000,
-      jevModel: 'jev-custom',
+      judgeModel: 'jev-custom',
       finalizer: 'claude',
     })
   })
@@ -257,30 +275,33 @@ describe('main', () => {
       reviewMode: 'standard' as const,
       reviewRounds: 0,
       agentCalls: 2,
-      jevCalls: 1,
+      judgeCalls: 1,
     }
-    expect(costLine({ ...fast, synthesized: false, dropped: ['codex'] })).toBe(
+    expect(costLine({ ...fast, synthesized: false, dropped: ['codex'] }, 'Jev')).toBe(
       'fast mode, 2 agent calls, 1 Jev call, 0 cross-review rounds, selected, not waited for: codex',
     )
-    expect(costLine({ ...fast, agentCalls: 3, jevCalls: 3, synthesized: true, dropped: [] })).toBe(
-      'fast mode, 3 agent calls, 3 Jev calls, 0 cross-review rounds, merged',
-    )
+    expect(
+      costLine({ ...fast, agentCalls: 3, judgeCalls: 3, synthesized: true, dropped: [] }, 'Jev'),
+    ).toBe('fast mode, 3 agent calls, 3 Jev calls, 0 cross-review rounds, merged')
   })
 
   it('reports what the run cost on stderr, singular and plural', () => {
-    expect(costLine(cost)).toBe(
+    expect(costLine(cost, 'Jev')).toBe(
       'balanced mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
     )
     expect(
-      costLine({
-        mode: 'ultra',
-        reviewMode: 'standard',
-        reviewRounds: 1,
-        synthesized: false,
-        agentCalls: 1,
-        jevCalls: 2,
-        dropped: ['glm'],
-      }),
+      costLine(
+        {
+          mode: 'ultra',
+          reviewMode: 'standard',
+          reviewRounds: 1,
+          synthesized: false,
+          agentCalls: 1,
+          judgeCalls: 2,
+          dropped: ['glm'],
+        },
+        'Jev',
+      ),
     ).toBe(
       'ultra mode, 1 agent call, 2 Jev calls, 1 cross-review round, adopted whole, not waited for: glm',
     )
@@ -359,7 +380,7 @@ describe('main', () => {
     const h = harness({ env: {} })
     await expect(main(['--allow-any-task'], h.deps)).resolves.toBe(1)
     expect(h.stderr()).toBe(
-      'jev-planner: Missing coding task. Pass it as an argument, with --file, on stdin, or as task in jev-planner.json.\n',
+      'jev-planner: Missing coding task. Pass it as an argument, with --file, on stdin, or as task in the config file.\n',
     )
   })
 
@@ -376,7 +397,7 @@ describe('main', () => {
         stage: 'review',
         plans: { codex: 'codex revised', claude: 'x' },
         verdict,
-        timings: { totalMs: 65_000, agents: { codex: 58_000, claude: 41_000 }, jevMs: 7_000 },
+        timings: { totalMs: 65_000, agents: { codex: 58_000, claude: 41_000 }, judgeMs: 7_000 },
       },
       {
         round: 3,
@@ -405,9 +426,9 @@ describe('main', () => {
       await expect(readdir(join(out, 'round1'))).resolves.toHaveLength(3)
       expect(JSON.parse(await read('round1/timings.json'))).toEqual(rounds[0]?.timings)
       await expect(read('round2/codex.md')).resolves.toBe('codex revised\n')
-      expect(JSON.parse(await read('round2/jev-verdict.json'))).toEqual(verdict)
+      expect(JSON.parse(await read('round2/verdict.json'))).toEqual(verdict)
       await expect(read('final/plan.md')).resolves.toBe('<!-- merged by codex -->\nmerged\n')
-      await expect(read('final/jev-verdict.json')).resolves.toContain('"finalizer": "codex"')
+      await expect(read('final/verdict.json')).resolves.toContain('"finalizer": "codex"')
       expect(JSON.parse(await read('final/timings.json'))).toEqual(rounds[2]?.timings)
     })
 
@@ -593,7 +614,7 @@ describe('main', () => {
       await expect(main(['doctor'], h.deps)).resolves.toBe(0)
       expect(doctor.mock.calls[0]?.[0]).toBe(dir)
       expect(doctor.mock.calls[0]?.[1].map(({ id }) => id)).toEqual(['codex', 'claude'])
-      expect(h.stdout()).toBe('✓ Codex CLI: detail\n')
+      expect(h.stdout()).toBe('✓ Codex CLI: detail\n✓ TypeSafe key: TYPESAFE_API_KEY is set\n')
     })
 
     it('fails when any check fails', async () => {
@@ -801,7 +822,7 @@ describe('the debate review', () => {
   })
 
   it('names the debate review in the cost line only when it ran', () => {
-    expect(costLine({ ...cost, reviewMode: 'debate' })).toBe(
+    expect(costLine({ ...cost, reviewMode: 'debate' }, 'Jev')).toBe(
       'balanced mode, debate review, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
     )
   })
@@ -921,9 +942,9 @@ describe('the debate review', () => {
     await expect(readdir(join(dir, 'out/round3'))).resolves.toEqual([
       'codex.check.md',
       'disputes.json',
-      'jev-verdict.json',
       'replies.json',
       'timings.json',
+      'verdict.json',
     ])
     expect(JSON.parse(await read('round3/disputes.json'))).toMatchObject({ claimChecks: 'ran' })
     expect(h.stderr()).toContain('[jev-planner] Critiques: 0.0s\n')
@@ -959,7 +980,7 @@ describe('the config file', () => {
       reviewRounds: 1,
       claimChecks: true,
       finalizer: 'none',
-      jevModel: 'jev-custom',
+      judgeModel: 'jev-custom',
       timeout: 1.5,
       resume: false,
       allowAnyTask: true,
@@ -979,7 +1000,7 @@ describe('the config file', () => {
       reviewMode: 'debate',
       claimChecks: true,
       selectStronger: true,
-      jevModel: 'jev-custom',
+      judgeModel: 'jev-custom',
       timeoutMs: 1_500,
       resume: false,
       allowAnyTask: true,

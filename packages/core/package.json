@@ -1,30 +1,23 @@
 {
-  "name": "jev-planner",
-  "version": "0.0.1",
+  "name": "@rxova/planner-core",
+  "version": "0.0.0",
   "type": "module",
-  "description": "Collaborative coding plans from Codex and Claude, arbitrated by TypeSafe Jev.",
+  "description": "The planner behind jev-planner: agents that draft and cross-review coding plans, a judge that routes the run, and the CLI around them.",
   "keywords": [
-    "cli",
     "planning",
     "implementation-plan",
     "codex",
     "claude",
     "claude-code",
-    "jev",
-    "typesafe",
     "ai-agents",
     "llm"
   ],
   "license": "MIT",
   "author": "Jonatan Kruszewski",
   "sideEffects": false,
-  "bin": {
-    "jev-planner": "./dist/bin.mjs"
-  },
   "files": [
     "dist",
-    "llms.txt",
-    "config.schema.json"
+    "llms.txt"
   ],
   "exports": {
     ".": {
@@ -47,17 +40,12 @@
   },
   "scripts": {
     "build": "tsdown",
-    "dev": "tsx src/bin.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "check:exports": "publint --strict && attw --pack .",
     "pack:smoke": "node --import tsx ../tooling/src/pack-smoke.ts",
     "prepack": "pnpm build"
-  },
-  "dependencies": {
-    "@rxova/planner-core": "workspace:^",
-    "@typesafe-ai/sdk": "^0.6.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
@@ -76,7 +64,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rxova/jev-planner.git",
-    "directory": "packages/jev-planner"
+    "directory": "packages/core"
   },
   "bugs": {
     "url": "https://github.com/rxova/jev-planner/issues"

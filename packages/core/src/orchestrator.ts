@@ -15,8 +15,8 @@ import type {
   AgentName,
   AgentSession,
   Dispute,
-  JevJudge,
-  JevVerdict,
+  PlanJudge,
+  Verdict,
   PlanCost,
   PlanMode,
   PlanOptions,
@@ -58,15 +58,15 @@ type Generate = (
   signal?: AbortSignal,
 ) => Promise<string>
 
-/** Above this, Jev is asking for a cross-review pass rather than merely allowing one. */
+/** Above this, the judge is asking for a cross-review pass rather than merely allowing one. */
 const NEEDS_ANOTHER_PASS = 0.65
 
-/** Above this, Jev is saying the strongest plan is final as it stands: no merge needed. */
+/** Above this, the judge is saying the strongest plan is final as it stands: no merge needed. */
 const STANDS_ALONE = 0.7
 
 /**
- * In `fast` mode, at or above this Jev is accepting one draft, judged alone, as the answer. Lower
- * than `STANDS_ALONE`: in real runs Jev rated no plan above 0.59, so 0.7 never let a draft through.
+ * In `fast` mode, at or above this the judge is accepting one draft, judged alone, as the answer. Lower
+ * than `STANDS_ALONE`: in real runs the judge rated no plan above 0.59, so 0.7 never let a draft through.
  */
 const ACCEPTED_ALONE = 0.5
 
@@ -80,16 +80,16 @@ const labelsOf = (agents: readonly PlanningAgent[]) => agents.map(({ label }) =>
 const byName = (drafts: readonly Draft[]) =>
   Object.fromEntries(drafts.map(({ agent, plan }) => [agent.name, plan]))
 
-/** A draft Jev judged final on its own, in `fast` mode, and that verdict. */
+/** A draft the judge judged final on its own, in `fast` mode, and that verdict. */
 interface Accepted {
   draft: Draft
-  verdict: JevVerdict
+  verdict: Verdict
 }
 
 /** What a debate settled, kept for the passes and the merge after it. */
 interface DebateOutcome {
   drafts: Draft[]
-  verdict: JevVerdict
+  verdict: Verdict
   record: RoundDebate
   disputes: Dispute[]
   overflow: Dispute[]
@@ -101,7 +101,7 @@ export class Planner {
   /** Two or more agents with distinct names; each drafts, revises, and may finalize. */
   constructor(
     agents: readonly PlanningAgent[],
-    private readonly jev: JevJudge,
+    private readonly judge: PlanJudge,
   ) {
     if (agents.length < 2) throw new Error('A planner needs at least two agents')
     const names = agents.map(({ name }) => name)
@@ -138,7 +138,7 @@ export class Planner {
       reviewRounds: 0,
       synthesized: false,
       agentCalls: 0,
-      jevCalls: 0,
+      judgeCalls: 0,
       dropped: [],
     }
 
@@ -150,7 +150,7 @@ export class Planner {
     const timings: RunTimings = { totalMs: 0, rounds: [] }
     let roundStart = runStart
     let agentMs: Record<AgentName, number> = {}
-    let jevMs: number | undefined
+    let judgeMs: number | undefined
     const timed = async <T>(work: () => Promise<T>, record: (ms: number) => void): Promise<T> => {
       const start = performance.now()
       const result = await work()
@@ -168,7 +168,7 @@ export class Planner {
       const roundTimings = {
         totalMs: performance.now() - roundStart,
         agents: agentMs,
-        ...(jevMs === undefined ? {} : { jevMs }),
+        ...(judgeMs === undefined ? {} : { judgeMs }),
       }
       timings.rounds.push({ round, stage: stageName, ...roundTimings })
       await options.onRound?.({
@@ -183,7 +183,7 @@ export class Planner {
       })
       roundStart = performance.now()
       agentMs = {}
-      jevMs = undefined
+      judgeMs = undefined
     }
     const { onAgentProgress } = options
     // One conversation per agent, for this run only: a second run on the same
@@ -255,10 +255,10 @@ export class Planner {
       judged: 'solo' | 'draft' | 'review',
       disputes: readonly Dispute[] = [],
     ) => {
-      cost.jevCalls += 1
+      cost.judgeCalls += 1
       return timed(
         () =>
-          this.jev.judge({
+          this.judge.judge({
             task: options.task,
             stage: judged,
             plans: drafts.map(({ agent, plan }) => ({
@@ -267,11 +267,11 @@ export class Planner {
               plan,
             })),
             ...(disputes.length > 0 ? { disputes } : {}),
-            ...(options.jevModel ? { model: options.jevModel } : {}),
+            ...(options.judgeModel ? { model: options.judgeModel } : {}),
           }),
         (ms) => {
           // `fast` judges several drafts alone in one round; the round shows them all.
-          jevMs = (jevMs ?? 0) + ms
+          judgeMs = (judgeMs ?? 0) + ms
         },
       )
     }
@@ -283,7 +283,7 @@ export class Planner {
 
     // The debate review: each agent critiques the others, each author answers
     // the objections to its plan and revises it, the rejected objections become
-    // disputes, and Jev rules on them along with its usual verdict.
+    // disputes, and the judge rules on them along with its usual verdict.
     const debate = async (drafts: readonly Draft[]): Promise<DebateOutcome> => {
       const peersOf = (own: Draft) => drafts.filter((draft) => draft !== own)
       stage(`Collecting critiques of the ${String(drafts.length)} drafts…`)
@@ -420,8 +420,8 @@ export class Planner {
 
       stage(
         disputes.length > 0
-          ? `Re-evaluating the revised plans and ${String(disputes.length)} disagreements with Jev…`
-          : 'Re-evaluating the revised plans with Jev…',
+          ? `Re-evaluating the revised plans and ${String(disputes.length)} disagreements with ${this.judge.name}…`
+          : `Re-evaluating the revised plans with ${this.judge.name}…`,
       )
       const verdict = await judge(revised, 'review', disputes)
       await report(checks ? 'check' : 'review', byName(revised), {
@@ -444,10 +444,10 @@ export class Planner {
     stage(`Drafting independent plans with ${listLabels(labelsOf(this.agents))}…`)
 
     let drafts: Draft[]
-    let verdict: JevVerdict
+    let verdict: Verdict
     let accepted: Accepted | undefined
     if (mode === 'fast') {
-      // Each draft is judged alone as it arrives; the first one Jev accepts ends the run.
+      // Each draft is judged alone as it arrives; the first one the judge accepts ends the run.
       ;({ drafts, accepted } = await this.firstAccepted(
         draftCalls,
         generate,
@@ -456,16 +456,16 @@ export class Planner {
           cost.dropped.push(agent.name)
           stage(
             winner
-              ? `Jev accepted ${winner.agent.label}'s draft; stopping ${agent.label}…`
+              ? `${this.judge.name} accepted ${winner.agent.label}'s draft; stopping ${agent.label}…`
               : `${agent.label} is still working; the round goes on without it…`,
           )
         },
         async (draft) => {
-          stage(`Jev is judging ${draft.agent.label}'s draft alone…`)
+          stage(`${this.judge.name} is judging ${draft.agent.label}'s draft alone…`)
           const solo = await judge([draft], 'solo')
           if (solo.standsAloneProbability < ACCEPTED_ALONE) {
             stage(
-              `Jev judged ${draft.agent.label}'s draft not final on its own (${solo.standsAloneProbability.toFixed(2)})…`,
+              `${this.judge.name} judged ${draft.agent.label}'s draft not final on its own (${solo.standsAloneProbability.toFixed(2)})…`,
             )
           }
           return solo
@@ -475,7 +475,7 @@ export class Planner {
         verdict = accepted.verdict
       } else {
         // No draft stands alone: judge them together to choose who merges them.
-        stage('Asking Jev for typed quality and routing decisions…')
+        stage(`Asking ${this.judge.name} for typed quality and routing decisions…`)
         verdict = await judge(drafts, 'draft')
       }
       await report('draft', byName(drafts), { verdict })
@@ -490,15 +490,15 @@ export class Planner {
         } else {
           stage(crossReview(drafts.length))
           drafts = await revise(drafts)
-          stage('Asking Jev for typed quality and routing decisions…')
+          stage(`Asking ${this.judge.name} for typed quality and routing decisions…`)
           verdict = await judge(drafts, 'review')
           await report('review', byName(drafts), { verdict })
         }
         cost.reviewRounds = 1
       } else {
         // Judge the drafts first: a cross-review that would change nothing is a
-        // whole round of agent calls, and Jev answers for the price of one call.
-        stage('Asking Jev for typed quality and routing decisions…')
+        // whole round of agent calls, and the judge answers for the price of one call.
+        stage(`Asking ${this.judge.name} for typed quality and routing decisions…`)
         verdict = await judge(drafts, 'draft')
         await report('draft', byName(drafts), { verdict })
       }
@@ -518,7 +518,7 @@ export class Planner {
       if (debated) {
         // After a debate, a pass aims at what it left open, not at the whole verdict.
         const rulings = debated.verdict.disputes
-        stage('Jev requested another pass on the open disagreements…')
+        stage(`${this.judge.name} requested another pass on the open disagreements…`)
         drafts = await revise(
           drafts,
           disputeFeedback({
@@ -533,12 +533,12 @@ export class Planner {
         stage(
           cost.reviewRounds === 0
             ? crossReview(drafts.length)
-            : 'Jev requested another cross-review pass…',
+            : `${this.judge.name} requested another cross-review pass…`,
         )
         drafts = await revise(drafts, JSON.stringify(verdict, null, 2))
       }
       cost.reviewRounds += 1
-      stage('Re-evaluating the revised plans with Jev…')
+      stage(`Re-evaluating the revised plans with ${this.judge.name}…`)
       verdict = await judge(drafts, 'review')
       await report('review', byName(drafts), { verdict })
     }
@@ -564,8 +564,8 @@ export class Planner {
     if (adopted) {
       stage(
         adopted === selected
-          ? `Jev rated ${adopted.agent.label}'s plan stronger; using it without a synthesis…`
-          : `Adopting ${adopted.agent.label}'s plan: Jev judged it final as it stands…`,
+          ? `${this.judge.name} rated ${adopted.agent.label}'s plan stronger; using it without a synthesis…`
+          : `Adopting ${adopted.agent.label}'s plan: ${this.judge.name} judged it final as it stands…`,
       )
       await report('final', { [adopted.agent.name]: adopted.plan }, { verdict, selected: true })
       timings.totalMs = performance.now() - runStart
@@ -732,7 +732,7 @@ export class Planner {
    * The grace works as in `round`: once half the agents have answered, the
    * rest get `graceMs`, and the round never cuts below two drafts. It is kept
    * apart from `round` so that `balanced` and `ultra` run exactly the code
-   * they always have. An agent or Jev failing before a draft is accepted
+   * they always have. An agent or the judge failing before a draft is accepted
    * aborts the calls still running and rejects the round.
    */
   private firstAccepted(
@@ -740,7 +740,7 @@ export class Planner {
     generate: Generate,
     graceMs: number,
     onDrop: (agent: PlanningAgent, accepted?: Draft) => void,
-    judgeSolo: (draft: Draft) => Promise<JevVerdict>,
+    judgeSolo: (draft: Draft) => Promise<Verdict>,
   ): Promise<{ drafts: Draft[]; accepted?: Accepted }> {
     return new Promise((resolve, reject) => {
       interface Pending {
@@ -845,8 +845,8 @@ export class Planner {
     })
   }
 
-  /** The plan Jev called stronger, or the one it routed the merge to when it called them tied. */
-  private strongest(drafts: readonly Draft[], verdict: JevVerdict): Draft | undefined {
+  /** The plan the judge called stronger, or the one it routed the merge to when it called them tied. */
+  private strongest(drafts: readonly Draft[], verdict: Verdict): Draft | undefined {
     return (
       drafts.find(({ agent }) => agent.name === verdict.strongerPlan) ??
       drafts.find(({ agent }) => agent.name === verdict.finalizer)

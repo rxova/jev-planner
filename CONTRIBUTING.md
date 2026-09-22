@@ -79,7 +79,7 @@ detail. When product facts change, update every affected audience in the same pu
 
 ## Adding an AI
 
-Providers live in one registry: `PROVIDERS` in `packages/jev-planner/src/providers.ts`. CLI flags,
+Providers live in one registry: `PROVIDERS` in `packages/core/src/providers.ts`. CLI flags,
 help, doctor checks, prompts, and Jev choices all grow from that list.
 
 - OpenAI-compatible chat API: add one `openAICompatibleProvider(...)` call.
@@ -95,9 +95,9 @@ A public API change ships together with:
 
 1. Code and tests.
 2. TSDoc.
-3. The matching section in `packages/jev-planner/README.md`.
+3. The matching section in the package's `README.md` (`packages/core` or `packages/jev-planner`).
 4. The matching page under `apps/docs/src/content/docs/`.
-5. The API table, examples, or cautions in `packages/jev-planner/llms.txt`.
+5. The API table, examples, or cautions in that package's `llms.txt`.
 6. A changeset.
 
 `pnpm run check:llms` compares package exports with the `llms.txt` API table in both directions.
