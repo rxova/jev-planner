@@ -11,7 +11,7 @@ to a first plan.
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 20.19 or newer
 - For each agent CLI you select: the CLI, already logged in
 - For each chat API you select: its API key in the environment
 - A TypeSafe API key from <https://console.typesafe.ai/keys>
