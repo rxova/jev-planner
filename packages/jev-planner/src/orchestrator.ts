@@ -64,6 +64,12 @@ const NEEDS_ANOTHER_PASS = 0.65
 /** Above this, Jev is saying the strongest plan is final as it stands: no merge needed. */
 const STANDS_ALONE = 0.7
 
+/**
+ * In `fast` mode, at or above this Jev is accepting one draft, judged alone, as the answer. Lower
+ * than `STANDS_ALONE`: in real runs Jev rated no plan above 0.59, so 0.7 never let a draft through.
+ */
+const ACCEPTED_ALONE = 0.5
+
 /** A round never returns fewer plans than this: below it, there is no collaboration left to judge. */
 const MIN_PLANS = 2
 
@@ -457,7 +463,7 @@ export class Planner {
         async (draft) => {
           stage(`Jev is judging ${draft.agent.label}'s draft alone…`)
           const solo = await judge([draft], 'solo')
-          if (solo.standsAloneProbability < STANDS_ALONE) {
+          if (solo.standsAloneProbability < ACCEPTED_ALONE) {
             stage(
               `Jev judged ${draft.agent.label}'s draft not final on its own (${solo.standsAloneProbability.toFixed(2)})…`,
             )
@@ -789,7 +795,7 @@ export class Planner {
         judgeSolo(draft).then((verdict) => {
           judging = false
           if (settled) return
-          if (verdict.standsAloneProbability < STANDS_ALONE) {
+          if (verdict.standsAloneProbability < ACCEPTED_ALONE) {
             judgeNext()
             return
           }

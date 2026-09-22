@@ -17,7 +17,7 @@ used to run unconditionally, so every plan cost three rounds and 2N + 1 agent ca
   agents' material comes together. With two agents, a plan Jev finds ready costs three agent calls
   in two rounds where it used to cost five in three.
 - `--mode fast` has Jev judge each draft alone, one at a time in the order they arrive, and answers
-  with the first it rates final as it stands, stopping the agents still drafting. When it accepts
+  with the first it rates 0.5 or more, stopping the agents still drafting. When it accepts
   none, the drafts are merged with no cross-review. That is N or N + 1 agent calls in one or two
   rounds, and 1 … N + 1 Jev calls. The accepted plan was read by no other agent, the quickest agent
   is judged first, and an agent stopped mid-draft has still billed what it used. It has no review
