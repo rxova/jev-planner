@@ -98,10 +98,10 @@ describe('eagerAssets', () => {
 })
 
 describe('eagerAssets, in any case', () => {
-  it('finds upper-case tags and closing tags with spaces', () => {
+  it('finds upper-case tags and closing tags with trailing junk', () => {
     const found = eagerAssets(
       '<LINK REL="stylesheet" HREF="/a.css"><SCRIPT SRC="/a.js"></SCRIPT >' +
-        '<Script>inline()</sCrIpT><STYLE>p{}</STYLE >',
+        '<Script>inline()</sCrIpT\t\n bar><STYLE>p{}</STYLE >',
     )
     expect(found).toEqual({
       css: ['/a.css'],
