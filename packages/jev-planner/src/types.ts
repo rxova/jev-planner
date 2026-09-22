@@ -4,17 +4,18 @@ export type AgentName = string
 /**
  * How much work a run spends before it answers.
  *
- * - `fast` answers with the first draft Jev judges good enough on its own, and
- *   stops the agents still drafting. That plan is one agent's, which no other
- *   agent has seen, and the quickest agent's draft is judged first, so it wins
- *   most runs. When Jev accepts no draft, the drafts are merged with no
- *   cross-review. It never cross-reviews.
+ * - `fast` answers with the first draft Jev rates 0.5 or more to stand alone,
+ *   and stops the agents still drafting. That plan is one agent's, which no
+ *   other agent has seen, and the quickest agent's draft is judged first, so it
+ *   has the first chance. When Jev accepts no draft, the drafts are merged with
+ *   no cross-review. It never cross-reviews.
  * - `balanced` lets Jev cut the run short: it judges the drafts first and orders a
  *   cross-review only when one would help, adopts a cross-reviewed plan that
  *   already stands alone instead of paying for a merge, and stops waiting on a
  *   straggling agent once the round has enough plans.
- * - `ultra` always cross-reviews and always merges: the most material for the
- *   money, at 2N + 1 agent calls and three sequential rounds.
+ * - `ultra` always runs the first cross-review, a second when Jev asks for it,
+ *   and then merges, unless `selectStronger` keeps the reviewed plan Jev rates
+ *   stronger: 2N + 1 agent calls in three sequential rounds, or 3N + 1 in four.
  */
 export type PlanMode = 'fast' | 'balanced' | 'ultra'
 
