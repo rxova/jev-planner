@@ -33,6 +33,7 @@ const verdict: JevVerdict = {
 
 const cost: PlanCost = {
   mode: 'balanced',
+  reviewMode: 'standard',
   reviewRounds: 0,
   synthesized: true,
   agentCalls: 3,
@@ -249,6 +250,7 @@ describe('main', () => {
     expect(
       costLine({
         mode: 'ultra',
+        reviewMode: 'standard',
         reviewRounds: 1,
         synthesized: false,
         agentCalls: 1,
@@ -712,5 +714,200 @@ describe('main', () => {
           'jev-planner: planner down\n',
       )
     })
+  })
+})
+
+describe('the debate review', () => {
+  it('passes --review-mode and --claim-checks through, and neither by default', async () => {
+    const plain = harness()
+    await main(['task'], plain.deps)
+    expect(plain.planned()).not.toHaveProperty('reviewMode')
+    expect(plain.planned()).not.toHaveProperty('claimChecks')
+
+    const debate = harness()
+    await expect(main(['--review-mode', 'debate', 'task'], debate.deps)).resolves.toBe(0)
+    expect(debate.planned()).toMatchObject({ reviewMode: 'debate' })
+    expect(debate.planned()).not.toHaveProperty('claimChecks')
+
+    const checked = harness()
+    await expect(
+      main(['--claim-checks', '--review-rounds', '1', 'task'], checked.deps),
+    ).resolves.toBe(0)
+    expect(checked.planned()).toMatchObject({
+      reviewMode: 'debate',
+      claimChecks: true,
+      maxReviewRounds: 1,
+    })
+
+    const standard = harness()
+    await expect(main(['--review-mode', 'standard', 'task'], standard.deps)).resolves.toBe(0)
+    expect(standard.planned()).not.toHaveProperty('reviewMode')
+  })
+
+  it.each([
+    [['--review-mode', 'loud'], 'Invalid --review-mode value: loud. Expected standard or debate.'],
+    [
+      ['--review-mode', 'standard', '--claim-checks'],
+      '--claim-checks runs in the debate review; drop --review-mode standard',
+    ],
+    [
+      ['--review-mode', 'debate', '--review-rounds', '0'],
+      '--review-mode debate is a review round; it needs --review-rounds 1 or 2',
+    ],
+    [
+      ['--claim-checks', '--review-rounds', '0'],
+      '--review-mode debate is a review round; it needs --review-rounds 1 or 2',
+    ],
+  ])('rejects %j before planning', async (args, message) => {
+    const h = harness()
+    await expect(main([...args, '--no-rounds', 'task'], h.deps)).resolves.toBe(1)
+    expect(h.stderr()).toBe(`jev-planner: ${message}\n`)
+    expect(h.planned()).toBeUndefined()
+  })
+
+  it('documents both flags in the help', () => {
+    expect(HELP).toContain('--review-mode <standard|debate>')
+    expect(HELP).toContain('--claim-checks')
+  })
+
+  it('names the debate review in the cost line only when it ran', () => {
+    expect(costLine({ ...cost, reviewMode: 'debate' })).toBe(
+      'balanced mode, debate review, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
+    )
+  })
+
+  const objection = {
+    id: 'codex:claude:C1',
+    critic: 'codex',
+    target: 'claude',
+    claim: 'x',
+    why: 'y',
+    repo: true,
+  }
+  const reply = {
+    id: 'codex:claude:C1',
+    author: 'claude',
+    decision: 'reject',
+    reason: 'no',
+  } as const
+  const dispute = {
+    id: 'D1',
+    target: 'claude',
+    critics: ['codex'],
+    objections: ['codex:claude:C1'],
+    claim: 'x',
+    reasons: ['y'],
+    rejections: ['no'],
+    repo: true,
+  }
+  const timings = { totalMs: 1, agents: {} }
+  const plans = { codex: 'codex plan', claude: 'claude plan' }
+  const debateRounds = (withChecks: boolean): PlanRound[] => [
+    {
+      round: 1,
+      stage: 'critique',
+      plans,
+      artifacts: { codex: 'TARGET: claude\nC1 [repo]: x — y', claude: 'nothing' },
+      debate: { objections: [objection] },
+      timings,
+    },
+    {
+      round: 2,
+      stage: withChecks ? 'reply' : 'review',
+      plans,
+      artifacts: { claude: 'codex:claude:C1: reject — no' },
+      debate: {
+        objections: [objection],
+        replies: [reply],
+        disputes: [dispute],
+        ...(withChecks ? {} : { claimChecks: 'skipped' as const }),
+      },
+      ...(withChecks ? {} : { verdict }),
+      timings,
+    },
+    ...(withChecks
+      ? [
+          {
+            round: 3,
+            stage: 'check' as const,
+            plans,
+            artifacts: { codex: 'D1: confirm — src/a.ts' },
+            debate: {
+              objections: [objection],
+              replies: [reply],
+              unanswered: [],
+              disputes: [
+                {
+                  ...dispute,
+                  check: { checker: 'codex', result: 'confirm' as const, evidence: 'src/a.ts' },
+                },
+              ],
+              overflow: [],
+              claimChecks: 'ran' as const,
+            },
+            verdict,
+            timings,
+          },
+        ]
+      : []),
+  ]
+  const replay = (rounds: PlanRound[]): Partial<CliDeps> => ({
+    createPlanner: () => ({
+      plan: async (options) => {
+        for (const round of rounds) await options.onRound?.(round)
+        return { ...result, debate: rounds.at(-1)?.debate ?? { objections: [] } }
+      },
+    }),
+  })
+
+  it('writes the critiques, replies and checks beside the plans, with what was parsed from them', async () => {
+    const h = harness(replay(debateRounds(true)))
+    await expect(main(['--rounds-dir', 'out', '--verbose', 'task'], h.deps)).resolves.toBe(0)
+    const read = (path: string) => readFile(join(dir, 'out', path), 'utf8')
+
+    await expect(readdir(join(dir, 'out/round1'))).resolves.toEqual([
+      'claude.critique.md',
+      'codex.critique.md',
+      'objections.json',
+      'timings.json',
+    ])
+    expect(JSON.parse(await read('round1/objections.json'))).toEqual([objection])
+    await expect(readdir(join(dir, 'out/round2'))).resolves.toEqual([
+      'claude.md',
+      'claude.reply.md',
+      'codex.md',
+      'disputes.json',
+      'replies.json',
+      'timings.json',
+    ])
+    expect(JSON.parse(await read('round2/replies.json'))).toEqual({
+      replies: [reply],
+      unanswered: [],
+    })
+    expect(JSON.parse(await read('round2/disputes.json'))).toEqual({
+      disputes: [dispute],
+      overflow: [],
+    })
+    await expect(readdir(join(dir, 'out/round3'))).resolves.toEqual([
+      'codex.check.md',
+      'disputes.json',
+      'jev-verdict.json',
+      'replies.json',
+      'timings.json',
+    ])
+    expect(JSON.parse(await read('round3/disputes.json'))).toMatchObject({ claimChecks: 'ran' })
+    expect(h.stderr()).toContain('[jev-planner] Critiques: 0.0s\n')
+    expect(h.stderr()).toContain('[jev-planner] Replies: 0.0s\n')
+    expect(h.stderr()).toContain('[jev-planner] Claim checks: 0.0s\n')
+  })
+
+  it('writes a review round’s replies as .reply.md, and the debate in the JSON output', async () => {
+    const h = harness(replay(debateRounds(false)))
+    await expect(main(['--rounds-dir', 'out', '--json', 'task'], h.deps)).resolves.toBe(0)
+    await expect(readdir(join(dir, 'out/round2'))).resolves.toContain('claude.reply.md')
+    expect(JSON.parse(await readFile(join(dir, 'out/round2/disputes.json'), 'utf8'))).toMatchObject(
+      { claimChecks: 'skipped' },
+    )
+    expect(JSON.parse(h.stdout())).toMatchObject({ debate: { disputes: [dispute] } })
   })
 })

@@ -110,6 +110,8 @@ jev-planner \
   does not need ([balanced or ultra](https://jev-planner.com/learn/how-it-works/#balanced-or-ultra-in-short)).
 - `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
 - `--review-rounds <0|1|2>` caps the cross-reviews; `0` skips them.
+- `--review-mode debate` (experimental) turns the cross-review into critiques, replies and Jev's
+  ruling on each disagreement ([debate review](https://jev-planner.com/guides/debate-review/)).
 
 ```text
 .jev-planner/20260921-230512/

@@ -77,6 +77,9 @@ spend — see [how it works](../learn/how-it-works.md#why-the-mode-matters).
 - `--review-rounds <0|1|2>` caps the cross-review rounds either mode may run (default: 2).
 - `--straggler-grace <seconds>` sets how long a `balanced` round waits for the agents still working once
   half have answered (default: 90; `0` waits for every agent). `ultra` never drops an agent.
+- `--review-mode debate` (experimental) runs the first cross-review as critiques, replies and Jev's
+  ruling on each disagreement, and `--claim-checks` checks the disputed repository claims — see
+  [debate review](debate-review.md).
 
 ```sh
 jev-planner --mode ultra "Migrate the persistence layer from SQLite to Postgres"

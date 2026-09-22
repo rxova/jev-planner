@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { finalPlanPrompt, initialPlanPrompt, revisionPrompt } from '../prompts.js'
+import {
+  claimCheckPrompt,
+  critiquePrompt,
+  disputeFeedback,
+  disputeSummary,
+  finalPlanPrompt,
+  initialPlanPrompt,
+  isSettled,
+  replyPrompt,
+  revisionPrompt,
+  SETTLED,
+} from '../prompts.js'
+import type { Dispute, JevVerdict } from '../types.js'
 
 describe('planning prompts', () => {
   it('delimits the task and names the peers', () => {
@@ -100,5 +112,188 @@ describe('planning prompts', () => {
     expect(resumedFinal).not.toContain('<task>')
     expect(resumedFinal).toContain('<revised-plan author="Claude">\ntheirs\n</revised-plan>')
     expect(resumedFinal).toContain('<jev-verdict>\n{}\n</jev-verdict>')
+  })
+})
+
+const dispute = (id: string, overrides: Partial<Dispute> = {}): Dispute => ({
+  id,
+  target: 'claude',
+  critics: ['codex'],
+  objections: [],
+  claim: `claim ${id}.`,
+  reasons: [],
+  rejections: [],
+  repo: false,
+  ...overrides,
+})
+
+const label = (name: string) => `${name.charAt(0).toUpperCase()}${name.slice(1)}`
+
+const verdict: JevVerdict = {
+  strongerPlan: 'tie',
+  strongerPlanConfidence: 0.2,
+  finalizer: 'claude',
+  finalizerConfidence: 0.8,
+  completeness: 2.5,
+  completenessConfidence: 0.9,
+  feasibility: 2.9,
+  feasibilityConfidence: 0.9,
+  riskCoverage: 2.7,
+  riskCoverageConfidence: 0.8,
+  needsAnotherPassProbability: 0.9,
+  standsAloneProbability: 0.1,
+  model: 'jev-test',
+}
+
+describe('debate prompts', () => {
+  it('asks for objections to each peer by agent name, not for a plan', () => {
+    const input = {
+      task: 'task',
+      ownPlan: 'mine',
+      peerPlans: [{ name: 'claude', label: 'Claude', plan: 'theirs' }],
+    }
+    const prompt = critiquePrompt(input)
+    expect(prompt).toContain('Do not write a plan this time.')
+    expect(prompt).toContain('then at most 5 numbered')
+    expect(prompt).toContain('<own-plan>\nmine\n</own-plan>')
+    expect(prompt).toContain('<peer-plan author="Claude" agent="claude">\ntheirs\n</peer-plan>')
+    const resumed = critiquePrompt({ ...input, resumed: true })
+    expect(resumed).not.toContain('<own-plan>')
+    expect(resumed).not.toContain('<task>')
+    expect(resumed).toContain('<peer-plan')
+  })
+
+  it('asks an author to answer each objection by id, then for its whole revised plan', () => {
+    const input = {
+      task: 'task',
+      ownPlan: 'mine',
+      objections: [
+        {
+          id: 'codex:claude:C1',
+          critic: 'codex',
+          criticLabel: 'Codex',
+          target: 'claude',
+          claim: 'a',
+          why: 'b',
+          repo: true,
+        },
+        {
+          id: 'codex:claude:C2',
+          critic: 'codex',
+          criticLabel: 'Codex',
+          target: 'claude',
+          claim: 'c',
+          why: '',
+          repo: false,
+        },
+      ],
+    }
+    const prompt = replyPrompt(input)
+    expect(prompt).toContain(
+      'codex:claude:C1 (Codex, about the repository): a — b\ncodex:claude:C2 (Codex): c\n',
+    )
+    expect(prompt).toContain('<revised-plan>')
+    expect(prompt).toContain('<own-plan>\nmine\n</own-plan>')
+    expect(replyPrompt({ ...input, resumed: true })).not.toContain('<own-plan>')
+    expect(replyPrompt({ ...input, objections: [] })).toContain(
+      'No objections were raised against your plan.',
+    )
+  })
+
+  it('asks a checker for one verdict per claim, with who raised and rejected it', () => {
+    const claims = [
+      {
+        id: 'D1',
+        claim: 'x',
+        criticLabels: ['Codex', 'GLM'],
+        authorLabel: 'Claude',
+        rejections: ['no', 'nope'],
+      },
+      { id: 'D2', claim: 'y', criticLabels: ['Codex'], authorLabel: 'Claude', rejections: [] },
+    ]
+    const prompt = claimCheckPrompt({ task: 'task', claims })
+    expect(prompt).toContain(
+      "D1: x\n  Raised by Codex and GLM against Claude's plan. Claude rejected it: no / nope",
+    )
+    expect(prompt).toContain("D2: y\n  Raised by Codex against Claude's plan.\n</claims>")
+    expect(prompt).toContain('<task>')
+    expect(claimCheckPrompt({ task: 'task', claims, resumed: true })).not.toContain('<task>')
+  })
+
+  it('aims a targeted revision at the open disagreements instead of the verdict', () => {
+    const prompt = revisionPrompt({
+      task: 'task',
+      ownPlan: 'mine',
+      peerPlans: [{ label: 'Claude', plan: 'theirs' }],
+      feedback: 'D1 …',
+      targeted: true,
+    })
+    expect(prompt).toContain('<open-disagreements>\nD1 …\n</open-disagreements>')
+    expect(prompt).not.toContain('<jev-feedback>')
+  })
+
+  it('hands the merge the disputes after the verdict, only when there are some', () => {
+    const input = { task: 'task', plans: [{ label: 'Codex', plan: 'p' }], verdict: '{}' }
+    expect(finalPlanPrompt({ ...input, disputes: 'D1 …' })).toMatch(
+      /<\/jev-verdict>\n\n.*\n<disputes>\nD1 …\n<\/disputes>$/,
+    )
+    expect(finalPlanPrompt(input)).not.toContain('<disputes>')
+  })
+
+  it('settles a dispute only on a side, and with enough confidence', () => {
+    expect(isSettled(undefined)).toBe(false)
+    expect(isSettled({ id: 'D1', choice: 'unclear', confidence: 1 })).toBe(false)
+    expect(isSettled({ id: 'D1', choice: 'critic', confidence: SETTLED - 0.01 })).toBe(false)
+    expect(isSettled({ id: 'D1', choice: 'critic', confidence: SETTLED })).toBe(true)
+  })
+
+  it('summarizes every dispute with its ruling and its check', () => {
+    const summary = disputeSummary({
+      disputes: [
+        dispute('D1', {
+          critics: ['codex', 'glm'],
+          check: { checker: 'kimi', result: 'refute', evidence: 'src/a.ts.' },
+        }),
+        dispute('D2', { check: { checker: 'kimi', result: 'unknown', evidence: '' } }),
+      ],
+      overflow: [dispute('D3')],
+      rulings: [
+        { id: 'D1', choice: 'critic', confidence: 0.9 },
+        { id: 'D2', choice: 'author', confidence: 0.7 },
+      ],
+      label,
+    })
+    expect(summary.split('\n')).toEqual([
+      "D1 (Codex and Glm → Claude): claim D1. Jev: Codex and Glm's objection holds (0.90). Check: REFUTE src/a.ts.",
+      "D2 (Codex → Claude): claim D2. Jev: Claude's position holds (0.70). Check: UNKNOWN.",
+      'D3 (Codex → Claude): claim D3. Jev: not judged.',
+    ])
+  })
+
+  it('feeds a second pass the open and unjudged disputes, or the weakest score', () => {
+    const disputes = [dispute('D1'), dispute('D2')]
+    const settled = {
+      ...verdict,
+      disputes: [{ id: 'D1', choice: 'author' as const, confidence: 0.9 }],
+    }
+    expect(
+      disputeFeedback({ disputes, overflow: [dispute('D9')], verdict: settled, label }).split('\n'),
+    ).toEqual([
+      'D2 (Codex → Claude): claim D2. Jev: not judged.',
+      'D9 (Codex → Claude): claim D9. Jev: not judged.',
+    ])
+    expect(
+      disputeFeedback({ disputes: [dispute('D1')], overflow: [], verdict: settled, label }),
+    ).toBe(
+      'No disagreement is left open, but Jev still expects another pass to improve the plan. Its weakest score is completeness: 2.5 of 3. Strengthen that.',
+    )
+    expect(
+      disputeFeedback({
+        disputes: [],
+        overflow: [],
+        verdict: { ...verdict, riskCoverage: 1 },
+        label,
+      }),
+    ).toContain('coverage of edge cases, tests and rollout risks: 1.0 of 3.')
   })
 })

@@ -26,6 +26,11 @@ Each evaluation uses one TypeSafe API call; `balanced` spends one extra to judge
 further review round causes one re-evaluation. Every run reports its own totals on stderr, and
 `--json` includes them as `cost`.
 
+`--review-mode debate` spends 2N agent calls on its first review where a cross-review spends N — a
+critique and a reply from each agent — plus one call per agent that checks a claim with
+`--claim-checks`. Its Jev call rules on the disagreements in the same request; see
+[debate review](debate-review.md).
+
 A `balanced` round also stops waiting for a slow agent once half the others have answered, and aborts
 its call rather than leave it running, so a dropped call stops billing where the provider bills by
 use.

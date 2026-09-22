@@ -1,8 +1,20 @@
-import { finalPlanPrompt, initialPlanPrompt, listLabels, revisionPrompt } from './prompts.js'
+import { assignChecks, buildDisputes, parseChecks, parseCritique, parseReply } from './debate.js'
+import {
+  claimCheckPrompt,
+  critiquePrompt,
+  disputeFeedback,
+  disputeSummary,
+  finalPlanPrompt,
+  initialPlanPrompt,
+  listLabels,
+  replyPrompt,
+  revisionPrompt,
+} from './prompts.js'
 import { validateTask } from './task.js'
 import type {
   AgentName,
   AgentSession,
+  Dispute,
   JevJudge,
   JevVerdict,
   PlanCost,
@@ -11,6 +23,9 @@ import type {
   PlanResult,
   PlanRound,
   PlanningAgent,
+  Reply,
+  ReviewMode,
+  RoundDebate,
   RunTimings,
 } from './types.js'
 
@@ -59,6 +74,15 @@ const labelsOf = (agents: readonly PlanningAgent[]) => agents.map(({ label }) =>
 const byName = (drafts: readonly Draft[]) =>
   Object.fromEntries(drafts.map(({ agent, plan }) => [agent.name, plan]))
 
+/** What a debate settled, kept for the passes and the merge after it. */
+interface DebateOutcome {
+  drafts: Draft[]
+  verdict: JevVerdict
+  record: RoundDebate
+  disputes: Dispute[]
+  overflow: Dispute[]
+}
+
 export class Planner {
   private readonly agents: readonly PlanningAgent[]
 
@@ -83,10 +107,19 @@ export class Planner {
 
     const mode: PlanMode = options.mode ?? 'balanced'
     const maxReviewRounds = options.maxReviewRounds ?? 2
+    const reviewMode: ReviewMode =
+      options.reviewMode ?? (options.claimChecks ? 'debate' : 'standard')
+    if (options.claimChecks && reviewMode !== 'debate') {
+      throw new Error("Claim checks run in the debate review: set reviewMode to 'debate'")
+    }
+    if (reviewMode === 'debate' && maxReviewRounds < 1) {
+      throw new Error('The debate review is a review round: maxReviewRounds must be at least 1')
+    }
     // `ultra` buys every agent's answer to every round, so it never stops waiting.
     const graceMs = mode === 'ultra' ? 0 : (options.stragglerGraceMs ?? DEFAULT_STRAGGLER_GRACE_MS)
     const cost: PlanCost = {
       mode,
+      reviewMode,
       reviewRounds: 0,
       synthesized: false,
       agentCalls: 0,
@@ -114,8 +147,7 @@ export class Planner {
     const report = async (
       stageName: PlanRound['stage'],
       plans: Record<AgentName, string>,
-      verdict?: JevVerdict,
-      selected?: true,
+      extra: Pick<PlanRound, 'verdict' | 'selected' | 'artifacts' | 'debate'> = {},
     ) => {
       round += 1
       const roundTimings = {
@@ -128,9 +160,11 @@ export class Planner {
         round,
         stage: stageName,
         plans,
-        ...(verdict ? { verdict } : {}),
+        ...(extra.verdict ? { verdict: extra.verdict } : {}),
         timings: roundTimings,
-        ...(selected ? { selected } : {}),
+        ...(extra.selected ? { selected: extra.selected } : {}),
+        ...(extra.artifacts ? { artifacts: extra.artifacts } : {}),
+        ...(extra.debate ? { debate: extra.debate } : {}),
       })
       roundStart = performance.now()
       agentMs = {}
@@ -179,7 +213,7 @@ export class Planner {
         cost.dropped.push(agent.name)
         stage(`${agent.label} is still working; the round goes on without it…`)
       })
-    const revise = (drafts: readonly Draft[], feedback?: string) =>
+    const revise = (drafts: readonly Draft[], feedback?: string, targeted?: true) =>
       runRound(
         drafts.map((own) => {
           const input = {
@@ -189,6 +223,7 @@ export class Planner {
               .filter((draft) => draft !== own)
               .map((draft) => ({ label: draft.agent.label, plan: draft.plan })),
             ...(feedback ? { feedback } : {}),
+            ...(targeted ? { targeted } : {}),
           }
           return {
             agent: own.agent,
@@ -200,7 +235,11 @@ export class Planner {
           }
         }),
       )
-    const judge = (drafts: readonly Draft[], judged: 'draft' | 'review') => {
+    const judge = (
+      drafts: readonly Draft[],
+      judged: 'draft' | 'review',
+      disputes: readonly Dispute[] = [],
+    ) => {
       cost.jevCalls += 1
       return timed(
         () =>
@@ -212,6 +251,7 @@ export class Planner {
               label: agent.label,
               plan,
             })),
+            ...(disputes.length > 0 ? { disputes } : {}),
             ...(options.jevModel ? { model: options.jevModel } : {}),
           }),
         (ms) => {
@@ -220,6 +260,162 @@ export class Planner {
       )
     }
     const crossReview = (count: number) => `Cross-reviewing the ${String(count)} drafts…`
+    const label = (name: AgentName) => this.agent(name).label
+    const later = (prompt: (resumed: true | undefined) => string): Later => ({
+      resumePrompt: resume ? prompt(true) : undefined,
+    })
+
+    // The debate review: each agent critiques the others, each author answers
+    // the objections to its plan and revises it, the rejected objections become
+    // disputes, and Jev rules on them along with its usual verdict.
+    const debate = async (drafts: readonly Draft[]): Promise<DebateOutcome> => {
+      const peersOf = (own: Draft) => drafts.filter((draft) => draft !== own)
+      stage(`Collecting critiques of the ${String(drafts.length)} drafts…`)
+      const critiques = await runRound(
+        drafts.map((own) => {
+          const input = {
+            task: options.task,
+            ownPlan: own.plan,
+            peerPlans: peersOf(own).map(({ agent, plan }) => ({
+              name: agent.name,
+              label: agent.label,
+              plan,
+            })),
+          }
+          return {
+            agent: own.agent,
+            fallback: '',
+            prompt: critiquePrompt(input),
+            later: later((resumed) => critiquePrompt({ ...input, resumed })),
+          }
+        }),
+      )
+      const objections = critiques.flatMap(
+        ({ agent, plan }) =>
+          parseCritique(
+            agent.name,
+            plan,
+            drafts.filter((draft) => draft.agent !== agent).map((draft) => draft.agent),
+          ).objections,
+      )
+      await report('critique', byName(drafts), {
+        artifacts: byName(critiques),
+        debate: { objections },
+      })
+
+      stage('Asking each author to answer the objections to its plan…')
+      const received = (own: Draft) =>
+        objections
+          .filter((objection) => objection.target === own.agent.name)
+          .map((objection) => ({ ...objection, criticLabel: label(objection.critic) }))
+      const answers = await runRound(
+        drafts.map((own) => {
+          const input = { task: options.task, ownPlan: own.plan, objections: received(own) }
+          return {
+            agent: own.agent,
+            fallback: '',
+            prompt: replyPrompt(input),
+            later: later((resumed) => replyPrompt({ ...input, resumed })),
+          }
+        }),
+      )
+      const replies: Reply[] = []
+      const revised = drafts.map((own) => {
+        const answer = answers.find(({ agent }) => agent === own.agent)?.plan ?? ''
+        const ids = received(own).map(({ id }) => id)
+        const parsed = parseReply(own.agent.name, answer, ids, own.plan)
+        replies.push(...parsed.replies)
+        return { agent: own.agent, plan: parsed.plan }
+      })
+      const unanswered = objections
+        .map(({ id }) => id)
+        .filter((id) => !replies.some((reply) => reply.id === id))
+      const built = buildDisputes(objections, replies)
+      let { disputes } = built
+      const { overflow } = built
+      let claimChecks: RoundDebate['claimChecks']
+      const record = (): RoundDebate => ({
+        objections,
+        replies,
+        unanswered,
+        disputes,
+        overflow,
+        ...(claimChecks ? { claimChecks } : {}),
+      })
+
+      let checks: Draft[] | undefined
+      if (options.claimChecks) {
+        const checkers = revised
+          .filter(({ agent }) => agent.readsRepository === true)
+          .map(({ agent }) => agent.name)
+        const assigned = assignChecks(
+          disputes.filter(({ repo }) => repo),
+          checkers,
+        )
+        if (checkers.length < 2) {
+          claimChecks = 'skipped'
+          stage('Claim checks skipped: needs two agents that read the repository')
+        } else if (assigned.size === 0) {
+          claimChecks = 'skipped'
+          stage('Claim checks skipped: no disputed claim about the repository')
+        } else {
+          await report('reply', byName(revised), { artifacts: byName(answers), debate: record() })
+          stage(
+            `Checking ${String([...assigned.values()].flat().length)} disputed claims against the repository…`,
+          )
+          const toCheck = [...assigned].map(([checker, claims]) => ({
+            agent: this.agent(checker),
+            claims,
+            input: {
+              task: options.task,
+              claims: claims.map((dispute) => ({
+                id: dispute.id,
+                claim: dispute.claim,
+                criticLabels: dispute.critics.map(label),
+                authorLabel: label(dispute.target),
+                rejections: dispute.rejections,
+              })),
+            },
+          }))
+          checks = await runRound(
+            toCheck.map(({ agent, input }) => ({
+              agent,
+              fallback: '',
+              prompt: claimCheckPrompt(input),
+              later: later((resumed) => claimCheckPrompt({ ...input, resumed })),
+            })),
+          )
+          const results = new Map(
+            toCheck.flatMap(({ agent, claims }) => [
+              ...parseChecks(
+                agent.name,
+                checks?.find((check) => check.agent === agent)?.plan ?? '',
+                claims.map(({ id }) => id),
+              ),
+            ]),
+          )
+          disputes = disputes.map((dispute) => {
+            const check = results.get(dispute.id)
+            return check ? { ...dispute, check } : dispute
+          })
+          claimChecks = 'ran'
+        }
+      }
+
+      stage(
+        disputes.length > 0
+          ? `Re-evaluating the revised plans and ${String(disputes.length)} disagreements with Jev…`
+          : 'Re-evaluating the revised plans with Jev…',
+      )
+      const verdict = await judge(revised, 'review', disputes)
+      await report(checks ? 'check' : 'review', byName(revised), {
+        verdict,
+        artifacts: byName(checks ?? answers),
+        debate: record(),
+      })
+      return { drafts: revised, verdict, record: record(), disputes, overflow }
+    }
+    let debated: DebateOutcome | undefined
 
     stage(`Drafting independent plans with ${listLabels(labelsOf(this.agents))}…`)
     let drafts = await runRound(
@@ -237,35 +433,63 @@ export class Planner {
     if (mode === 'ultra' && maxReviewRounds > 0) {
       // Every agent reads every other draft, whatever the drafts turned out to be.
       await report('draft', byName(drafts))
-      stage(crossReview(drafts.length))
-      drafts = await revise(drafts)
+      if (reviewMode === 'debate') {
+        debated = await debate(drafts)
+        ;({ drafts, verdict } = debated)
+      } else {
+        stage(crossReview(drafts.length))
+        drafts = await revise(drafts)
+        stage('Asking Jev for typed quality and routing decisions…')
+        verdict = await judge(drafts, 'review')
+        await report('review', byName(drafts), { verdict })
+      }
       cost.reviewRounds = 1
-      stage('Asking Jev for typed quality and routing decisions…')
-      verdict = await judge(drafts, 'review')
-      await report('review', byName(drafts), verdict)
     } else {
       // Judge the drafts first: a cross-review that would change nothing is a
       // whole round of agent calls, and Jev answers for the price of one call.
       stage('Asking Jev for typed quality and routing decisions…')
       verdict = await judge(drafts, 'draft')
-      await report('draft', byName(drafts), verdict)
+      await report('draft', byName(drafts), { verdict })
     }
 
     while (
       cost.reviewRounds < maxReviewRounds &&
       verdict.needsAnotherPassProbability >= NEEDS_ANOTHER_PASS
     ) {
-      stage(
-        cost.reviewRounds === 0
-          ? crossReview(drafts.length)
-          : 'Jev requested another cross-review pass…',
-      )
-      drafts = await revise(drafts, JSON.stringify(verdict, null, 2))
+      if (reviewMode === 'debate' && debated === undefined) {
+        debated = await debate(drafts)
+        ;({ drafts, verdict } = debated)
+        cost.reviewRounds += 1
+        continue
+      }
+      if (debated) {
+        // After a debate, a pass aims at what it left open, not at the whole verdict.
+        const rulings = debated.verdict.disputes
+        stage('Jev requested another pass on the open disagreements…')
+        drafts = await revise(
+          drafts,
+          disputeFeedback({
+            disputes: debated.disputes,
+            overflow: debated.overflow,
+            verdict: rulings ? { ...verdict, disputes: rulings } : verdict,
+            label,
+          }),
+          true,
+        )
+      } else {
+        stage(
+          cost.reviewRounds === 0
+            ? crossReview(drafts.length)
+            : 'Jev requested another cross-review pass…',
+        )
+        drafts = await revise(drafts, JSON.stringify(verdict, null, 2))
+      }
       cost.reviewRounds += 1
       stage('Re-evaluating the revised plans with Jev…')
       verdict = await judge(drafts, 'review')
-      await report('review', byName(drafts), verdict)
+      await report('review', byName(drafts), { verdict })
     }
+    const debateRecord = debated ? { debate: debated.record } : {}
 
     // A plan may only be answered with whole once it has seen every other
     // agent's material: before a cross-review, the merge is the only place that
@@ -288,7 +512,7 @@ export class Planner {
           ? `Jev rated ${adopted.agent.label}'s plan stronger; using it without a synthesis…`
           : `Adopting ${adopted.agent.label}'s plan: Jev judged it final as it stands…`,
       )
-      await report('final', { [adopted.agent.name]: adopted.plan }, verdict, true)
+      await report('final', { [adopted.agent.name]: adopted.plan }, { verdict, selected: true })
       timings.totalMs = performance.now() - runStart
       return {
         plan: adopted.plan,
@@ -296,6 +520,7 @@ export class Planner {
         finalizer: adopted.agent.name,
         selected: true,
         drafts: byName(drafts),
+        ...debateRecord,
         timings,
         cost,
       }
@@ -304,17 +529,27 @@ export class Planner {
     const finalizer = finalizerOverride ?? this.agent(verdict.finalizer)
     stage(`Synthesizing the final plan with ${finalizer.label}…`)
 
+    const summary =
+      debated && debated.disputes.length + debated.overflow.length > 0
+        ? disputeSummary({
+            disputes: debated.disputes,
+            overflow: debated.overflow,
+            rulings: debated.verdict.disputes ?? [],
+            label,
+          })
+        : undefined
     const finalInput = {
       task: options.task,
       plans: drafts.map(({ agent, plan }) => ({ label: agent.label, plan })),
       verdict: JSON.stringify(verdict, null, 2),
+      ...(summary === undefined ? {} : { disputes: summary }),
     }
     const finalPlan = await generate(finalizer, finalPlanPrompt(finalInput), {
       resumePrompt: resume ? finalPlanPrompt({ ...finalInput, resumed: true }) : undefined,
     })
     cost.synthesized = true
 
-    await report('final', { [finalizer.name]: finalPlan }, verdict)
+    await report('final', { [finalizer.name]: finalPlan }, { verdict })
     timings.totalMs = performance.now() - runStart
 
     return {
@@ -322,6 +557,7 @@ export class Planner {
       verdict,
       finalizer: finalizer.name,
       drafts: byName(drafts),
+      ...debateRecord,
       timings,
       cost,
     }

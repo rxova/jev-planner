@@ -48,6 +48,10 @@ describe('cliProvider', () => {
     expect(cliProvider({ ...config, effort: true }).effort).toBe(true)
   })
 
+  it('makes agents that read the repository, so they can check a claim', () => {
+    expect(cliProvider(config).create({ omitEnv: [], env: {} }).readsRepository).toBe(true)
+  })
+
   it('hands args only the overrides that were given', async () => {
     run.mockResolvedValue({ stdout: 'plan', stderr: '', exitCode: 0 })
     const args = vi.fn(() => ['run'])
@@ -277,6 +281,10 @@ describe('openAICompatibleProvider', () => {
       secretEnv: ['ACME_API_KEY'],
       effort: false,
     })
+  })
+
+  it('makes agents that see only a snapshot, which cannot check a claim', () => {
+    expect(agentWith(fetch).readsRepository).toBe(false)
   })
 
   it('posts the snapshot and prompt to /chat/completions with the key', async () => {

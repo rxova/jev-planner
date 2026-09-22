@@ -153,6 +153,8 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 - `--mode ultra` to buy every round rather than let Jev skip one (below).
 - `--review-rounds 0` to skip the cross-review entirely, or `1` to allow only one.
 - `--straggler-grace <seconds>` to change how long a `balanced` round waits for a slow agent.
+- `--review-mode debate` to have the agents critique and answer each other, and Jev rule on what
+  they still disagree about; `--claim-checks` to check the disputed repository claims too (below).
 - `--no-resume` to start every agent call afresh rather than continue its draft session
   ([Agents](#agents)).
 - `--verbose` to watch the agents work, then print Jev's typed verdict to stderr (below).
@@ -202,6 +204,31 @@ Every run prints what it spent on stderr, and `--json` includes it as `cost`:
 ```text
 [jev-planner] balanced mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged
 ```
+
+### Debate review (experimental)
+
+`--review-mode debate` replaces the first cross-review with an exchange Jev can rule on. Either mode
+runs it where it would run a cross-review:
+
+1. **Critiques.** Each agent lists numbered objections to every other plan, at most five per plan,
+   and tags the ones that make a claim about the repository `[repo]`. It writes no plan.
+2. **Replies.** Each author accepts or rejects every objection to its own plan, by id, and returns
+   its revised plan.
+3. **Disputes.** The rejected objections become disputes, the same claim against the same plan
+   merged whoever raised it. Jev rules on up to eight of them, critic, author or unclear, in the
+   same call as its usual verdict.
+4. **A targeted pass.** When Jev asks for another pass, the agents revise against the disputes it
+   left open, not the whole verdict. The merge sees every dispute and its ruling.
+
+`--claim-checks` (which implies `--review-mode debate`) adds a step before Jev rules: each disputed
+`[repo]` claim goes to an agent that reads the repository and did not raise it, which answers
+CONFIRM, REFUTE or UNKNOWN with the file that shows it. It needs two agent CLIs among the agents; a
+chat API sees only a snapshot, so with fewer the checks are skipped and the run says so.
+
+A debate costs 2N agent calls where a cross-review costs N, plus one call per agent that checks a
+claim. It never runs with `--review-rounds 0`. The rounds folder keeps each critique, reply and check
+as `<agent>.critique.md`, `.reply.md` and `.check.md`, beside `objections.json`, `replies.json` and
+`disputes.json`; from code, `PlanRound.debate` and `PlanResult.debate` carry the same.
 
 ## Following a run round by round
 

@@ -14,6 +14,98 @@ export type AgentName = string
 export type PlanMode = 'balanced' | 'ultra'
 
 /**
+ * How the agents review each other once Jev orders a cross-review.
+ *
+ * - `standard` has each agent read every other plan and return a revised one.
+ * - `debate` (experimental) turns the first cross-review into an argument: each
+ *   agent lists its objections to every other plan, each author accepts or
+ *   rejects the objections it received and revises its plan, and Jev rules on
+ *   every objection an author rejected. A second pass, when Jev asks for one,
+ *   is aimed at the disagreements Jev's rulings left open.
+ */
+export type ReviewMode = 'standard' | 'debate'
+
+/** One objection a critic raised against another agent's plan, in `debate` review. */
+export interface Objection {
+  /** `<critic>:<target>:C<n>`, unique in a run: what the author's reply answers. */
+  id: string
+  critic: AgentName
+  /** The agent whose plan the objection is about. */
+  target: AgentName
+  claim: string
+  /** The critic's reason, or `''` when it gave none. */
+  why: string
+  /** Whether the claim is about a file, symbol or export in the repository, and so can be checked. */
+  repo: boolean
+}
+
+/** An author's answer to one objection against its plan. */
+export interface Reply {
+  /** The `Objection.id` it answers. */
+  id: string
+  author: AgentName
+  decision: 'accept' | 'reject'
+  reason: string
+}
+
+/** What an agent that reads the repository found when it checked a disputed claim. */
+export interface ClaimCheck {
+  checker: AgentName
+  /** `unknown` also stands for an answer that could not be parsed, or a checker that was dropped. */
+  result: 'confirm' | 'refute' | 'unknown'
+  /** Where the checker looked, such as `src/jev.ts:agentOptions`; `''` when it said nothing. */
+  evidence: string
+}
+
+/**
+ * An objection its author rejected, for Jev to rule on. The same claim from
+ * several critics against the same plan is one dispute.
+ */
+export interface Dispute {
+  /** `D1`, `D2`, …, in the order the disputes are ranked. */
+  id: string
+  /** The author, whose plan the claim is about. */
+  target: AgentName
+  /** Every critic who raised it, in the order they raised it. */
+  critics: AgentName[]
+  /** The ids of the objections it merges. */
+  objections: string[]
+  claim: string
+  /** The critics' reasons, those that gave one. */
+  reasons: string[]
+  /** The author's reasons for rejecting it. */
+  rejections: string[]
+  repo: boolean
+  /** Present once a claim check ran on it. */
+  check?: ClaimCheck
+}
+
+/** Jev's ruling on one dispute. */
+export interface DisputeRuling {
+  /** The `Dispute.id` it rules on. */
+  id: string
+  /** Whose position holds; `unclear` when the material does not settle it. */
+  choice: 'critic' | 'author' | 'unclear'
+  confidence: number
+}
+
+/** The debate behind a round, in `debate` review; see `PlanRound.debate`. */
+export interface RoundDebate {
+  /** Every objection the critics raised, as parsed. */
+  objections: Objection[]
+  /** Every reply the authors gave that answers an objection, first reply per objection. */
+  replies?: Reply[]
+  /** The ids of objections that got no parseable reply, including those to a dropped author. */
+  unanswered?: string[]
+  /** The rejected objections Jev rules on: at most eight, ranked. */
+  disputes?: Dispute[]
+  /** Rejected objections past the cap, which Jev did not rule on. */
+  overflow?: Dispute[]
+  /** Whether claim checks ran, when they were asked for. */
+  claimChecks?: 'ran' | 'skipped'
+}
+
+/**
  * One agent's conversation, carried from one stage of a run to the next. The
  * planner creates one per agent per run and passes it on every call to that
  * agent; the provider fills it in on the first call and continues from it on
@@ -53,6 +145,12 @@ export interface PlanningAgent {
   readonly name: AgentName
   /** How prompts, stages and the plan refer to it: `Codex`, `DeepSeek`, … */
   readonly label: string
+  /**
+   * Whether the agent opens files in the repository itself, as an agent CLI
+   * does. Only such agents check disputed claims in `debate` review; an agent
+   * that leaves this out is treated as one that does not.
+   */
+  readonly readsRepository?: boolean
   generate(request: AgentRequest): Promise<string>
 }
 
@@ -75,6 +173,8 @@ export interface JevVerdict {
    * rather than a synthesis call.
    */
   standsAloneProbability: number
+  /** Jev's ruling on each dispute it was given, in `debate` review; absent when it was given none. */
+  disputes?: DisputeRuling[]
   model: string
 }
 
@@ -91,6 +191,8 @@ export interface JevJudge {
     plans: readonly JudgedPlan[]
     /** Whether these are the independent drafts or plans that have been cross-reviewed. */
     stage: 'draft' | 'review'
+    /** In `debate` review, the rejected objections to rule on alongside the plans. */
+    disputes?: readonly Dispute[]
     model?: string
   }): Promise<JevVerdict>
 }
@@ -103,6 +205,14 @@ export interface PlanOptions {
   mode?: PlanMode
   /** Cross-review rounds a run may spend; `balanced` runs only the ones Jev asks for. */
   maxReviewRounds?: 0 | 1 | 2
+  /** `standard` (the default) or `debate`; see `ReviewMode`. */
+  reviewMode?: ReviewMode
+  /**
+   * In `debate` review, have an agent that reads the repository check each
+   * disputed claim about it before Jev rules. Needs two or more such agents;
+   * with fewer, the checks are skipped and the run says so. `false` by default.
+   */
+  claimChecks?: boolean
   /**
    * How long a round waits for the agents still working once enough of them
    * have answered, in `balanced` mode. `0` waits for every agent, as `ultra` always
@@ -152,9 +262,19 @@ export interface PlanOptions {
 export interface PlanRound {
   /** 1 for the drafts, 2 and up for the cross-reviews; one more for the final plan. */
   round: number
-  stage: 'draft' | 'review' | 'final'
+  /**
+   * `draft`, `review` and `final` in every run. A `debate` review adds
+   * `critique`, whose `plans` are the drafts unchanged, and then `review`; with
+   * claim checks, `reply` (the revised plans, not yet judged) and `check` (the
+   * same plans, judged) take the place of that `review`.
+   */
+  stage: 'draft' | 'critique' | 'reply' | 'check' | 'review' | 'final'
   /** Each agent's plan in this round, by agent name; for `final`, the plan the run answers with. */
   plans: Record<AgentName, string>
+  /** In a `debate` review, each agent's raw answer in this round: its critique, reply or check. */
+  artifacts?: Record<AgentName, string>
+  /** In a `debate` review, what the round's answers said, parsed. */
+  debate?: RoundDebate
   /** Jev's verdict on this round's plans, and the one the final plan followed. */
   verdict?: JevVerdict
   /** How long the round took. */
@@ -192,6 +312,8 @@ export interface PlanResult {
   selected?: true
   /** Each agent's last plan, by agent name. */
   drafts: Record<AgentName, string>
+  /** The debate, in `debate` review once one ran: its objections, replies, disputes and checks. */
+  debate?: RoundDebate
   timings: RunTimings
   /** What the run actually cost, for reporting and for tuning the next one. */
   cost: PlanCost
@@ -200,6 +322,7 @@ export interface PlanResult {
 /** What a finished run spent, and where it stopped short. */
 export interface PlanCost {
   mode: PlanMode
+  reviewMode: ReviewMode
   /** Cross-review rounds run: `0` when Jev found the drafts ready as they were. */
   reviewRounds: number
   /** Whether a synthesis call merged the plans, or one plan was adopted whole. */
