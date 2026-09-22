@@ -25,8 +25,8 @@
 //
 // Every double-quoted string in the Mermaid is a label, and each one has to
 // appear in the SVG's text, or the build fails. That catches a renamed or added
-// step. It does not catch a redrawn arrow, so check those against
-// orchestrator.ts in review.
+// step. It does not catch a redrawn arrow, so check those in review against
+// planner-core's orchestrator, round, debate-review and synthesis modules.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
