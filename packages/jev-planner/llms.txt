@@ -52,6 +52,20 @@ accepts or rejects the ones to its own and revises it, and Jev rules on the
 rejected ones in its usual call. `--claim-checks` implies it, and has agent CLIs
 check the disputed claims about the repository before Jev rules.
 
+A `jev-planner.json` in the repository (the `--cwd` folder, or the current one)
+sets up every run there; `--config <path>` reads another, `--no-config` none.
+Its keys follow the flags, and a flag given on the command line wins:
+
+```json
+{
+  "$schema": "https://jev-planner.com/config.schema.json",
+  "agents": { "codex": { "model": "gpt-5.6-sol", "effort": "high" }, "claude": {} },
+  "mode": "ultra",
+  "runsDir": "planner-runs",
+  "task": "Add rate limiting to the public API"
+}
+```
+
 The same flow from code:
 
 ```ts
@@ -136,7 +150,16 @@ const { plan, verdict, finalizer } = await planner.plan({
   before any billed call. Pass `--allow-any-task` (`allowAnyTask: true` in the
   API) only when that text really is the task.
 - **Giving the task two ways.** The task comes from the arguments, from `-f`,
-  or from stdin — passing both arguments and `-f` is an error.
+  from the config's `task` or `taskFile`, or from stdin — passing both
+  arguments and `-f` is an error, and so is piping a task while the config
+  has one.
+- **Expecting `Planner` to read `jev-planner.json`.** Only the CLI reads it;
+  from code, pass `PlanOptions`. A flag beats the config, and each boolean has
+  a `--no-` form (`--no-json`, `--no-verbose`) to turn off what it turns on.
+- **Putting a key in `jev-planner.json`.** It is meant to be committed, so a
+  key such as `apiKey` or `token` is rejected; keys stay in the environment.
+  A discovered file cannot set `cwd` either: only a file passed with `--config`
+  can.
 - **Expecting the agents to edit code.** All run read-only; the output is a
   plan, not a change. The CLI itself writes only the rounds folder
   (`.jev-planner/` unless `--rounds-dir` or `--no-rounds`) and `-o`'s file.

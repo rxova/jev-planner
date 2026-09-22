@@ -5,7 +5,8 @@ sidebar:
   order: 2
 ---
 
-See every option with `jev-planner --help`. This page covers the ones you will reach for.
+See every option with `jev-planner --help`. This page covers the ones you will reach for; a
+[config file](./config-file.md) sets any of them for every run in a repository.
 
 ## Giving it a task
 

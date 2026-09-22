@@ -2,7 +2,7 @@
 title: Debate review
 description: The experimental review mode where agents critique each other's plans, answer the objections, and Jev rules on what they still disagree about.
 sidebar:
-  order: 4
+  order: 5
   badge: Experimental
 ---
 

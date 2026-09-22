@@ -58,4 +58,5 @@ jev-planner -o PLAN.md "Migrate the persistence layer from SQLite to Postgres"
 ```
 
 A run takes minutes and makes several paid calls; see [cost and data flow](./cost-and-data-flow.md)
-before you run it on a large task. [Usage](./usage.md) covers every other option.
+before you run it on a large task. [Usage](./usage.md) covers every other option, and a
+[config file](./config-file.md) pins them for a repository.
