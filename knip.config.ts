@@ -15,8 +15,11 @@ export default {
   treatConfigHintsAsErrors: true,
   workspaces: {
     'packages/tooling': {
-      // Repo scripts, invoked by name from package.json and CI, never imported.
-      entry: ['src/*.ts'],
+      // Repo scripts (not their tests or types), invoked by name from package.json and CI, never imported.
+      entry: [
+        'src/{check-changeset,check-llms,pack-smoke,verify}/*.ts',
+        '!src/**/*.{test,types}.ts',
+      ],
       // `tsx` is spawned, not imported: check-changeset.test.ts runs the script
       // under test with `execFileSync(process.execPath, ['--import', 'tsx', …])`.
       // Knip reads imports, so a loader named in an argument list is invisible.

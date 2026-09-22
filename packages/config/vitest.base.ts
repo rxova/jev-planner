@@ -16,16 +16,18 @@ export const COVERAGE_THRESHOLDS = {
 } as const
 
 /**
- * `index.ts` is a re-export barrel and `types.ts` is types only; neither has
- * executable lines worth a threshold. Logic that lands in either one is logic
- * the thresholds cannot see, so keep them to re-exports and types.
+ * Each feature lives in `src/<feature>/`: `<feature>.ts`, its tests in
+ * `<feature>.test.ts`, its types in `<feature>.types.ts`. `index.ts` is a
+ * re-export barrel and a `.types.ts` file is types only; neither has executable
+ * lines worth a threshold. Logic that lands in either one is logic the
+ * thresholds cannot see, so keep them to re-exports and types.
  */
-const BASE_EXCLUSIONS = ['src/**/__tests__/**', 'src/index.ts', 'src/types.ts'] as const
+const BASE_EXCLUSIONS = ['src/**/*.test.{ts,tsx}', 'src/**/*.types.ts', 'src/index.ts'] as const
 
 export interface BaseVitestOptions {
   /** Vitest `environment`. `jsdom` needs `jsdom` installed in the package. */
   readonly environment?: 'node' | 'jsdom'
-  /** Test discovery globs. Defaults to `src/**\/__tests__/**`. */
+  /** Test discovery globs. Defaults to `src/**\/*.test.ts(x)`. */
   readonly include?: readonly string[]
   /** Extra coverage exclusions. Each one needs a reason at its call site. */
   readonly exclude?: readonly string[]
@@ -38,7 +40,7 @@ export interface BaseVitestOptions {
  */
 export function baseVitestConfig({
   environment = 'node',
-  include = ['src/**/__tests__/**/*.test.ts', 'src/**/__tests__/**/*.test.tsx'],
+  include = ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   exclude = [],
 }: BaseVitestOptions = {}): ViteUserConfig {
   return defineConfig({
