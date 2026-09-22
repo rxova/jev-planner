@@ -1,6 +1,6 @@
 {
   "name": "jev-planner",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "description": "Collaborative coding plans from Codex and Claude, arbitrated by TypeSafe Jev.",
   "keywords": [
