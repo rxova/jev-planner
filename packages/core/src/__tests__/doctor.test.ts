@@ -92,21 +92,22 @@ describe('errorDetail', () => {
 })
 
 describe('runDoctor', () => {
-  it("runs each provider's checks in order, then the TypeSafe key", async () => {
-    const checks = await runDoctor('/repo', [fakeProvider('a', true), fakeProvider('b', false)], {
-      TYPESAFE_API_KEY: 'key',
-    })
+  it("runs each provider's checks in order, and nothing else", async () => {
+    const checks = await runDoctor('/repo', [fakeProvider('a', true), fakeProvider('b', false)], {})
     expect(checks).toEqual([
       { name: 'a check', ok: true, detail: '/repo' },
       { name: 'b check', ok: false, detail: '/repo' },
-      { name: 'TypeSafe key', ok: true, detail: 'TYPESAFE_API_KEY is set' },
     ])
   })
 
-  it('reads process.env by default', async () => {
-    vi.stubEnv('TYPESAFE_API_KEY', '')
-    await expect(runDoctor('/repo', [])).resolves.toEqual([
-      { name: 'TypeSafe key', ok: false, detail: 'TYPESAFE_API_KEY is not set' },
+  it('hands each provider process.env by default', async () => {
+    vi.stubEnv('DOCTOR_TEST_KEY', 'set')
+    const provider: Provider = {
+      ...fakeProvider('env', true),
+      doctor: (_cwd, env) => Promise.resolve([envCheck('Key', 'DOCTOR_TEST_KEY', env)]),
+    }
+    await expect(runDoctor('/repo', [provider])).resolves.toEqual([
+      { name: 'Key', ok: true, detail: 'DOCTOR_TEST_KEY is set' },
     ])
   })
 })

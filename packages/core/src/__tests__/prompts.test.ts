@@ -11,7 +11,7 @@ import {
   revisionPrompt,
   SETTLED,
 } from '../prompts.js'
-import type { Dispute, JevVerdict } from '../types.js'
+import type { Dispute, Verdict } from '../types.js'
 
 describe('planning prompts', () => {
   it('delimits the task and names the peers', () => {
@@ -38,7 +38,7 @@ describe('planning prompts', () => {
     expect(prompt).toContain('<own-plan>\nmine\n</own-plan>')
     expect(prompt).toContain('<peer-plan author="Claude">\ntheirs\n</peer-plan>')
     expect(prompt).toContain('<peer-plan author="GLM">\nothers\n</peer-plan>')
-    expect(prompt).not.toContain('<jev-feedback>')
+    expect(prompt).not.toContain('<judge-feedback>')
   })
 
   it("adds Jev's feedback to a second revision", () => {
@@ -48,7 +48,7 @@ describe('planning prompts', () => {
       peerPlans: [{ label: 'Codex', plan: 'theirs' }],
       feedback: '{"x":1}',
     })
-    expect(prompt).toContain('<jev-feedback>\n{"x":1}\n</jev-feedback>')
+    expect(prompt).toContain('<judge-feedback>\n{"x":1}\n</judge-feedback>')
   })
 
   it('tells the finalizer to hide orchestration details', () => {
@@ -63,7 +63,7 @@ describe('planning prompts', () => {
     expect(prompt).toContain('no winner announcement')
     expect(prompt).toContain('<revised-plan author="Codex">\na\n</revised-plan>')
     expect(prompt).toContain('<revised-plan author="Claude">\nb\n</revised-plan>')
-    expect(prompt).toContain('<jev-verdict>\n{}\n</jev-verdict>')
+    expect(prompt).toContain('<judge-verdict>\n{}\n</judge-verdict>')
   })
 
   it('tells every planner to ask rather than invent scope for a vague task', () => {
@@ -111,7 +111,7 @@ describe('planning prompts', () => {
     const resumedFinal = finalPlanPrompt({ ...final, resumed: true })
     expect(resumedFinal).not.toContain('<task>')
     expect(resumedFinal).toContain('<revised-plan author="Claude">\ntheirs\n</revised-plan>')
-    expect(resumedFinal).toContain('<jev-verdict>\n{}\n</jev-verdict>')
+    expect(resumedFinal).toContain('<judge-verdict>\n{}\n</judge-verdict>')
   })
 })
 
@@ -129,7 +129,7 @@ const dispute = (id: string, overrides: Partial<Dispute> = {}): Dispute => ({
 
 const label = (name: string) => `${name.charAt(0).toUpperCase()}${name.slice(1)}`
 
-const verdict: JevVerdict = {
+const verdict: Verdict = {
   strongerPlan: 'tie',
   strongerPlanConfidence: 0.2,
   finalizer: 'claude',
@@ -229,13 +229,13 @@ describe('debate prompts', () => {
       targeted: true,
     })
     expect(prompt).toContain('<open-disagreements>\nD1 …\n</open-disagreements>')
-    expect(prompt).not.toContain('<jev-feedback>')
+    expect(prompt).not.toContain('<judge-feedback>')
   })
 
   it('hands the merge the disputes after the verdict, only when there are some', () => {
     const input = { task: 'task', plans: [{ label: 'Codex', plan: 'p' }], verdict: '{}' }
     expect(finalPlanPrompt({ ...input, disputes: 'D1 …' })).toMatch(
-      /<\/jev-verdict>\n\n.*\n<disputes>\nD1 …\n<\/disputes>$/,
+      /<\/judge-verdict>\n\n.*\n<disputes>\nD1 …\n<\/disputes>$/,
     )
     expect(finalPlanPrompt(input)).not.toContain('<disputes>')
   })
@@ -264,9 +264,9 @@ describe('debate prompts', () => {
       label,
     })
     expect(summary.split('\n')).toEqual([
-      "D1 (Codex and Glm → Claude): claim D1. Jev: Codex and Glm's objection holds (0.90). Check: REFUTE src/a.ts.",
-      "D2 (Codex → Claude): claim D2. Jev: Claude's position holds (0.70). Check: UNKNOWN.",
-      'D3 (Codex → Claude): claim D3. Jev: not judged.',
+      "D1 (Codex and Glm → Claude): claim D1. Judge: Codex and Glm's objection holds (0.90). Check: REFUTE src/a.ts.",
+      "D2 (Codex → Claude): claim D2. Judge: Claude's position holds (0.70). Check: UNKNOWN.",
+      'D3 (Codex → Claude): claim D3. Judge: not judged.',
     ])
   })
 
@@ -279,13 +279,13 @@ describe('debate prompts', () => {
     expect(
       disputeFeedback({ disputes, overflow: [dispute('D9')], verdict: settled, label }).split('\n'),
     ).toEqual([
-      'D2 (Codex → Claude): claim D2. Jev: not judged.',
-      'D9 (Codex → Claude): claim D9. Jev: not judged.',
+      'D2 (Codex → Claude): claim D2. Judge: not judged.',
+      'D9 (Codex → Claude): claim D9. Judge: not judged.',
     ])
     expect(
       disputeFeedback({ disputes: [dispute('D1')], overflow: [], verdict: settled, label }),
     ).toBe(
-      'No disagreement is left open, but Jev still expects another pass to improve the plan. Its weakest score is completeness: 2.5 of 3. Strengthen that.',
+      'No disagreement is left open, but the judge still expects another pass to improve the plan. Its weakest score is completeness: 2.5 of 3. Strengthen that.',
     )
     expect(
       disputeFeedback({

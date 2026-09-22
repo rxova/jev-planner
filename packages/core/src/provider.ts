@@ -14,13 +14,13 @@ export interface AgentSetup {
    * `--agents codex:sol` or the config's `agents.sol`. The provider's `id` otherwise.
    */
   name?: string
-  /** How prompts, stages and Jev refer to it. `agentLabel` otherwise. */
+  /** How prompts, stages and the judge refer to it. `agentLabel` otherwise. */
   label?: string
   /** A model from `--model <name>=<model>` or the config's `agents.<name>.model`; the provider's default otherwise. */
   model?: string
   /** A reasoning effort from `--effort <name>=<level>` or the config; only for a provider whose `effort` is true. */
   effort?: string
-  /** Every provider's secret variables, and Jev's: never passed to an agent subprocess. */
+  /** Every provider's secret variables, and the judge's: never passed to an agent subprocess. */
   omitEnv: readonly string[]
   env: Env
   /** Replaces the global `fetch`; for tests. */
@@ -28,7 +28,7 @@ export interface AgentSetup {
 }
 
 /**
- * One AI jev-planner can plan with. Build one with `cliProvider` or
+ * One AI the planner can plan with. Build one with `cliProvider` or
  * `openAICompatibleProvider` and add it to `PROVIDERS` in `providers.ts`.
  */
 export interface Provider {
@@ -47,7 +47,7 @@ export interface Provider {
   /** Whether it takes a reasoning effort, from `--effort` or the config's `agents.<id>.effort`. */
   readonly effort: boolean
   create(setup: AgentSetup): PlanningAgent
-  /** Local checks only: `jev-planner doctor` never makes a paid call. */
+  /** Local checks only: `doctor` never makes a paid call. */
   doctor(cwd: string, env: Env): Promise<CheckResult[]>
 }
 
@@ -60,7 +60,7 @@ export function brief(text: string, max = 160): string {
 /**
  * An agent's label: the provider's own for an agent named after it, `Codex (sol)`
  * for a named one, so two agents of one provider never share a label, which is
- * how Jev and the prompts tell plans apart.
+ * how the judge and the prompts tell plans apart.
  */
 export function agentLabel(provider: { id: string; label: string }, name: string): string {
   return name === provider.id ? provider.label : `${provider.label} (${name})`
