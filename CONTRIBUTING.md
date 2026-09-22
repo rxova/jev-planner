@@ -71,7 +71,8 @@ detail. When product facts change, update every affected audience in the same pu
 ## Tests
 
 - Each feature has a folder: `src/<feature>/<feature>.ts` for the code, `<feature>.test.ts` for
-  its tests, `<feature>.types.ts` for its types.
+  its tests, `<feature>.types.ts` for its types, `<feature>.fixtures.ts` for the fakes its suites
+  share.
 - Coverage is at least 95% per file. Raise thresholds; never lower them.
 - Never skip, delete, or weaken a test to make a change pass.
 - Never hardcode an expected answer or switch off a check.

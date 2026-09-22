@@ -41,7 +41,8 @@ export default defineConfig(
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['**/*.test.{ts,tsx}'],
+    // Tests, and the fakes several suites share.
+    files: ['**/*.test.{ts,tsx}', '**/*.fixtures.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
