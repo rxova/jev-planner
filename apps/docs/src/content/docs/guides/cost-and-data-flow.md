@@ -8,7 +8,8 @@ sidebar:
 ## Calls per run
 
 With N agents, `--mode ultra` makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
-synthesis. If Jev requests another pass, it makes N more. With the default two agents that is five
+synthesis. If Jev requests another pass, it makes N more. `--finalizer none` drops the synthesis
+when Jev rates one cross-reviewed plan stronger. With the default two agents that is five
 calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
 
 `--mode fast`, the default, makes as few as N + 1 — the drafts and the merge, when Jev asks for no

@@ -11,6 +11,7 @@ export { TaskValidationError } from './task.js'
 export type {
   AgentName,
   AgentRequest,
+  AgentSession,
   JevJudge,
   JevVerdict,
   JudgedPlan,
@@ -20,4 +21,6 @@ export type {
   PlanOptions,
   PlanResult,
   PlanRound,
+  RoundTimings,
+  RunTimings,
 } from './types.js'

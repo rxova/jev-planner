@@ -2,6 +2,7 @@ import { finalPlanPrompt, initialPlanPrompt, listLabels, revisionPrompt } from '
 import { validateTask } from './task.js'
 import type {
   AgentName,
+  AgentSession,
   JevJudge,
   JevVerdict,
   PlanCost,
@@ -10,7 +11,15 @@ import type {
   PlanResult,
   PlanRound,
   PlanningAgent,
+  RunTimings,
 } from './types.js'
+
+/**
+ * A call after the draft: a cross-review or the synthesis. It takes the
+ * review effort, and a shorter prompt for an agent continuing its session.
+ * `undefined` for a draft.
+ */
+type Later = { resumePrompt: string | undefined } | undefined
 
 /** One agent's current plan. */
 interface Draft {
@@ -22,9 +31,17 @@ interface Draft {
 interface RoundCall {
   agent: PlanningAgent
   prompt: string
+  later: Later
   /** The plan kept if this agent is dropped; a draft round has none to fall back on. */
   fallback?: string
 }
+
+type Generate = (
+  agent: PlanningAgent,
+  prompt: string,
+  later: Later,
+  signal?: AbortSignal,
+) => Promise<string>
 
 /** Above this, Jev is asking for a cross-review pass rather than merely allowing one. */
 const NEEDS_ANOTHER_PASS = 0.65
@@ -78,37 +95,84 @@ export class Planner {
     }
 
     const stage = options.onStage ?? (() => undefined)
+
+    // Each round is timed from the end of the last one's report to its own, so
+    // the time spent writing a round out is counted in neither.
+    const runStart = performance.now()
+    const timings: RunTimings = { totalMs: 0, rounds: [] }
+    let roundStart = runStart
+    let agentMs: Record<AgentName, number> = {}
+    let jevMs: number | undefined
+    const timed = async <T>(work: () => Promise<T>, record: (ms: number) => void): Promise<T> => {
+      const start = performance.now()
+      const result = await work()
+      record(performance.now() - start)
+      return result
+    }
+
     let round = 0
     const report = async (
       stageName: PlanRound['stage'],
       plans: Record<AgentName, string>,
       verdict?: JevVerdict,
+      selected?: true,
     ) => {
       round += 1
+      const roundTimings = {
+        totalMs: performance.now() - roundStart,
+        agents: agentMs,
+        ...(jevMs === undefined ? {} : { jevMs }),
+      }
+      timings.rounds.push({ round, stage: stageName, ...roundTimings })
       await options.onRound?.({
         round,
         stage: stageName,
         plans,
         ...(verdict ? { verdict } : {}),
+        timings: roundTimings,
+        ...(selected ? { selected } : {}),
       })
+      roundStart = performance.now()
+      agentMs = {}
+      jevMs = undefined
     }
     const { onAgentProgress } = options
-    const request = (agent: PlanningAgent, prompt: string, signal?: AbortSignal) => ({
-      prompt,
-      cwd: options.cwd,
-      timeoutMs: options.timeoutMs,
-      ...(onAgentProgress
-        ? {
-            onProgress: (line: string) => {
-              onAgentProgress(agent.name, line)
-            },
-          }
-        : {}),
-      ...(signal ? { signal } : {}),
-    })
-    const generate = (agent: PlanningAgent, prompt: string, signal?: AbortSignal) => {
+    // One conversation per agent, for this run only: a second run on the same
+    // planner starts afresh.
+    const resume = options.resume ?? true
+    const sessions = new Map<PlanningAgent, AgentSession>(
+      resume ? this.agents.map((agent) => [agent, {}]) : [],
+    )
+    const request = (agent: PlanningAgent, prompt: string, later: Later, signal?: AbortSignal) => {
+      const session = sessions.get(agent)
+      const effort = later ? options.reviewEfforts?.[agent.name] : undefined
+      return {
+        prompt,
+        ...(session
+          ? { session, ...(later?.resumePrompt ? { resumePrompt: later.resumePrompt } : {}) }
+          : {}),
+        ...(effort === undefined ? {} : { effort }),
+        cwd: options.cwd,
+        timeoutMs: options.timeoutMs,
+        ...(onAgentProgress
+          ? {
+              onProgress: (line: string) => {
+                onAgentProgress(agent.name, line)
+              },
+            }
+          : {}),
+        ...(signal ? { signal } : {}),
+      }
+    }
+    const generate: Generate = (agent, prompt, later, signal) => {
       cost.agentCalls += 1
-      return agent.generate(request(agent, prompt, signal))
+      return timed(
+        () => agent.generate(request(agent, prompt, later, signal)),
+        (ms) => {
+          // A call its round stopped waiting for belongs to no round's timings.
+          if (signal?.aborted !== true) agentMs[agent.name] = ms
+        },
+      )
     }
     const runRound = (calls: readonly RoundCall[]) =>
       this.round(calls, generate, graceMs, (agent) => {
@@ -117,27 +181,43 @@ export class Planner {
       })
     const revise = (drafts: readonly Draft[], feedback?: string) =>
       runRound(
-        drafts.map((own) => ({
-          agent: own.agent,
-          fallback: own.plan,
-          prompt: revisionPrompt({
+        drafts.map((own) => {
+          const input = {
             task: options.task,
             ownPlan: own.plan,
             peerPlans: drafts
               .filter((draft) => draft !== own)
               .map((draft) => ({ label: draft.agent.label, plan: draft.plan })),
             ...(feedback ? { feedback } : {}),
-          }),
-        })),
+          }
+          return {
+            agent: own.agent,
+            fallback: own.plan,
+            prompt: revisionPrompt(input),
+            later: {
+              resumePrompt: resume ? revisionPrompt({ ...input, resumed: true }) : undefined,
+            },
+          }
+        }),
       )
     const judge = (drafts: readonly Draft[], judged: 'draft' | 'review') => {
       cost.jevCalls += 1
-      return this.jev.judge({
-        task: options.task,
-        stage: judged,
-        plans: drafts.map(({ agent, plan }) => ({ agent: agent.name, label: agent.label, plan })),
-        ...(options.jevModel ? { model: options.jevModel } : {}),
-      })
+      return timed(
+        () =>
+          this.jev.judge({
+            task: options.task,
+            stage: judged,
+            plans: drafts.map(({ agent, plan }) => ({
+              agent: agent.name,
+              label: agent.label,
+              plan,
+            })),
+            ...(options.jevModel ? { model: options.jevModel } : {}),
+          }),
+        (ms) => {
+          jevMs = ms
+        },
+      )
     }
     const crossReview = (count: number) => `Cross-reviewing the ${String(count)} drafts…`
 
@@ -149,6 +229,7 @@ export class Planner {
           options.task,
           labelsOf(this.agents.filter((peer) => peer !== agent)),
         ),
+        later: undefined,
       })),
     )
 
@@ -189,21 +270,33 @@ export class Planner {
     // A plan may only be answered with whole once it has seen every other
     // agent's material: before a cross-review, the merge is the only place that
     // happens, so the synthesis call is not the run's to skip.
+    const reviewed = cost.reviewRounds > 0
+    const selected =
+      reviewed && options.selectStronger
+        ? drafts.find(({ agent }) => agent.name === verdict.strongerPlan)
+        : undefined
     const standsAlone =
+      reviewed &&
       mode === 'fast' &&
       finalizerOverride === undefined &&
-      cost.reviewRounds > 0 &&
       verdict.standsAloneProbability >= STANDS_ALONE
-    const adopted = standsAlone ? this.strongest(drafts, verdict) : undefined
+    const adopted = selected ?? (standsAlone ? this.strongest(drafts, verdict) : undefined)
 
     if (adopted) {
-      stage(`Adopting ${adopted.agent.label}'s plan: Jev judged it final as it stands…`)
-      await report('final', { [adopted.agent.name]: adopted.plan }, verdict)
+      stage(
+        adopted === selected
+          ? `Jev rated ${adopted.agent.label}'s plan stronger; using it without a synthesis…`
+          : `Adopting ${adopted.agent.label}'s plan: Jev judged it final as it stands…`,
+      )
+      await report('final', { [adopted.agent.name]: adopted.plan }, verdict, true)
+      timings.totalMs = performance.now() - runStart
       return {
         plan: adopted.plan,
         verdict,
         finalizer: adopted.agent.name,
+        selected: true,
         drafts: byName(drafts),
+        timings,
         cost,
       }
     }
@@ -211,19 +304,27 @@ export class Planner {
     const finalizer = finalizerOverride ?? this.agent(verdict.finalizer)
     stage(`Synthesizing the final plan with ${finalizer.label}…`)
 
-    const finalPlan = await generate(
-      finalizer,
-      finalPlanPrompt({
-        task: options.task,
-        plans: drafts.map(({ agent, plan }) => ({ label: agent.label, plan })),
-        verdict: JSON.stringify(verdict, null, 2),
-      }),
-    )
+    const finalInput = {
+      task: options.task,
+      plans: drafts.map(({ agent, plan }) => ({ label: agent.label, plan })),
+      verdict: JSON.stringify(verdict, null, 2),
+    }
+    const finalPlan = await generate(finalizer, finalPlanPrompt(finalInput), {
+      resumePrompt: resume ? finalPlanPrompt({ ...finalInput, resumed: true }) : undefined,
+    })
     cost.synthesized = true
 
     await report('final', { [finalizer.name]: finalPlan }, verdict)
+    timings.totalMs = performance.now() - runStart
 
-    return { plan: finalPlan, verdict, finalizer: finalizer.name, drafts: byName(drafts), cost }
+    return {
+      plan: finalPlan,
+      verdict,
+      finalizer: finalizer.name,
+      drafts: byName(drafts),
+      timings,
+      cost,
+    }
   }
 
   /**
@@ -239,13 +340,16 @@ export class Planner {
    */
   private round(
     calls: readonly RoundCall[],
-    generate: (agent: PlanningAgent, prompt: string, signal?: AbortSignal) => Promise<string>,
+    generate: Generate,
     graceMs: number,
     onDrop: (agent: PlanningAgent) => void,
   ): Promise<Draft[]> {
     if (graceMs <= 0) {
       return Promise.all(
-        calls.map(async ({ agent, prompt }) => ({ agent, plan: await generate(agent, prompt) })),
+        calls.map(async ({ agent, prompt, later }) => ({
+          agent,
+          plan: await generate(agent, prompt, later),
+        })),
       )
     }
 
@@ -300,7 +404,12 @@ export class Planner {
       }
 
       for (const entry of pending) {
-        generate(entry.call.agent, entry.call.prompt, entry.controller.signal).then(
+        generate(
+          entry.call.agent,
+          entry.call.prompt,
+          entry.call.later,
+          entry.controller.signal,
+        ).then(
           (plan) => {
             if (settled || entry.dropped !== undefined) return
             entry.plan = plan

@@ -13,8 +13,33 @@ export type AgentName = string
  */
 export type PlanMode = 'fast' | 'ultra'
 
+/**
+ * One agent's conversation, carried from one stage of a run to the next. The
+ * planner creates one per agent per run and passes it on every call to that
+ * agent; the provider fills it in on the first call and continues from it on
+ * the next ones. An agent that ignores it starts every call afresh.
+ */
+export interface AgentSession {
+  /** The conversation to continue, once a call has started one: a CLI's session or thread id. */
+  id?: string
+}
+
 export interface AgentRequest {
+  /** The whole prompt, for an agent that starts afresh. */
   prompt: string
+  /**
+   * The same request for an agent continuing `session`, which already holds
+   * the task and its own earlier plans: `prompt` without them. `prompt` is used
+   * when this is absent or the conversation cannot be continued.
+   */
+  resumePrompt?: string
+  /** Continue this conversation, when the agent can; see `AgentSession`. */
+  session?: AgentSession
+  /**
+   * A reasoning effort for this call only, over the one the agent was created
+   * with. An agent that takes no effort ignores it.
+   */
+  effort?: string
   cwd: string
   timeoutMs: number
   /** Called with a line about the agent's work as it happens: a message, a command, a file read. */
@@ -93,6 +118,25 @@ export interface PlanOptions {
    * task is still passed through unchecked, as before the check existed.
    */
   allowAnyTask?: boolean
+  /**
+   * Skip the synthesis when Jev rates one cross-reviewed plan stronger, and
+   * return that plan as it is, whatever `standsAloneProbability` says. Saves
+   * the last agent call at some cost in quality. On a tie, or when no
+   * cross-review ran, the finalizer still merges the plans. `false` by default.
+   */
+  selectStronger?: boolean
+  /**
+   * A reasoning effort for the cross-review and synthesis calls, by agent name:
+   * lower effort where the job is editing a plan rather than exploring. An
+   * agent not listed uses the effort it was created with in every stage.
+   */
+  reviewEfforts?: Readonly<Record<AgentName, string>>
+  /**
+   * Keep each agent's conversation from its draft to its later calls, so the
+   * cross-review and synthesis continue with what it already read. `true` by
+   * default; `false` starts every call afresh.
+   */
+  resume?: boolean
   onStage?: (message: string) => void
   /** Called with each agent's progress lines while it works, as `AgentRequest.onProgress` gets them. */
   onAgentProgress?: (agent: AgentName, line: string) => void
@@ -113,6 +157,27 @@ export interface PlanRound {
   plans: Record<AgentName, string>
   /** Jev's verdict on this round's plans, and the one the final plan followed. */
   verdict?: JevVerdict
+  /** How long the round took. */
+  timings: RoundTimings
+  /** On the `final` round: the plan is one agent's own, adopted whole rather than merged. */
+  selected?: true
+}
+
+/** How long one round of a run took, in milliseconds. */
+export interface RoundTimings {
+  /** The whole round: its agent calls, then Jev when it judged the round. */
+  totalMs: number
+  /** Each agent call in the round that answered, by agent name; a dropped straggler has none. */
+  agents: Record<AgentName, number>
+  /** Jev judging the round's plans. */
+  jevMs?: number
+}
+
+/** How long a whole run took, in milliseconds. */
+export interface RunTimings {
+  totalMs: number
+  /** One entry per round, in the order `onRound` receives them. */
+  rounds: (RoundTimings & Pick<PlanRound, 'round' | 'stage'>)[]
 }
 
 export interface PlanResult {
@@ -120,8 +185,14 @@ export interface PlanResult {
   verdict: JevVerdict
   /** The agent that merged the plans, or whose plan was adopted whole. */
   finalizer: AgentName
+  /**
+   * The plan is `finalizer`'s own plan, adopted whole rather than merged: in
+   * `fast` mode when Jev judged it final as it stands, or by `selectStronger`.
+   */
+  selected?: true
   /** Each agent's last plan, by agent name. */
   drafts: Record<AgentName, string>
+  timings: RunTimings
   /** What the run actually cost, for reporting and for tuning the next one. */
   cost: PlanCost
 }
