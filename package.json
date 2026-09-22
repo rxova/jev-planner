@@ -27,10 +27,10 @@
     "knip:check": "knip",
     "check:exports": "turbo run check:exports",
     "pack:smoke": "turbo run pack:smoke",
-    "check:llms": "node --import tsx ./packages/tooling/src/check-llms.ts",
+    "check:llms": "node --import tsx ./packages/tooling/src/check-llms/check-llms.ts",
     "changeset": "changeset",
     "release": "turbo run build --filter=jev-planner && changeset publish",
-    "verify": "node --import tsx ./packages/tooling/src/verify.ts",
+    "verify": "node --import tsx ./packages/tooling/src/verify/verify.ts",
     "prepare": "husky"
   },
   "lint-staged": {

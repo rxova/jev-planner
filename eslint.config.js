@@ -41,7 +41,7 @@ export default defineConfig(
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['**/__tests__/**', '**/*.test.{ts,tsx}'],
+    files: ['**/*.test.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',

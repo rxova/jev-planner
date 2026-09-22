@@ -37,7 +37,7 @@ pnpm build                        # workspace packages, dual ESM + CJS
 To run a single test file:
 
 ```sh
-pnpm --filter jev-planner exec vitest run src/__tests__/providers.test.ts
+pnpm --filter @rxova/planner-core exec vitest run src/providers/providers.test.ts
 ```
 
 Before asking for review, run the full verification gate:
@@ -70,7 +70,8 @@ detail. When product facts change, update every affected audience in the same pu
 
 ## Tests
 
-- Source lives in `src/`; tests live in `src/**/__tests__/`.
+- Each feature has a folder: `src/<feature>/<feature>.ts` for the code, `<feature>.test.ts` for
+  its tests, `<feature>.types.ts` for its types.
 - Coverage is at least 95% per file. Raise thresholds; never lower them.
 - Never skip, delete, or weaken a test to make a change pass.
 - Never hardcode an expected answer or switch off a check.
@@ -79,7 +80,7 @@ detail. When product facts change, update every affected audience in the same pu
 
 ## Adding an AI
 
-Providers live in one registry: `PROVIDERS` in `packages/core/src/providers.ts`. CLI flags,
+Providers live in one registry: `PROVIDERS` in `packages/core/src/providers/providers.ts`. CLI flags,
 help, doctor checks, prompts, and Jev choices all grow from that list.
 
 - OpenAI-compatible chat API: add one `openAICompatibleProvider(...)` call.

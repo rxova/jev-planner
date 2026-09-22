@@ -33,8 +33,10 @@ pnpm + Turborepo monorepo. Node >= 22.13 to develop. TypeScript everywhere.
 
 ## Rules
 
-- Source in `src/`, tests in `src/**/__tests__/`. `src/index.ts` re-exports only, `src/types.ts`
-  holds types only — both are excluded from coverage, so logic there is logic nobody measures.
+- One folder per feature: `src/<feature>/<feature>.ts` holds the code and no types,
+  `<feature>.test.ts` its tests (more suites as `<feature>.<topic>.test.ts`), `<feature>.types.ts`
+  its types. No `__tests__`. `src/index.ts` re-exports only and `.types.ts` files hold types only —
+  both are excluded from coverage, so logic there is logic nobody measures.
 - Coverage is 95% per file; raise thresholds, never lower them.
 - Never skip, delete or weaken a test to make a change pass.
 - Never make a test pass by hardcoding its expected answer or switching a check off.

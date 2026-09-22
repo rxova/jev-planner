@@ -13,7 +13,6 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/config/tsdown.base.ts",
-        "!**/__tests__/**",
         "!**/*.test.*",
         "!README.md"
       ],
@@ -47,7 +46,10 @@
     // Root tasks (`//#`): each reads the whole tree in one pass, so there is
     // nothing to fan out, but caching them makes an unchanged tree free — and
     // with the remote cache in CI, free on the runner too.
+    // Typed lint of jev-planner reads core's types from its dist, which a clean
+    // checkout does not have yet.
     "//#eslint:check": {
+      "dependsOn": ["@rxova/planner-core#build"],
       "inputs": ["$TURBO_DEFAULT$", "!**/*.{md,mdx,css,svg,png,jpg,jpeg,webp,txt}", "!LICENSE"],
       "outputs": [],
       "outputLogs": "new-only"
