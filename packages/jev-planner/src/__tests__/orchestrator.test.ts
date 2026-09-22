@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Planner } from '../orchestrator.js'
 import { TaskValidationError } from '../task.js'
 import type { AgentRequest, JevJudge, JevVerdict, PlanRound, PlanningAgent } from '../types.js'
@@ -224,8 +224,15 @@ describe('Planner in fast mode', () => {
         stage: 'draft',
         plans: { codex: 'codex draft', claude: 'claude draft' },
         verdict,
+        timings: expect.objectContaining({ agents: expect.any(Object), jevMs: expect.any(Number) }),
       },
-      { round: 2, stage: 'final', plans: { claude: 'final plan' }, verdict },
+      {
+        round: 2,
+        stage: 'final',
+        plans: { claude: 'final plan' },
+        verdict,
+        timings: expect.objectContaining({ agents: expect.any(Object) }),
+      },
     ])
   })
 })
@@ -249,6 +256,7 @@ describe('Planner straggler grace', () => {
     expect(result.cost.dropped).toEqual(['codex'])
     expect(aborts).toEqual(['aborted'])
     expect(stages).toContain('Codex is still working; the round goes on without it…')
+    expect(Object.keys(result.timings.rounds[1]?.agents ?? {})).toEqual(['claude'])
   })
 
   it('drops a straggling draft only while two plans are left', async () => {
@@ -295,6 +303,7 @@ describe('Planner straggler grace', () => {
     expect(result.drafts).toEqual({ codex: 'codex draft', claude: 'claude draft' })
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(result.drafts).toEqual({ codex: 'codex draft', claude: 'claude draft' })
+    expect(result.timings.rounds[0]?.agents).not.toHaveProperty('glm')
   })
 
   it('waits for every agent when the grace is zero', async () => {
@@ -452,6 +461,61 @@ describe('Planner in ultra mode', () => {
     await expect(run(2)).resolves.toEqual(['jev-custom', 'jev-custom'])
   })
 
+  describe('selectStronger', () => {
+    const options = { ...ultra, selectStronger: true }
+
+    it('returns the stronger revised plan as it is, with no synthesis call', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised'])
+      const jev: JevJudge = { judge: async () => ({ ...verdict, strongerPlan: 'codex' }) }
+      const stages: string[] = []
+      const rounds: PlanRound[] = []
+      const result = await new Planner([codex, claude], jev).plan({
+        ...options,
+        onStage: (message) => stages.push(message),
+        onRound: (round) => {
+          rounds.push(round)
+        },
+      })
+      expect(result).toMatchObject({ plan: 'codex revised', finalizer: 'codex', selected: true })
+      expect(result.timings.rounds.map(({ stage }) => stage)).toEqual(['draft', 'review', 'final'])
+      expect(codex.prompts).toHaveLength(2)
+      expect(claude.prompts).toHaveLength(2)
+      expect(stages.at(-1)).toBe("Jev rated Codex's plan stronger; using it without a synthesis…")
+      expect(rounds.at(-1)).toMatchObject({
+        stage: 'final',
+        plans: { codex: 'codex revised' },
+        selected: true,
+        timings: { agents: {} },
+      })
+    })
+
+    it('still has the finalizer merge the plans on a tie', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+      const rounds: PlanRound[] = []
+      const result = await new Planner([codex, claude], new FakeJev()).plan({
+        ...options,
+        onRound: (round) => {
+          rounds.push(round)
+        },
+      })
+      expect(result).toMatchObject({ plan: 'final plan', finalizer: 'claude' })
+      expect(result).not.toHaveProperty('selected')
+      expect(rounds.at(-1)).not.toHaveProperty('selected')
+    })
+
+    it('merges when no cross-review ran, whatever plan Jev rates stronger', async () => {
+      const codex = new FakeAgent('codex', ['codex draft'])
+      const claude = new FakeAgent('claude', ['claude draft', 'final plan'])
+      const jev = new FakeJev([{ strongerPlan: 'codex', standsAloneProbability: 0.9 }])
+      const result = await new Planner([codex, claude], jev).plan({ ...task, selectStronger: true })
+      expect(result).toMatchObject({ plan: 'final plan', finalizer: 'claude' })
+      expect(result).not.toHaveProperty('selected')
+      expect(result.cost).toMatchObject({ reviewRounds: 0, synthesized: true })
+    })
+  })
+
   it('drafts and merges with no cross-review at all when none is allowed', async () => {
     const codex = new FakeAgent('codex', ['codex draft'])
     const claude = new FakeAgent('claude', ['claude draft', 'final plan'])
@@ -514,21 +578,39 @@ describe('Planner in ultra mode', () => {
       },
     })
 
+    const timed = (agents: string[], judged: boolean) => ({
+      totalMs: expect.any(Number) as number,
+      agents: Object.fromEntries(agents.map((agent) => [agent, expect.any(Number) as number])),
+      ...(judged ? { jevMs: expect.any(Number) as number } : {}),
+    })
     expect(rounds).toEqual([
-      { round: 1, stage: 'draft', plans: { codex: 'codex draft', claude: 'claude draft' } },
+      {
+        round: 1,
+        stage: 'draft',
+        plans: { codex: 'codex draft', claude: 'claude draft' },
+        timings: timed(['codex', 'claude'], false),
+      },
       {
         round: 2,
         stage: 'review',
         plans: { codex: 'codex revised', claude: 'claude revised' },
         verdict: { ...verdict, needsAnotherPassProbability: 0.9 },
+        timings: timed(['codex', 'claude'], true),
       },
       {
         round: 3,
         stage: 'review',
         plans: { codex: 'codex refined', claude: 'claude refined' },
         verdict,
+        timings: timed(['codex', 'claude'], true),
       },
-      { round: 4, stage: 'final', plans: { claude: 'final plan' }, verdict },
+      {
+        round: 4,
+        stage: 'final',
+        plans: { claude: 'final plan' },
+        verdict,
+        timings: timed(['claude'], false),
+      },
     ])
     expect(events.indexOf('round 1')).toBeLessThan(events.indexOf('Cross-reviewing the 2 drafts…'))
   })
@@ -625,5 +707,179 @@ describe('Planner', () => {
       planner.plan({ ...task, onRound: () => Promise.reject(new Error('disk full')) }),
     ).rejects.toThrow('disk full')
     expect(codex.prompts).toHaveLength(1)
+  })
+
+  describe('sessions', () => {
+    const run = (planner: Planner, resume?: boolean) =>
+      planner.plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+        mode: 'ultra',
+        ...(resume === undefined ? {} : { resume }),
+      })
+
+    it('gives each agent one session for every call in a run, and a new one each run', async () => {
+      const codex = new FakeAgent('codex', ['d', 'r', 'd', 'r'])
+      const claude = new FakeAgent('claude', ['d', 'r', 'final', 'd', 'r', 'final'])
+      const planner = new Planner([codex, claude], new FakeJev())
+      await run(planner)
+      await run(planner)
+
+      const sessionsOf = (agent: FakeAgent) => agent.requests.map(({ session }) => session)
+      const [first, , , second] = sessionsOf(claude)
+      expect(first).toBeDefined()
+      expect(sessionsOf(claude)).toEqual([first, first, first, second, second, second])
+      expect(second).not.toBe(first)
+      expect(sessionsOf(codex)[0]).not.toBe(first)
+      expect(sessionsOf(codex)[0]).toBe(sessionsOf(codex)[1])
+    })
+
+    it('gives a draft only the whole prompt, and later calls a shorter one to resume with', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+      await run(new Planner([codex, claude], new FakeJev()))
+
+      const [draft, revision, final] = claude.requests
+      expect(draft).not.toHaveProperty('resumePrompt')
+      expect(revision?.prompt).toContain('<own-plan>\nclaude draft\n</own-plan>')
+      expect(revision?.resumePrompt).not.toContain('<own-plan>')
+      expect(revision?.resumePrompt).not.toContain('<task>')
+      expect(revision?.resumePrompt).toContain('codex draft')
+      expect(final?.prompt).toContain('<task>\nAdd caching\n</task>')
+      expect(final?.resumePrompt).not.toContain('<task>')
+      expect(final?.resumePrompt).toContain('codex revised')
+    })
+
+    it('passes no session and no resume prompt with resume off', async () => {
+      const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+      const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+      await run(new Planner([codex, claude], new FakeJev()), false)
+      for (const request of [...codex.requests, ...claude.requests]) {
+        expect(request).not.toHaveProperty('session')
+        expect(request).not.toHaveProperty('resumePrompt')
+      }
+    })
+  })
+
+  it('asks for the review effort in the cross-reviews and the synthesis, not the drafts', async () => {
+    const codex = new FakeAgent('codex', ['codex draft', 'codex revised'])
+    const claude = new FakeAgent('claude', ['claude draft', 'claude revised', 'final plan'])
+    await new Planner([codex, claude], new FakeJev()).plan({
+      task: 'Add caching',
+      cwd: '/tmp',
+      timeoutMs: 1_000,
+      mode: 'ultra',
+      reviewEfforts: { claude: 'low' },
+    })
+    expect(claude.requests.map(({ effort }) => effort)).toEqual([undefined, 'low', 'low'])
+    for (const request of [...codex.requests, claude.requests[0]]) {
+      expect(request).not.toHaveProperty('effort')
+    }
+  })
+
+  describe('timings', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Answers after `ms` of fake time, one delay per call. */
+    const slow = (name: string, calls: [string, number][]): PlanningAgent => ({
+      name,
+      label: name,
+      generate: async () => {
+        const [plan, ms] = calls.shift() ?? ['', 0]
+        await new Promise((done) => setTimeout(done, ms))
+        return plan
+      },
+    })
+
+    it('times each round, each agent call and each Jev call, and the whole run', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'performance'] })
+      const codex = slow('codex', [
+        ['codex draft', 5_000],
+        ['codex revised', 2_000],
+        ['final', 1_500],
+      ])
+      const claude = slow('claude', [
+        ['claude draft', 3_000],
+        ['claude revised', 2_500],
+      ])
+      const jev: JevJudge = {
+        judge: async () => {
+          await new Promise((done) => setTimeout(done, 400))
+          return { ...verdict, finalizer: 'codex' }
+        },
+      }
+      const onRound = vi.fn<(round: PlanRound) => Promise<void>>(async () => {
+        // Time spent reporting a round is counted in no round.
+        await new Promise((done) => setTimeout(done, 10_000))
+      })
+      const running = new Planner([codex, claude], jev).plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+        mode: 'ultra',
+        onRound,
+      })
+      await vi.runAllTimersAsync()
+      const { timings } = await running
+
+      expect(onRound.mock.calls.map(([round]) => round.timings)).toEqual([
+        { totalMs: 5_000, agents: { codex: 5_000, claude: 3_000 } },
+        { totalMs: 2_900, agents: { codex: 2_000, claude: 2_500 }, jevMs: 400 },
+        { totalMs: 1_500, agents: { codex: 1_500 } },
+      ])
+      expect(timings).toEqual({
+        totalMs: 5_000 + 2_900 + 1_500 + 3 * 10_000,
+        rounds: [
+          { round: 1, stage: 'draft', totalMs: 5_000, agents: { codex: 5_000, claude: 3_000 } },
+          {
+            round: 2,
+            stage: 'review',
+            totalMs: 2_900,
+            agents: { codex: 2_000, claude: 2_500 },
+            jevMs: 400,
+          },
+          { round: 3, stage: 'final', totalMs: 1_500, agents: { codex: 1_500 } },
+        ],
+      })
+    })
+
+    it('counts Jev judging the drafts in the draft round, in fast mode', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'performance'] })
+      const codex = slow('codex', [
+        ['codex draft', 5_000],
+        ['final', 1_500],
+      ])
+      const claude = slow('claude', [['claude draft', 3_000]])
+      const jev: JevJudge = {
+        judge: async () => {
+          await new Promise((done) => setTimeout(done, 400))
+          return { ...verdict, finalizer: 'codex' }
+        },
+      }
+      const running = new Planner([codex, claude], jev).plan({
+        task: 'Add caching',
+        cwd: '/tmp',
+        timeoutMs: 1_000,
+      })
+      await vi.runAllTimersAsync()
+      const { timings } = await running
+
+      expect(timings).toEqual({
+        totalMs: 5_400 + 1_500,
+        rounds: [
+          {
+            round: 1,
+            stage: 'draft',
+            totalMs: 5_400,
+            agents: { codex: 5_000, claude: 3_000 },
+            jevMs: 400,
+          },
+          { round: 2, stage: 'final', totalMs: 1_500, agents: { codex: 1_500 } },
+        ],
+      })
+    })
   })
 })

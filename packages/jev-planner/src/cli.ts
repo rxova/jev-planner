@@ -31,8 +31,11 @@ Options:
   -a, --agents <ids>          Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')})
   -m, --model <id>=<model>    Override one agent's model; repeatable
   -e, --effort <id>=<level>   Override one agent's reasoning effort; repeatable
+      --review-effort <id>=<level>
+                              The effort for its cross-review and synthesis only; repeatable
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
-      --finalizer <id>        auto, or one of the agents (default: auto/Jev decides)
+      --finalizer <id>        auto, none, or one of the agents (default: auto/Jev decides);
+                              none keeps a cross-reviewed plan Jev rates stronger, unmerged
       --mode <fast|ultra>     fast: Jev skips the rounds a run does not need
                               ultra: always cross-review, always merge (default: fast)
       --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
@@ -40,9 +43,12 @@ Options:
                               still working once half have answered; 0 waits for
                               every agent (default: 90)
       --timeout <seconds>     Timeout for each agent call (default: 600)
+      --no-resume             Start each agent call afresh, not from its draft session
       --json                  Emit plan metadata as JSON
       --verbose               Stream each agent's work, then Jev's verdict, to stderr
       --rounds-dir <path>     Write every round's plans to round1/, round2/, …, final/
+                              (default: .jev-planner/<run>/ in the repository)
+      --no-rounds             Do not write the rounds anywhere
       --allow-any-task        Plan the task even if it looks like a placeholder
   -h, --help                  Show help
   -v, --version               Show version
@@ -77,7 +83,12 @@ export interface CliDeps {
   readStdin: () => Promise<string | undefined>
   createPlanner: (setup: PlannerSetup) => PlanRunner
   doctor: (cwd: string, providers: readonly Provider[]) => Promise<CheckResult[]>
+  /** The clock that names a run's folder under `.jev-planner/`. */
+  now: () => Date
 }
+
+/** Where runs keep their rounds by default, relative to the repository. */
+export const RUNS_DIR = '.jev-planner'
 
 async function assertDirectory(path: string): Promise<void> {
   const info = await stat(path).catch(() => undefined)
@@ -129,15 +140,16 @@ function parseOverrides(
   return overrides
 }
 
+/** `auto` gives `undefined`, `none` gives `'none'`, an agent gives its id. */
 function parseFinalizer(
   value: string | undefined,
   agents: readonly Provider[],
 ): string | undefined {
   if (value === undefined || value === 'auto') return undefined
   const id = value.toLowerCase()
-  if (agents.some((agent) => agent.id === id)) return id
+  if (id === 'none' || agents.some((agent) => agent.id === id)) return id
   throw new Error(
-    `Invalid --finalizer value: ${value}. Expected auto or one of ${agents.map((a) => a.id).join(', ')}.`,
+    `Invalid --finalizer value: ${value}. Expected auto, none or one of ${agents.map((a) => a.id).join(', ')}.`,
   )
 }
 
@@ -152,8 +164,43 @@ async function prepareRoundsDir(dir: string): Promise<void> {
 }
 
 /**
+ * A new folder for this run under `<cwd>/.jev-planner/`, named by its UTC start
+ * time with no `:` so it is a valid name on Windows too. A second run in the
+ * same second gets `-2`, and so on: `mkdir` without `recursive` fails on an
+ * existing folder, so two runs can never claim the same one.
+ *
+ * The first run also writes `.jev-planner/.gitignore` with `*`, so the output
+ * never shows up as untracked in the repository being planned. One that is
+ * already there is left alone.
+ */
+async function newRunDir(cwd: string, now: Date): Promise<string> {
+  const home = join(cwd, RUNS_DIR)
+  await mkdir(home, { recursive: true })
+  await writeFile(
+    join(home, '.gitignore'),
+    '# Written by jev-planner: run output, not source.\n*\n',
+    {
+      flag: 'wx',
+    },
+  ).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  })
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+  for (let attempt = 1; ; attempt++) {
+    const dir = join(home, attempt === 1 ? stamp : `${stamp}-${String(attempt)}`)
+    try {
+      await mkdir(dir)
+      return dir
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+  }
+}
+
+/**
  * One folder per round: `round<N>/<agent>.md` for each agent's plan, with Jev's
- * `jev-verdict.json` beside a judged round's plans, and `final/plan.md` last.
+ * `jev-verdict.json` beside a judged round's plans, `timings.json` in every
+ * round, and `final/plan.md` last.
  */
 async function writeRound(dir: string, round: PlanRound): Promise<void> {
   const folder = join(dir, round.stage === 'final' ? 'final' : `round${String(round.round)}`)
@@ -162,11 +209,39 @@ async function writeRound(dir: string, round: PlanRound): Promise<void> {
     round.stage === 'final'
       ? Object.entries(round.plans).map(([agent, plan]) => [
           'plan.md',
-          `<!-- merged by ${agent} -->\n${plan.trim()}\n`,
+          `<!-- ${round.selected ? 'selected from' : 'merged by'} ${agent} -->\n${plan.trim()}\n`,
         ])
       : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
   if (round.verdict) files.push(['jev-verdict.json', `${JSON.stringify(round.verdict, null, 2)}\n`])
+  files.push(['timings.json', `${JSON.stringify(round.timings, null, 2)}\n`])
   await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
+}
+
+/** `4m12s`, `51s` or `0.8s`: minutes once a minute has passed, tenths below ten seconds. */
+export function formatDuration(ms: number): string {
+  const seconds = ms / 1_000
+  if (seconds < 10) return `${seconds.toFixed(1)}s`
+  const whole = Math.round(seconds)
+  if (whole < 60) return `${String(whole)}s`
+  return `${String(Math.floor(whole / 60))}m${String(whole % 60).padStart(2, '0')}s`
+}
+
+const STAGE_NAMES: Record<PlanRound['stage'], string> = {
+  draft: 'Drafts',
+  review: 'Review',
+  final: 'Final plan',
+}
+
+/** One line per round for `--verbose`: the round, then each agent call and Jev's. */
+function roundTimingLine(round: PlanRound, labels: ReadonlyMap<string, string>): string {
+  const calls = [
+    ...Object.entries(round.timings.agents).map(
+      ([agent, ms]) => `${labels.get(agent) ?? agent} ${formatDuration(ms)}`,
+    ),
+    ...(round.timings.jevMs === undefined ? [] : [`Jev ${formatDuration(round.timings.jevMs)}`]),
+  ]
+  const line = `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)}`
+  return calls.length > 0 ? `${line} (${calls.join(', ')})` : line
 }
 
 /** What the run spent, on one line, so the cost of a mode is visible without `--json`. */
@@ -228,15 +303,18 @@ function parse(argv: readonly string[]) {
       agents: { type: 'string', short: 'a' },
       model: { type: 'string', short: 'm', multiple: true, default: [] },
       effort: { type: 'string', short: 'e', multiple: true, default: [] },
+      'review-effort': { type: 'string', multiple: true, default: [] },
       'jev-model': { type: 'string' },
       finalizer: { type: 'string' },
       mode: { type: 'string' },
       'review-rounds': { type: 'string' },
       'straggler-grace': { type: 'string' },
       timeout: { type: 'string' },
+      'no-resume': { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
       verbose: { type: 'boolean', default: false },
       'rounds-dir': { type: 'string' },
+      'no-rounds': { type: 'boolean', default: false },
       'allow-any-task': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
@@ -291,14 +369,29 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
 
   const models = parseOverrides('--model', values.model, agents)
   const efforts = parseOverrides('--effort', values.effort, agents, (agent) => agent.effort)
+  const reviewEfforts = parseOverrides(
+    '--review-effort',
+    values['review-effort'],
+    agents,
+    (agent) => agent.effort,
+  )
   const finalizer = parseFinalizer(values.finalizer, agents)
   const jevModel = values['jev-model']
-  const roundsDir =
-    values['rounds-dir'] === undefined ? undefined : resolve(cwd, values['rounds-dir'])
-  if (roundsDir !== undefined) await prepareRoundsDir(roundsDir)
   const mode = parseMode(values.mode)
   const stragglerGraceMs = parseStragglerGrace(values['straggler-grace'], mode)
+  if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
+    throw new Error('Pass --rounds-dir or --no-rounds, not both')
+  }
+  let roundsDir: string | undefined
+  if (values['rounds-dir'] !== undefined) {
+    roundsDir = resolve(cwd, values['rounds-dir'])
+    await prepareRoundsDir(roundsDir)
+  } else if (!values['no-rounds']) {
+    roundsDir = await newRunDir(cwd, deps.now())
+  }
+  if (roundsDir !== undefined) deps.stderr(`[jev-planner] Writing rounds to ${roundsDir}\n`)
   const planner = deps.createPlanner({ agents, models, efforts })
+  const labels = new Map(agents.map(({ id, label }) => [id, label]))
   const result = await planner.plan({
     task,
     cwd,
@@ -307,8 +400,10 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     maxReviewRounds: parseReviewRounds(values['review-rounds']),
     ...(stragglerGraceMs === undefined ? {} : { stragglerGraceMs }),
     ...(jevModel ? { jevModel } : {}),
-    ...(finalizer ? { finalizer } : {}),
+    ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
+    ...(Object.keys(reviewEfforts).length > 0 ? { reviewEfforts } : {}),
+    ...(values['no-resume'] ? { resume: false } : {}),
     onStage: (message) => {
       deps.stderr(`[jev-planner] ${message}\n`)
     },
@@ -319,12 +414,18 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
           },
         }
       : {}),
-    ...(roundsDir === undefined
+    ...(roundsDir === undefined && !values.verbose
       ? {}
-      : { onRound: (round: PlanRound) => writeRound(roundsDir, round) }),
+      : {
+          onRound: async (round: PlanRound) => {
+            if (values.verbose) deps.stderr(`[jev-planner] ${roundTimingLine(round, labels)}\n`)
+            if (roundsDir !== undefined) await writeRound(roundsDir, round)
+          },
+        }),
   })
 
   if (values.verbose) {
+    deps.stderr(`[jev-planner] Total: ${formatDuration(result.timings.totalMs)}\n`)
     deps.stderr(`[jev-planner] Jev verdict:\n${JSON.stringify(result.verdict, null, 2)}\n`)
   }
   deps.stderr(`[jev-planner] ${costLine(result.cost)}\n`)
@@ -335,6 +436,8 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
           plan: result.plan,
           verdict: result.verdict,
           finalizer: result.finalizer,
+          ...(result.selected ? { selected: true } : {}),
+          timings: result.timings,
           cost: result.cost,
         },
         null,

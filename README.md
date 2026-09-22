@@ -99,13 +99,14 @@ jev-planner \
 ## Useful controls
 
 - `--verbose` streams agent messages, commands, and file reads as they happen.
-- `--rounds-dir rounds` keeps every draft, review, and Jev verdict.
+- Every draft, review, and Jev verdict is saved under `.jev-planner/<run>/`; `--rounds-dir <path>`
+  moves it, `--no-rounds` skips it.
 - `--json` emits structured output for another tool.
-- `--finalizer <agent>` overrides Jev's finalizer choice.
+- `--finalizer <agent>` overrides Jev's finalizer choice; `none` keeps the stronger plan unmerged.
 - `--review-rounds 1` disables the optional second cross-review.
 
 ```text
-rounds/
+.jev-planner/20260921-230512/
   round1/          independent drafts
   round2/          cross-reviewed plans + Jev verdict
   round3/          optional second review

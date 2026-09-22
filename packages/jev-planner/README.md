@@ -35,13 +35,24 @@ Pick the agents with `--agents`, two or more, comma-separated:
 `jev-planner --help` prints the same list, generated from the registry.
 
 - **Agent CLIs** inspect the repository themselves, read-only: Codex runs in its read-only sandbox,
-  Claude Code in plan mode with only `Read`, `Glob` and `Grep`. They use the CLIs' existing logins,
-  so their calls consume your Codex and Claude subscription allowances, not API keys.
+  Claude Code in plan mode with only `Read`, `Glob` and `Grep` and none of your MCP servers. They use
+  the CLIs' existing logins, so their calls consume your Codex and Claude subscription allowances,
+  not API keys.
 - **Chat APIs** cannot open files. Each of their calls is sent with a snapshot of the repository:
   the list of files git tracks, and the contents of the tracked top-level docs and manifests
   (`AGENTS.md`, `CLAUDE.md`, `README.md`, `CONTRIBUTING.md`, `package.json`, …), within fixed size
   limits. Only tracked files are read, so an ignored `.env` is never sent. Outside a git repository
   the snapshot is empty. The model is told to name the files it would need rather than guess them.
+
+Each agent keeps one conversation through a run. An agent CLI's draft session is continued for its
+cross-review and the final synthesis (`codex exec resume`, `claude --resume`), so those stages start
+with what it already read instead of exploring the repository again; a resumed Codex keeps its
+read-only sandbox. A chat API is sent its earlier messages, so the repository snapshot goes once.
+If a session cannot be continued, the call starts afresh with the whole prompt.
+
+The CLIs keep those sessions as they keep any other: in `~/.codex/sessions` and
+`~/.claude/projects`, and Claude's appear in its `/resume` list. `--no-resume` starts every call
+afresh and keeps none, as before.
 
 Every provider's API key, and Jev's, is removed from the environment of every agent subprocess:
 an agent never sees another provider's credentials.
@@ -116,6 +127,9 @@ See every option with `jev-planner --help`. Useful controls include:
 - `--model <id>=<model>`, repeatable, to override one agent's model.
 - `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
+- `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
+  and synthesis only, while its draft keeps `--effort`. A lower one shortens the later stages, whose
+  job is editing plans rather than exploring the repository.
 
 Model and effort overrides win over the CLIs' local configuration, such as `model` and
 `model_reasoning_effort` in `~/.codex/config.toml`, for that run only. Codex on GPT-5.6-Terra at low
@@ -127,11 +141,17 @@ jev-planner --model codex=gpt-5.6-terra --effort codex=low "Add caching to the s
 
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
+- `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
+  merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
+  ran, the finalizer still runs.
 - `--mode ultra` to buy every round rather than let Jev skip one (below).
 - `--review-rounds 0` to skip the cross-review entirely, or `1` to allow only one.
 - `--straggler-grace <seconds>` to change how long a `fast` round waits for a slow agent.
+- `--no-resume` to start every agent call afresh rather than continue its draft session
+  ([Agents](#agents)).
 - `--verbose` to watch the agents work, then print Jev's typed verdict to stderr (below).
-- `--rounds-dir <path>` to keep every round's plans, to see how they evolved (below).
+- `--rounds-dir <path>` to keep every round's plans somewhere other than `.jev-planner/`, or
+  `--no-rounds` to keep none (below).
 - `--allow-any-task` to plan text that looks like a placeholder.
 
 A task that is empty or a near-certain placeholder — the text `TODO`, `TBD` or `<coding task>`,
@@ -179,23 +199,29 @@ Every run prints what it spent on stderr, and `--json` includes it as `cost`:
 
 ## Following a run round by round
 
-`--rounds-dir <path>` writes each round's plans as soon as the round ends, relative to `--cwd`. The
-folder must be new or empty, so two runs never mix:
+Every run writes each round's plans as soon as the round ends, to a new folder under
+`.jev-planner/` in the repository, named by the run's UTC start time:
 
 ```text
-rounds/
-  round1/             the independent drafts
-    codex.md
-    claude.md
-  round2/             the cross-reviewed plans, and Jev's verdict on them
-    codex.md
-    claude.md
-    jev-verdict.json
-  round3/             only when Jev asked for a second review
-  final/
-    plan.md           the merged plan, headed by the agent that merged it
-    jev-verdict.json  the verdict the merge followed
+.jev-planner/
+  .gitignore          `*`, so the folder never shows up in git
+  20260921-230512/
+    round1/           the independent drafts
+      codex.md
+      claude.md
+      timings.json    how long the round and each call in it took, in milliseconds
+    round2/           the cross-reviewed plans, and Jev's verdict on them
+      codex.md
+      claude.md
+      jev-verdict.json
+    round3/           only when Jev asked for a second review
+    final/
+      plan.md         the merged plan, headed by the agent that merged it, or selected from
+      jev-verdict.json  the verdict the merge followed
 ```
+
+`--rounds-dir <path>` writes them somewhere else instead, relative to `--cwd`; that folder must be
+new or empty, so two runs never mix. `--no-rounds` writes nothing.
 
 ```sh
 jev-planner --rounds-dir rounds -o PLAN.md "Add caching to the search endpoint"
@@ -221,14 +247,27 @@ stream-json`), so every message, command and file read is shown as the agent rea
 agent answers in one response, so it shows only which model it is waiting on. From code, pass
 `onAgentProgress` in `Planner.plan`'s options.
 
+After each round, `--verbose` prints how long it took and how long each call in it took, and a
+total at the end:
+
+```text
+[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)
+[jev-planner] Review: 1m05s (Codex 58s, Claude 41s, Jev 7.0s)
+[jev-planner] Final plan: 49s (Claude 49s)
+[jev-planner] Total: 6m06s
+```
+
+The same numbers, in milliseconds, are in each round's `timings.json`, in `--json`'s `timings`,
+and in `PlanRound.timings` and `PlanResult.timings` from code.
+
 ## Cost and data flow
 
 With N agents, `--mode ultra` makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
 synthesis. If Jev requests another pass, it makes N more. With the default two agents that is five
 calls, or seven. `--mode fast`, the default, makes as few as N + 1 — the drafts and the merge, when
-Jev asks for no cross-review — and never more than `ultra` would. Agent CLIs use the accounts logged
-into them;
-chat APIs bill the key they are given.
+Jev asks for no cross-review — and never more than `ultra` would. `--finalizer none` drops the
+synthesis when Jev rates one cross-reviewed plan stronger. Agent CLIs use the accounts logged into
+them; chat APIs bill the key they are given.
 
 Each evaluation uses one TypeSafe API call, and `fast` spends one extra to judge the drafts. Jev sees
 the task and the agents' plan text, not a direct repository snapshot. Chat APIs see the snapshot
@@ -274,7 +313,9 @@ cliProvider({
 ```
 
 `effort: true` says `args` passes an effort on, so `--effort` is accepted for it. `auth` is
-optional: arguments that exit 0 when the CLI is logged in, or a check function. The same
+optional: arguments that exit 0 when the CLI is logged in, or a check function. So is `sessions`,
+for a CLI that can continue a conversation: `start(overrides, id)` and `resume(overrides, id)`
+return the arguments that keep one and continue it, and without it every call starts afresh. The same
 two builders are exported, so a program using the library can build its own agents from them and
 pass them to `Planner`.
 

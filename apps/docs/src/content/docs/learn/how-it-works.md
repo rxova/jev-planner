@@ -10,7 +10,8 @@ default `fast` mode Jev decides which of them a plan actually needs.
 ## 1. Independent drafts
 
 Each agent — Codex and Claude by default — drafts a plan independently, all in parallel. None of
-them sees another's work yet.
+them sees another's work yet. This is the stage where the agents explore the repository; later
+stages are told to open a file only to settle a specific point.
 
 ## 2. Jev evaluates
 
@@ -20,7 +21,8 @@ cross-review would materially improve the plan.
 ## 3. Cross-review
 
 When Jev asks for one, each agent sees every other agent's plan and returns a revised, standalone
-plan, aimed by Jev's typed feedback — and Jev evaluates the result. That repeats while Jev keeps
+plan, aimed by Jev's typed feedback — and Jev evaluates the result. An agent opens a file only to check a claim
+the plans disagree on, or one it is unsure of. That repeats while Jev keeps
 asking, up to `--review-rounds` times (two by default; `0` skips the cross-review altogether).
 
 In `--mode ultra` the first cross-review is not Jev's to skip: the agents always review each other,
@@ -29,7 +31,9 @@ and Jev only decides whether to ask for a second pass.
 ## 4. Synthesis
 
 The selected agent merges the plans into one final implementation plan. `--finalizer <id>` overrides
-Jev's choice with one of the selected agents.
+Jev's choice with one of the selected agents. `--finalizer none` skips this step when Jev
+rates one cross-reviewed plan stronger, and returns that plan as it is; on a tie the finalizer
+still merges.
 
 In `fast` mode this stage is skipped when Jev judges the strongest cross-reviewed plan already final
 as it stands: every plan has answered the others by then, so the merge would rewrite what is already
