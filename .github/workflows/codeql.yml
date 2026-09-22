@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['javascript-typescript']
+        language: ['javascript-typescript', 'actions']
     steps:
       # Whether code scanning will accept an upload at all. `analyze` ends by
       # uploading its SARIF, and where Code Security is not enabled GitHub
