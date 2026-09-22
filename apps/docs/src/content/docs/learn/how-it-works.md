@@ -9,13 +9,11 @@ description: Independent drafts, cross-review, Jev's typed evaluation, an option
 ## 1. Independent drafts
 
 Each agent — Codex and Claude by default — drafts a plan independently, all in parallel. None of
-them sees another's work yet. This is the stage where the agents explore the repository; later
-stages are told to open a file only to settle a specific point.
+them sees another's work yet.
 
 ## 2. Cross-review
 
-Each agent sees every other agent's draft and returns a revised, standalone plan. It opens a file
-only to check a claim the plans disagree on, or one it is unsure of.
+Each agent sees every other agent's draft and returns a revised, standalone plan.
 
 ## 3. Jev evaluates
 
@@ -26,8 +24,7 @@ evaluates again. `--review-rounds 1` disables that optional pass.
 ## 4. Synthesis
 
 The selected agent merges the revised drafts into one final implementation plan. `--finalizer <id>`
-overrides Jev's choice with one of the selected agents. `--finalizer none` skips this step when Jev
-rates one revised plan stronger, and returns that plan as it is; on a tie the finalizer still merges.
+overrides Jev's choice with one of the selected agents.
 
 ## Why Jev is the arbiter
 

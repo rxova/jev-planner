@@ -8,8 +8,7 @@ sidebar:
 ## Calls per run
 
 With N agents, a normal run makes 2N + 1 agent calls: N drafts, N cross-reviews, and one final
-synthesis. If Jev requests another pass, it makes N more. `--finalizer none` drops the synthesis
-when Jev rates one plan stronger. With the default two agents that is five
+synthesis. If Jev requests another pass, it makes N more. With the default two agents that is five
 calls, or seven. Agent CLIs use the accounts logged into them; chat APIs bill the key they are given.
 
 Each evaluation uses one TypeSafe API call; a second review pass causes one re-evaluation.

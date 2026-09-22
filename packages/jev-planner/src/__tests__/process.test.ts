@@ -89,6 +89,39 @@ describe('runProcess', () => {
     ).rejects.toThrow(`${node} timed out after 50ms`)
   })
 
+  it('kills a command the caller stops needing', async () => {
+    const controller = new AbortController()
+    const running = runProcess(node, script('setTimeout(() => {}, 10_000)'), {
+      cwd,
+      timeoutMs: 10_000,
+      signal: controller.signal,
+      onLine: () => undefined,
+    })
+    controller.abort()
+    await expect(running).rejects.toThrow(`${node} was stopped: the run no longer needs it`)
+  })
+
+  it('never starts a command the caller has already stopped needing', async () => {
+    await expect(
+      runProcess(node, script("process.stdout.write('ran')"), {
+        cwd,
+        signal: AbortSignal.abort(),
+      }),
+    ).rejects.toThrow(`${node} was not started: the run no longer needs it`)
+  })
+
+  it('stops listening for an abort once the command is done', async () => {
+    const controller = new AbortController()
+    const result = await runProcess(node, script("process.stdout.write('done')"), {
+      cwd,
+      timeoutMs: 5_000,
+      signal: controller.signal,
+    })
+    expect(result.stdout).toBe('done')
+    // The listener is gone, so a later abort cannot settle the promise twice.
+    expect(() => controller.abort()).not.toThrow()
+  })
+
   it('kills a command that exceeds the output limit', async () => {
     await expect(
       runProcess(node, script("process.stdout.write('x'.repeat(9 * 1024 * 1024))"), {

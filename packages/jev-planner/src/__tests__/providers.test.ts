@@ -132,45 +132,6 @@ describe('codex', () => {
     ])
   })
 
-  it('keeps its session, and resumes it read-only with the same overrides', async () => {
-    prints([{ type: 'thread.started', thread_id: 'thread-1' }, codexAnswer('plan')])
-    const agent = provider('codex').create({ ...setup, model: 'gpt-x', effort: 'low' })
-    const session: { id?: string } = {}
-    await agent.generate({ ...request, session })
-    expect(session.id).toBe('thread-1')
-    await agent.generate({ ...request, resumePrompt: 'short', session })
-
-    const [start, resume] = run.mock.calls.map(([, args]) => args)
-    expect(start).not.toContain('--ephemeral')
-    expect(start?.join(' ')).toContain('--sandbox read-only')
-    expect(resume).toEqual([
-      'exec',
-      'resume',
-      '--json',
-      '--skip-git-repo-check',
-      '-c',
-      'sandbox_mode="read-only"',
-      '--model',
-      'gpt-x',
-      '-c',
-      'model_reasoning_effort="low"',
-      'thread-1',
-      '-',
-    ])
-    expect(run.mock.calls[1]?.[2].input).toBe('short')
-  })
-
-  it('never resumes a session without the read-only sandbox', async () => {
-    prints([codexAnswer('plan')])
-    await provider('codex')
-      .create(setup)
-      .generate({ ...request, session: { id: 'thread-1' } })
-    const args = run.mock.calls[0]?.[1] ?? []
-    expect(args.slice(0, 2)).toEqual(['exec', 'resume'])
-    expect(args[args.indexOf('sandbox_mode="read-only"') - 1]).toBe('-c')
-    expect(args.some((arg) => arg.includes('danger') || arg.includes('bypass'))).toBe(false)
-  })
-
   it('rejects an empty response', async () => {
     prints([{ type: 'turn.completed' }])
     await expect(provider('codex').create(setup).generate(request)).rejects.toThrow(
@@ -209,8 +170,6 @@ describe('claude', () => {
     expect(args).toContain('--print')
     expect(args.join(' ')).toContain('--permission-mode plan')
     expect(args.join(' ')).toContain('--tools Read,Glob,Grep')
-    // Otherwise the user's MCP servers start too, and their tools are callable.
-    expect(args).toContain('--strict-mcp-config')
     expect(args.join(' ')).toContain('--output-format stream-json --verbose')
     expect(args).not.toContain('--model')
     expect(options).toEqual({
@@ -239,26 +198,6 @@ describe('claude', () => {
         .generate({ ...request, onProgress: (line) => progress.push(line) }),
     ).resolves.toBe('the plan')
     expect(progress).toEqual(['Read a.ts', 'not json'])
-  })
-
-  it('starts a named session, and resumes it in plan mode with the same read-only tools', async () => {
-    const claude = provider('claude')
-    await claude.create({ ...setup, effort: 'high' }).generate(request)
-    const agent = claude.create({ ...setup, effort: 'high' })
-    const session: { id?: string } = {}
-    await agent.generate({ ...request, session })
-    await agent.generate({ ...request, resumePrompt: 'short', session })
-    const [plain = [], start = [], resume = []] = run.mock.calls.map(([, args]) => [...args])
-    const id = String(session.id)
-
-    expect(id).toMatch(/^[0-9a-f-]{36}$/)
-    expect(plain).toContain('--no-session-persistence')
-    expect(run.mock.calls[2]?.[2].input).toBe('short')
-    // Each is the plain call with only its session flags swapped in.
-    const swap = (flags: string[]) =>
-      plain.map((arg) => (arg === '--no-session-persistence' ? flags : [arg])).flat()
-    expect(start).toEqual(swap(['--session-id', id]))
-    expect(resume).toEqual(swap(['--resume', id]))
   })
 
   it('passes a model override', async () => {
@@ -336,11 +275,6 @@ describe('codexEvent', () => {
     expect(codexEvent({ type: 'item.started', item: { type: 'reasoning' } })).toEqual({})
     expect(codexEvent({ type: 'item.updated', item: { type: 'todo_list' } })).toEqual({})
     expect(codexEvent({ type: 'turn.started' })).toEqual({})
-  })
-
-  it('reports the thread id as the session', () => {
-    expect(codexEvent({ type: 'thread.started', thread_id: 'abc' })).toEqual({ session: 'abc' })
-    expect(codexEvent({ type: 'thread.started' })).toEqual({})
   })
 
   it('reports failures', () => {

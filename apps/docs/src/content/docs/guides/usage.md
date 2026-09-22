@@ -1,6 +1,6 @@
 ---
 title: Usage
-description: Task inputs, choosing agents, model and effort overrides, JSON output, --verbose and the saved rounds.
+description: Task inputs, choosing agents, model and effort overrides, JSON output, --verbose and --rounds-dir.
 sidebar:
   order: 2
 ---
@@ -39,17 +39,9 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
 - `--model <id>=<model>`, repeatable, to override one agent's model.
 - `--effort <id>=<level>`, repeatable, to override an agent CLI's reasoning effort. Levels are the
   CLI's own (`low` … `xhigh` and more, per model) and are passed through unchecked.
-- `--review-effort <id>=<level>`, repeatable, to use another effort for that agent's cross-reviews
-  and synthesis only, while its draft keeps `--effort`. A lower one shortens the later stages, whose
-  job is editing plans rather than exploring the repository.
 - `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <id>` to override Jev's routing decision with one of the selected agents.
-- `--finalizer none` to skip the synthesis when Jev rates one revised plan stronger, and keep that
-  plan as it is. It saves the last agent call, at the cost of the merge; on a tie the finalizer
-  still runs.
 - `--review-rounds 1` to disable Jev's optional second review pass.
-- `--no-resume` to start every agent call afresh rather than continue its draft session; the
-  [agents reference](../reference/agents.md#sessions) says where sessions are kept.
 
 Plan with three agents, and pin one's model:
 
@@ -90,44 +82,25 @@ Codex and Claude run with JSON event output (`codex exec --json`, `claude --outp
 stream-json`), so every message, command and file read is shown as the agent reaches it. A chat API
 agent answers in one response, so it shows only which model it is waiting on.
 
-After each round, `--verbose` prints how long it took and how long each call in it took, and a
-total at the end:
-
-```text
-[jev-planner] Drafts: 4m12s (Codex 4m12s, Claude 2m51s)
-[jev-planner] Review: 1m05s (Codex 58s, Claude 41s, Jev 7.0s)
-[jev-planner] Final plan: 49s (Claude 49s)
-[jev-planner] Total: 6m06s
-```
-
-The same numbers, in milliseconds, are in each round's `timings.json`, in `--json`'s `timings`,
-and in `PlanRound.timings` and `PlanResult.timings` from code.
-
 ## Following a run round by round
 
-Every run writes each round's plans as soon as the round ends, to a new folder under
-`.jev-planner/` in the repository, named by the run's UTC start time:
+`--rounds-dir <path>` writes each round's plans as soon as the round ends, relative to `--cwd`. The
+folder must be new or empty, so two runs never mix:
 
 ```text
-.jev-planner/
-  .gitignore          `*`, so the folder never shows up in git
-  20260921-230512/
-    round1/           the independent drafts
-      codex.md
-      claude.md
-      timings.json    how long the round and each call in it took, in milliseconds
-    round2/           the cross-reviewed plans, and Jev's verdict on them
-      codex.md
-      claude.md
-      jev-verdict.json
-    round3/           only when Jev asked for a second review
-    final/
-      plan.md         the merged plan, headed by the agent that merged it, or selected from
-      jev-verdict.json  the verdict the merge followed
+rounds/
+  round1/             the independent drafts
+    codex.md
+    claude.md
+  round2/             the cross-reviewed plans, and Jev's verdict on them
+    codex.md
+    claude.md
+    jev-verdict.json
+  round3/             only when Jev asked for a second review
+  final/
+    plan.md           the merged plan, headed by the agent that merged it
+    jev-verdict.json  the verdict the merge followed
 ```
-
-`--rounds-dir <path>` writes them somewhere else instead, relative to `--cwd`; that folder must be
-new or empty, so two runs never mix. `--no-rounds` writes nothing.
 
 ```sh
 jev-planner --rounds-dir rounds -o PLAN.md "Add caching to the search endpoint"

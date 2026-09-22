@@ -45,10 +45,7 @@ cliProvider({
 ```
 
 `effort: true` says `args` passes an effort on, so `--effort` is accepted for it. `auth` is
-optional: arguments that exit 0 when the CLI is logged in, or a check function. So is `sessions`,
-for a CLI that can continue a conversation: `start(overrides, id)` and `resume(overrides, id)`
-return the arguments that keep one and continue it; without it every call starts afresh. A CLI
-that names its own sessions reports the name as `session` from `events`.
+optional: arguments that exit 0 when the CLI is logged in, or a check function.
 
 ## From your own program
 

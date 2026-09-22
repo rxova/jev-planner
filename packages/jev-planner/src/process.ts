@@ -38,9 +38,15 @@ export function runProcess(
     omitEnv?: readonly string[]
     /** Called with each non-blank line of either stream as it arrives, before the process ends. */
     onLine?: (line: string, stream: 'stdout' | 'stderr') => void
+    /** Kills the process when the caller stops needing its output. */
+    signal?: AbortSignal
   },
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted === true) {
+      reject(new Error(`${command} was not started: the run no longer needs it`))
+      return
+    }
     const omit = new Set(options.omitEnv)
     const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !omit.has(name)))
     const child = spawn(command, args, {
@@ -71,8 +77,17 @@ export function runProcess(
       if (settled) return
       settled = true
       if (timer !== undefined) clearTimeout(timer)
+      options.signal?.removeEventListener('abort', abort)
       callback()
     }
+
+    const abort = (): void => {
+      child.kill('SIGTERM')
+      finish(() => {
+        reject(new Error(`${command} was stopped: the run no longer needs it`))
+      })
+    }
+    options.signal?.addEventListener('abort', abort)
 
     const collect = (target: Buffer[], chunk: Buffer): void => {
       outputBytes += chunk.length
