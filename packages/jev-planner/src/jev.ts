@@ -61,13 +61,41 @@ function disputeQuestion(plans: readonly JudgedPlan[], dispute: Dispute) {
   )
 }
 
+type Stage = 'solo' | 'draft' | 'review'
+
+/** What Jev is told the plans are. */
+const STAGE_TEXT: Record<Stage, string> = {
+  solo: "One agent's independent draft, judged alone: no other agent has seen it",
+  draft: 'Independent drafts: no agent has seen another agent’s plan yet',
+  review: 'Cross-reviewed plans: each agent has read every other plan and revised its own',
+}
+
+/** Whether the plan could be the final plan: of the strongest plan, or of a lone draft. */
+function standsAlone(stage: Stage) {
+  return stage === 'solo'
+    ? noul(
+        'Could this plan, as it stands, be handed to an implementer as the final plan, with no review or merge?',
+        {
+          true: 'The plan is complete and self-contained; ready to implement',
+          false: 'The plan has gaps that review or another plan would need to fill',
+        },
+      )
+    : noul(
+        'Could the strongest plan be handed to an implementer as the final plan, with no merge of the others?',
+        {
+          true: 'One plan is already complete and self-contained; merging would add nothing material',
+          false: 'The plans hold complementary material that a final merge has to combine',
+        },
+      )
+}
+
 export class TypeSafeJevJudge implements JevJudge {
   constructor(private readonly client: TypeSafeClient = new TypeSafeClient()) {}
 
   async judge(input: {
     task: string
     plans: readonly JudgedPlan[]
-    stage: 'draft' | 'review'
+    stage: Stage
     disputes?: readonly Dispute[]
     model?: string
   }): Promise<JevVerdict> {
@@ -76,10 +104,7 @@ export class TypeSafeJevJudge implements JevJudge {
       ...(input.model ? { model: input.model } : {}),
       state: {
         task: input.task,
-        stage:
-          input.stage === 'draft'
-            ? 'Independent drafts: no agent has seen another agent’s plan yet'
-            : 'Cross-reviewed plans: each agent has read every other plan and revised its own',
+        stage: STAGE_TEXT[input.stage],
         // Keyed by agent name: the names the choices below answer with.
         plans: Object.fromEntries(
           input.plans.map(({ agent, label, plan }) => [
@@ -134,13 +159,7 @@ export class TypeSafeJevJudge implements JevJudge {
             false: 'The material is ready for final synthesis',
           },
         ),
-        stands_alone: noul(
-          'Could the strongest plan be handed to an implementer as the final plan, with no merge of the others?',
-          {
-            true: 'One plan is already complete and self-contained; merging would add nothing material',
-            false: 'The plans hold complementary material that a final merge has to combine',
-          },
-        ),
+        stands_alone: standsAlone(input.stage),
         ...disputeQuestions(input.plans, disputes),
       },
     })

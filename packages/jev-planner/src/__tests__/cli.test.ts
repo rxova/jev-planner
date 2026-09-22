@@ -243,6 +243,30 @@ describe('main', () => {
     expect(h.planned()).not.toHaveProperty('stragglerGraceMs')
   })
 
+  it('passes --mode fast with a straggler grace', async () => {
+    const h = harness()
+    await expect(main(['--mode', 'fast', '--straggler-grace', '30', 'task'], h.deps)).resolves.toBe(
+      0,
+    )
+    expect(h.planned()).toMatchObject({ mode: 'fast', stragglerGraceMs: 30_000 })
+  })
+
+  it('says a fast run that took a draft whole selected it, and a merged one merged', () => {
+    const fast = {
+      mode: 'fast' as const,
+      reviewMode: 'standard' as const,
+      reviewRounds: 0,
+      agentCalls: 2,
+      jevCalls: 1,
+    }
+    expect(costLine({ ...fast, synthesized: false, dropped: ['codex'] })).toBe(
+      'fast mode, 2 agent calls, 1 Jev call, 0 cross-review rounds, selected, not waited for: codex',
+    )
+    expect(costLine({ ...fast, agentCalls: 3, jevCalls: 3, synthesized: true, dropped: [] })).toBe(
+      'fast mode, 3 agent calls, 3 Jev calls, 0 cross-review rounds, merged',
+    )
+  })
+
   it('reports what the run cost on stderr, singular and plural', () => {
     expect(costLine(cost)).toBe(
       'balanced mode, 3 agent calls, 1 Jev call, 0 cross-review rounds, merged',
@@ -651,7 +675,7 @@ describe('main', () => {
         '--timeout must be a positive number',
       )
       await expect(failure(['--mode', 'turbo', 'task'])).resolves.toContain(
-        'Invalid --mode value: turbo. Expected balanced or ultra.',
+        'Invalid --mode value: turbo. Expected fast, balanced or ultra.',
       )
       await expect(failure(['--straggler-grace=-1', 'task'])).resolves.toContain(
         '--straggler-grace must be a number of seconds, 0 or more',
@@ -661,7 +685,13 @@ describe('main', () => {
       )
       await expect(
         failure(['--mode', 'ultra', '--straggler-grace', '30', 'task']),
-      ).resolves.toContain('--straggler-grace is for --mode balanced')
+      ).resolves.toContain('--straggler-grace is for --mode balanced or fast')
+      await expect(
+        failure(['--mode', 'fast', '--review-mode', 'debate', 'task']),
+      ).resolves.toContain('--review-mode debate needs a review round, and --mode fast has none')
+      await expect(failure(['--mode', 'fast', '--claim-checks', 'task'])).resolves.toContain(
+        '--claim-checks needs a review round, and --mode fast has none',
+      )
     })
 
     it('rejects an invalid agent list', async () => {

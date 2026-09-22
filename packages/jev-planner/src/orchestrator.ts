@@ -74,6 +74,12 @@ const labelsOf = (agents: readonly PlanningAgent[]) => agents.map(({ label }) =>
 const byName = (drafts: readonly Draft[]) =>
   Object.fromEntries(drafts.map(({ agent, plan }) => [agent.name, plan]))
 
+/** A draft Jev judged final on its own, in `fast` mode, and that verdict. */
+interface Accepted {
+  draft: Draft
+  verdict: JevVerdict
+}
+
 /** What a debate settled, kept for the passes and the merge after it. */
 interface DebateOutcome {
   drafts: Draft[]
@@ -111,6 +117,9 @@ export class Planner {
       options.reviewMode ?? (options.claimChecks ? 'debate' : 'standard')
     if (options.claimChecks && reviewMode !== 'debate') {
       throw new Error("Claim checks run in the debate review: set reviewMode to 'debate'")
+    }
+    if (mode === 'fast' && reviewMode === 'debate') {
+      throw new Error('The debate review is a review round, and fast mode has none')
     }
     if (reviewMode === 'debate' && maxReviewRounds < 1) {
       throw new Error('The debate review is a review round: maxReviewRounds must be at least 1')
@@ -237,7 +246,7 @@ export class Planner {
       )
     const judge = (
       drafts: readonly Draft[],
-      judged: 'draft' | 'review',
+      judged: 'solo' | 'draft' | 'review',
       disputes: readonly Dispute[] = [],
     ) => {
       cost.jevCalls += 1
@@ -255,7 +264,8 @@ export class Planner {
             ...(options.jevModel ? { model: options.jevModel } : {}),
           }),
         (ms) => {
-          jevMs = ms
+          // `fast` judges several drafts alone in one round; the round shows them all.
+          jevMs = (jevMs ?? 0) + ms
         },
       )
     }
@@ -417,42 +427,79 @@ export class Planner {
     }
     let debated: DebateOutcome | undefined
 
+    const draftCalls: RoundCall[] = this.agents.map((agent) => ({
+      agent,
+      prompt: initialPlanPrompt(
+        options.task,
+        labelsOf(this.agents.filter((peer) => peer !== agent)),
+      ),
+      later: undefined,
+    }))
     stage(`Drafting independent plans with ${listLabels(labelsOf(this.agents))}…`)
-    let drafts = await runRound(
-      this.agents.map((agent) => ({
-        agent,
-        prompt: initialPlanPrompt(
-          options.task,
-          labelsOf(this.agents.filter((peer) => peer !== agent)),
-        ),
-        later: undefined,
-      })),
-    )
 
+    let drafts: Draft[]
     let verdict: JevVerdict
-    if (mode === 'ultra' && maxReviewRounds > 0) {
-      // Every agent reads every other draft, whatever the drafts turned out to be.
-      await report('draft', byName(drafts))
-      if (reviewMode === 'debate') {
-        debated = await debate(drafts)
-        ;({ drafts, verdict } = debated)
+    let accepted: Accepted | undefined
+    if (mode === 'fast') {
+      // Each draft is judged alone as it arrives; the first one Jev accepts ends the run.
+      ;({ drafts, accepted } = await this.firstAccepted(
+        draftCalls,
+        generate,
+        graceMs,
+        (agent, winner) => {
+          cost.dropped.push(agent.name)
+          stage(
+            winner
+              ? `Jev accepted ${winner.agent.label}'s draft; stopping ${agent.label}…`
+              : `${agent.label} is still working; the round goes on without it…`,
+          )
+        },
+        async (draft) => {
+          stage(`Jev is judging ${draft.agent.label}'s draft alone…`)
+          const solo = await judge([draft], 'solo')
+          if (solo.standsAloneProbability < STANDS_ALONE) {
+            stage(
+              `Jev judged ${draft.agent.label}'s draft not final on its own (${solo.standsAloneProbability.toFixed(2)})…`,
+            )
+          }
+          return solo
+        },
+      ))
+      if (accepted) {
+        verdict = accepted.verdict
       } else {
-        stage(crossReview(drafts.length))
-        drafts = await revise(drafts)
+        // No draft stands alone: judge them together to choose who merges them.
         stage('Asking Jev for typed quality and routing decisions…')
-        verdict = await judge(drafts, 'review')
-        await report('review', byName(drafts), { verdict })
+        verdict = await judge(drafts, 'draft')
       }
-      cost.reviewRounds = 1
-    } else {
-      // Judge the drafts first: a cross-review that would change nothing is a
-      // whole round of agent calls, and Jev answers for the price of one call.
-      stage('Asking Jev for typed quality and routing decisions…')
-      verdict = await judge(drafts, 'draft')
       await report('draft', byName(drafts), { verdict })
+    } else {
+      drafts = await runRound(draftCalls)
+      if (mode === 'ultra' && maxReviewRounds > 0) {
+        // Every agent reads every other draft, whatever the drafts turned out to be.
+        await report('draft', byName(drafts))
+        if (reviewMode === 'debate') {
+          debated = await debate(drafts)
+          ;({ drafts, verdict } = debated)
+        } else {
+          stage(crossReview(drafts.length))
+          drafts = await revise(drafts)
+          stage('Asking Jev for typed quality and routing decisions…')
+          verdict = await judge(drafts, 'review')
+          await report('review', byName(drafts), { verdict })
+        }
+        cost.reviewRounds = 1
+      } else {
+        // Judge the drafts first: a cross-review that would change nothing is a
+        // whole round of agent calls, and Jev answers for the price of one call.
+        stage('Asking Jev for typed quality and routing decisions…')
+        verdict = await judge(drafts, 'draft')
+        await report('draft', byName(drafts), { verdict })
+      }
     }
 
     while (
+      mode !== 'fast' &&
       cost.reviewRounds < maxReviewRounds &&
       verdict.needsAnotherPassProbability >= NEEDS_ANOTHER_PASS
     ) {
@@ -504,7 +551,8 @@ export class Planner {
       mode === 'balanced' &&
       finalizerOverride === undefined &&
       verdict.standsAloneProbability >= STANDS_ALONE
-    const adopted = selected ?? (standsAlone ? this.strongest(drafts, verdict) : undefined)
+    const adopted =
+      accepted?.draft ?? selected ?? (standsAlone ? this.strongest(drafts, verdict) : undefined)
 
     if (adopted) {
       stage(
@@ -659,6 +707,131 @@ export class Planner {
             finish(() => {
               reject(error instanceof Error ? error : new Error(String(error)))
             })
+          },
+        )
+      }
+    })
+  }
+
+  /**
+   * The draft round of `fast` mode: every agent drafts at once, and each draft
+   * is handed to `judgeSolo` as it arrives, one at a time, in arrival order.
+   * The first one whose verdict stands alone is accepted: the calls still
+   * running are aborted and reported to `onDrop` with it, and the round
+   * resolves with every draft that arrived, those still waiting to be judged
+   * included. With none accepted, it resolves once every call has answered
+   * and every draft has been judged.
+   *
+   * The grace works as in `round`: once half the agents have answered, the
+   * rest get `graceMs`, and the round never cuts below two drafts. It is kept
+   * apart from `round` so that `balanced` and `ultra` run exactly the code
+   * they always have. An agent or Jev failing before a draft is accepted
+   * aborts the calls still running and rejects the round.
+   */
+  private firstAccepted(
+    calls: readonly RoundCall[],
+    generate: Generate,
+    graceMs: number,
+    onDrop: (agent: PlanningAgent, accepted?: Draft) => void,
+    judgeSolo: (draft: Draft) => Promise<JevVerdict>,
+  ): Promise<{ drafts: Draft[]; accepted?: Accepted }> {
+    return new Promise((resolve, reject) => {
+      interface Pending {
+        call: RoundCall
+        controller: AbortController
+        plan?: string
+        dropped?: true
+      }
+      const pending: Pending[] = calls.map((call) => ({ call, controller: new AbortController() }))
+      const quorum = Math.max(1, Math.ceil(pending.length / 2))
+      const queue: Draft[] = []
+      let answered = 0
+      let judging = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let settled = false
+
+      const running = () =>
+        pending.filter((entry) => entry.plan === undefined && entry.dropped === undefined)
+      const finish = (callback: () => void): void => {
+        if (settled) return
+        settled = true
+        if (timer !== undefined) clearTimeout(timer)
+        callback()
+      }
+      const resolveWith = (accepted?: Accepted): void => {
+        finish(() => {
+          resolve({
+            drafts: pending.flatMap(({ call, plan }) =>
+              plan === undefined ? [] : [{ agent: call.agent, plan }],
+            ),
+            ...(accepted ? { accepted } : {}),
+          })
+        })
+      }
+      const fail = (error: unknown): void => {
+        for (const entry of running()) {
+          entry.dropped = true
+          entry.controller.abort()
+        }
+        finish(() => {
+          reject(error instanceof Error ? error : new Error(String(error)))
+        })
+      }
+
+      const judgeNext = (): void => {
+        if (settled || judging) return
+        const draft = queue.shift()
+        if (!draft) {
+          if (running().length === 0) resolveWith()
+          return
+        }
+        judging = true
+        judgeSolo(draft).then((verdict) => {
+          judging = false
+          if (settled) return
+          if (verdict.standsAloneProbability < STANDS_ALONE) {
+            judgeNext()
+            return
+          }
+          for (const entry of running()) {
+            entry.dropped = true
+            entry.controller.abort()
+            onDrop(entry.call.agent, draft)
+          }
+          resolveWith({ draft, verdict })
+        }, fail)
+      }
+
+      const cutOff = (): void => {
+        // Every call is a draft, and a draft has nothing to stand in for it.
+        let remaining = pending.length
+        for (const entry of running()) {
+          if (remaining - 1 < MIN_PLANS) continue
+          remaining -= 1
+          entry.dropped = true
+          entry.controller.abort()
+          onDrop(entry.call.agent)
+        }
+        judgeNext()
+      }
+
+      for (const entry of pending) {
+        const { agent, prompt, later } = entry.call
+        generate(agent, prompt, later, entry.controller.signal).then(
+          (plan) => {
+            if (settled || entry.dropped !== undefined) return
+            entry.plan = plan
+            answered += 1
+            if (graceMs > 0 && timer === undefined && answered >= quorum) {
+              timer = setTimeout(cutOff, graceMs)
+            }
+            queue.push({ agent, plan })
+            judgeNext()
+          },
+          (error: unknown) => {
+            // A call this round aborted was already accounted for.
+            if (entry.dropped !== undefined) return
+            fail(error)
           },
         )
       }

@@ -79,9 +79,9 @@ as it stands: every plan has answered the others by then, so the merge would rew
 there. A plan that has not been cross-reviewed is never adopted this way — the merge is the only
 place the agents' material comes together, so it always runs.
 
-## Balanced or ultra, in short
+## Fast, balanced or ultra, in short
 
-Both modes start the same way: every agent writes its own plan, at the same time. They differ in
+All three modes start the same way: every agent writes its own plan, at the same time. They differ in
 what happens next.
 
 - **`ultra` runs every step, every time.** The agents always read each other's plans and improve
@@ -91,9 +91,18 @@ what happens next.
   skips the cross-review and goes straight to the merge: three calls in two rounds. After a
   cross-review, when one plan is already final, it answers with that plan and skips the merge. It
   also stops waiting for a slow agent once the others have answered.
+- **`fast` takes the first draft Jev accepts.** Jev judges each draft on its own as it arrives, and
+  the first one it rates final as it stands is the answer: the agents still drafting are stopped.
+  With two agents that can be two calls in one round. When Jev accepts none, the drafts are merged
+  with no cross-review.
 
 `balanced` is quicker because rounds, not calls, are what take the time. The price is trusting Jev's
 call on which steps a plan can do without. Use `ultra` when the plan matters more than the wait.
+
+`fast` goes further and pays for it: an accepted plan is one agent's work that no other agent has
+read, and the quickest agent is judged first, so a quick plan that clears the bar beats a slower,
+better one nobody waited for. An agent stopped mid-draft has still spent what it used. Use `fast`
+when one good plan is enough.
 
 ## Why the mode matters
 
@@ -105,7 +114,8 @@ worth it.
 `balanced` also stops a round waiting on one slow agent: once half of them have answered, the rest get
 `--straggler-grace` seconds (90 by default) and are then dropped, with their calls aborted rather
 than left running and billing. A round never falls below two plans, and an agent dropped from a
-cross-review keeps the plan it had. `ultra` always waits for every agent.
+cross-review keeps the plan it had. `fast` applies the same grace to its drafts. `ultra` always
+waits for every agent.
 
 Every run reports what it spent on stderr, and `--json` includes it as `cost`:
 

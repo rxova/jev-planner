@@ -131,6 +131,37 @@ describe('TypeSafeJevJudge', () => {
     await expect(judged('review')).resolves.toContain('each agent has read every other plan')
   })
 
+  it('judges one draft alone: its own stage, a solo stands-alone question, one agent to choose', async () => {
+    const { client, requests } = fakeClient()
+    await new TypeSafeJevJudge(client).judge({
+      task: 'task',
+      plans: [{ agent: 'claude', label: 'Claude', plan: 'a' }],
+      stage: 'solo',
+    })
+
+    const sent = requests[0] as {
+      state: { stage: string }
+      questions: Record<string, { instructions: unknown; criteria: Record<string, string> }>
+    }
+    expect(sent.state.stage).toContain('judged alone')
+    expect(JSON.stringify(sent.questions.stands_alone)).toContain('with no review or merge')
+    expect(Object.keys(sent.questions.stronger_plan?.criteria ?? {})).toEqual(['claude', 'tie'])
+    expect(Object.keys(sent.questions.finalizer?.criteria ?? {})).toEqual(['claude'])
+  })
+
+  it('keeps the joint stands-alone question for drafts and reviews', async () => {
+    const { client, requests } = fakeClient()
+    await new TypeSafeJevJudge(client).judge({
+      task: 'task',
+      plans: [
+        { agent: 'codex', label: 'Codex', plan: 'a' },
+        { agent: 'claude', label: 'Claude', plan: 'b' },
+      ],
+      stage: 'draft',
+    })
+    expect(JSON.stringify(requests[0]?.questions)).toContain('with no merge of the others')
+  })
+
   it("leaves the model to the SDK's default and truncates oversized plans", async () => {
     const { client, requests } = fakeClient()
     await new TypeSafeJevJudge(client).judge({
