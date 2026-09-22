@@ -56,6 +56,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
+    "@rxova/planner-core": "workspace:^",
     "@typesafe-ai/sdk": "^0.6.0"
   },
   "devDependencies": {

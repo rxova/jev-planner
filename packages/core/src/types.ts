@@ -4,30 +4,30 @@ export type AgentName = string
 /**
  * How much work a run spends before it answers.
  *
- * - `fast` answers with the first draft Jev rates 0.5 or more to stand alone,
+ * - `fast` answers with the first draft the judge rates 0.5 or more to stand alone,
  *   and stops the agents still drafting. That plan is one agent's, which no
  *   other agent has seen, and the quickest agent's draft is judged first, so it
- *   has the first chance. When Jev accepts no draft, the drafts are merged with
+ *   has the first chance. When the judge accepts no draft, the drafts are merged with
  *   no cross-review. It never cross-reviews.
- * - `balanced` lets Jev cut the run short: it judges the drafts first and orders a
+ * - `balanced` lets the judge cut the run short: it judges the drafts first and orders a
  *   cross-review only when one would help, adopts a cross-reviewed plan that
  *   already stands alone instead of paying for a merge, and stops waiting on a
  *   straggling agent once the round has enough plans.
- * - `ultra` always runs the first cross-review, a second when Jev asks for it,
- *   and then merges, unless `selectStronger` keeps the reviewed plan Jev rates
+ * - `ultra` always runs the first cross-review, a second when the judge asks for it,
+ *   and then merges, unless `selectStronger` keeps the reviewed plan the judge rates
  *   stronger: 2N + 1 agent calls in three sequential rounds, or 3N + 1 in four.
  */
 export type PlanMode = 'fast' | 'balanced' | 'ultra'
 
 /**
- * How the agents review each other once Jev orders a cross-review.
+ * How the agents review each other once the judge orders a cross-review.
  *
  * - `standard` has each agent read every other plan and return a revised one.
  * - `debate` (experimental) turns the first cross-review into an argument: each
  *   agent lists its objections to every other plan, each author accepts or
- *   rejects the objections it received and revises its plan, and Jev rules on
- *   every objection an author rejected. A second pass, when Jev asks for one,
- *   is aimed at the disagreements Jev's rulings left open.
+ *   rejects the objections it received and revises its plan, and the judge rules on
+ *   every objection an author rejected. A second pass, when the judge asks for one,
+ *   is aimed at the disagreements the judge's rulings left open.
  */
 export type ReviewMode = 'standard' | 'debate'
 
@@ -64,7 +64,7 @@ export interface ClaimCheck {
 }
 
 /**
- * An objection its author rejected, for Jev to rule on. The same claim from
+ * An objection its author rejected, for the judge to rule on. The same claim from
  * several critics against the same plan is one dispute.
  */
 export interface Dispute {
@@ -86,7 +86,7 @@ export interface Dispute {
   check?: ClaimCheck
 }
 
-/** Jev's ruling on one dispute. */
+/** The judge's ruling on one dispute. */
 export interface DisputeRuling {
   /** The `Dispute.id` it rules on. */
   id: string
@@ -103,9 +103,9 @@ export interface RoundDebate {
   replies?: Reply[]
   /** The ids of objections that got no parseable reply, including those to a dropped author. */
   unanswered?: string[]
-  /** The rejected objections Jev rules on: at most eight, ranked. */
+  /** The rejected objections the judge rules on: at most eight, ranked. */
   disputes?: Dispute[]
-  /** Rejected objections past the cap, which Jev did not rule on. */
+  /** Rejected objections past the cap, which the judge did not rule on. */
   overflow?: Dispute[]
   /** Whether claim checks ran, when they were asked for. */
   claimChecks?: 'ran' | 'skipped'
@@ -148,13 +148,13 @@ export interface AgentRequest {
 
 export interface PlanningAgent {
   /**
-   * Unique in a run: what `--finalizer`, the Jev verdict, objection ids and the
+   * Unique in a run: what `--finalizer`, the judge's verdict, objection ids and the
    * rounds files use. Its provider id, unless named (`--agents codex:sol`).
    */
   readonly name: AgentName
   /**
-   * How prompts, stages, the plan and Jev refer to it: `Codex`, `DeepSeek`, or
-   * `Codex (sol)` for a named one. Keep labels unique too: Jev tells plans
+   * How prompts, stages, the plan and the judge refer to it: `Codex`, `DeepSeek`, or
+   * `Codex (sol)` for a named one. Keep labels unique too: the judge tells plans
    * apart by label.
    */
   readonly label: string
@@ -167,7 +167,8 @@ export interface PlanningAgent {
   generate(request: AgentRequest): Promise<string>
 }
 
-export interface JevVerdict {
+/** The judge's answer on one set of plans. Every confidence and probability is from 0 to 1, every score from 0 to 3. */
+export interface Verdict {
   /** An agent's name, or `'tie'`. */
   strongerPlan: string
   strongerPlanConfidence: number
@@ -186,19 +187,27 @@ export interface JevVerdict {
    * rather than a synthesis call.
    */
   standsAloneProbability: number
-  /** Jev's ruling on each dispute it was given, in `debate` review; absent when it was given none. */
+  /** The judge's ruling on each dispute it was given, in `debate` review; absent when it was given none. */
   disputes?: DisputeRuling[]
   model: string
 }
 
-/** One plan, for Jev: the agent that wrote it and the text. */
+/** One plan, for the judge: the agent that wrote it and the text. */
 export interface JudgedPlan {
   agent: AgentName
   label: string
   plan: string
 }
 
-export interface JevJudge {
+/**
+ * What rates a run's plans and routes it: which plan is stronger, who merges,
+ * whether another pass would help, and the rulings on a debate's disputes.
+ * The planner never calls a model for this itself; `TypeSafeJevJudge` in
+ * `jev-planner` is one judge.
+ */
+export interface PlanJudge {
+  /** How the run's stage messages refer to the judge: `Jev`. */
+  readonly name: string
   judge(input: {
     task: string
     plans: readonly JudgedPlan[]
@@ -211,8 +220,9 @@ export interface JevJudge {
     stage: 'solo' | 'draft' | 'review'
     /** In `debate` review, the rejected objections to rule on alongside the plans. */
     disputes?: readonly Dispute[]
+    /** `PlanOptions.judgeModel`, when the run set one. */
     model?: string
-  }): Promise<JevVerdict>
+  }): Promise<Verdict>
 }
 
 export interface PlanOptions {
@@ -220,17 +230,17 @@ export interface PlanOptions {
   cwd: string
   timeoutMs: number
   /**
-   * `balanced` (the default) lets Jev skip work a run does not need; `ultra`
-   * never skips; `fast` answers with the first draft Jev accepts. See `PlanMode`.
+   * `balanced` (the default) lets the judge skip work a run does not need; `ultra`
+   * never skips; `fast` answers with the first draft the judge accepts. See `PlanMode`.
    */
   mode?: PlanMode
-  /** Cross-review rounds a run may spend; `balanced` runs only the ones Jev asks for, `fast` none. */
+  /** Cross-review rounds a run may spend; `balanced` runs only the ones the judge asks for, `fast` none. */
   maxReviewRounds?: 0 | 1 | 2
   /** `standard` (the default) or `debate`; see `ReviewMode`. */
   reviewMode?: ReviewMode
   /**
    * In `debate` review, have an agent that reads the repository check each
-   * disputed claim about it before Jev rules. Needs two or more such agents;
+   * disputed claim about it before the judge rules. Needs two or more such agents;
    * with fewer, the checks are skipped and the run says so. `false` by default.
    * Neither this nor `reviewMode: 'debate'` is allowed in `fast` mode, which has no review.
    */
@@ -242,10 +252,11 @@ export interface PlanOptions {
    * plans, so nothing is dropped that the round still needs.
    */
   stragglerGraceMs?: number
-  jevModel?: string
+  /** The model the judge should use, passed to it as `model`; what that names is up to the judge. */
+  judgeModel?: string
   /**
-   * Override Jev's choice; must be the name of one of the planner's agents.
-   * In `fast` mode it only chooses who merges when Jev accepts no draft.
+   * Override the judge's choice; must be the name of one of the planner's agents.
+   * In `fast` mode it only chooses who merges when the judge accepts no draft.
    */
   finalizer?: AgentName
   /**
@@ -254,7 +265,7 @@ export interface PlanOptions {
    */
   allowAnyTask?: boolean
   /**
-   * Skip the synthesis when Jev rates one cross-reviewed plan stronger, and
+   * Skip the synthesis when the judge rates one cross-reviewed plan stronger, and
    * return that plan as it is, whatever `standsAloneProbability` says. Saves
    * the last agent call at some cost in quality. On a tie, or when no
    * cross-review ran, the finalizer still merges the plans. `false` by default.
@@ -301,8 +312,8 @@ export interface PlanRound {
   artifacts?: Record<AgentName, string>
   /** In a `debate` review, what the round's answers said, parsed. */
   debate?: RoundDebate
-  /** Jev's verdict on this round's plans, and the one the final plan followed. */
-  verdict?: JevVerdict
+  /** The judge's verdict on this round's plans, and the one the final plan followed. */
+  verdict?: Verdict
   /** How long the round took. */
   timings: RoundTimings
   /**
@@ -315,12 +326,12 @@ export interface PlanRound {
 
 /** How long one round of a run took, in milliseconds. */
 export interface RoundTimings {
-  /** The whole round: its agent calls, then Jev when it judged the round. */
+  /** The whole round: its agent calls, then the judge when it judged the round. */
   totalMs: number
   /** Each agent call in the round that answered, by agent name; a dropped straggler has none. */
   agents: Record<AgentName, number>
-  /** Jev judging the round's plans; in `fast` mode, every solo judgement in the round, added up. */
-  jevMs?: number
+  /** The judge's call on the round's plans; in `fast` mode, every solo judgement in the round, added up. */
+  judgeMs?: number
 }
 
 /** How long a whole run took, in milliseconds. */
@@ -332,13 +343,13 @@ export interface RunTimings {
 
 export interface PlanResult {
   plan: string
-  verdict: JevVerdict
+  verdict: Verdict
   /** The agent that merged the plans, or whose plan was adopted whole. */
   finalizer: AgentName
   /**
    * The plan is `finalizer`'s own plan, adopted whole rather than merged: in
-   * `balanced` mode when Jev judged it final as it stands, in `fast` mode when
-   * Jev accepted it as it arrived, or by `selectStronger`.
+   * `balanced` mode when the judge judged it final as it stands, in `fast` mode when
+   * the judge accepted it as it arrived, or by `selectStronger`.
    */
   selected?: true
   /** Each agent's last plan, by agent name; in `fast` mode, only the drafts that arrived. */
@@ -354,14 +365,14 @@ export interface PlanResult {
 export interface PlanCost {
   mode: PlanMode
   reviewMode: ReviewMode
-  /** Cross-review rounds run: `0` when Jev found the drafts ready as they were. */
+  /** Cross-review rounds run: `0` when the judge found the drafts ready as they were. */
   reviewRounds: number
   /** Whether a synthesis call merged the plans, or one plan was adopted whole. */
   synthesized: boolean
   /** Agent calls made, the synthesis included. */
   agentCalls: number
-  /** Jev evaluations made: one per judged round, and in `fast` mode one per draft judged alone. */
-  jevCalls: number
+  /** The judge evaluations made: one per judged round, and in `fast` mode one per draft judged alone. */
+  judgeCalls: number
   /**
    * Agents a round stopped waiting for, in the order they were dropped; in
    * `fast` mode, also the agents stopped once a draft was accepted.

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { bounded, disputeKey, jevQuestions, judgedPlans } from '../jev-questions.js'
+import { bounded, disputeKey, planQuestions, judgedPlans } from '../questions.js'
 
 const plans = [
   { agent: 'codex', label: 'Codex', plan: 'a' },
   { agent: 'claude', label: 'Claude', plan: 'b' },
 ]
 
-describe('jevQuestions', () => {
+describe('planQuestions', () => {
   it('falls back to what a failed judge can do without harm', () => {
-    const questions = jevQuestions({ plans, stage: 'review' })
+    const questions = planQuestions({ plans, stage: 'review' })
     // No other billed round, no adoption, a synthesis, by a real agent.
     expect(questions.needs_another_pass.fallback).toBe(0)
     expect(questions.stands_alone.fallback).toBe(0)
@@ -18,16 +18,16 @@ describe('jevQuestions', () => {
   })
 
   it('offers each agent, and tie only for the stronger plan', () => {
-    const questions = jevQuestions({ plans, stage: 'draft' })
+    const questions = planQuestions({ plans, stage: 'draft' })
     expect(Object.keys(questions.stronger_plan.options)).toEqual(['codex', 'claude', 'tie'])
     expect(Object.keys(questions.finalizer.options)).toEqual(['codex', 'claude'])
   })
 
   it('asks the solo stands-alone question of a lone draft', () => {
-    expect(jevQuestions({ plans, stage: 'solo' }).stands_alone.ask).toContain(
+    expect(planQuestions({ plans, stage: 'solo' }).stands_alone.ask).toContain(
       'with no review or merge',
     )
-    expect(jevQuestions({ plans, stage: 'review' }).stands_alone.ask).toContain(
+    expect(planQuestions({ plans, stage: 'review' }).stands_alone.ask).toContain(
       'with no merge of the others',
     )
   })
@@ -42,12 +42,17 @@ describe('jevQuestions', () => {
       rejections: ['j'],
       repo: true,
     }
-    const questions = jevQuestions({
+    const questions = planQuestions({
       plans,
       stage: 'review',
       disputes: [
         { ...dispute, id: 'D1', check: { checker: 'codex', result: 'confirm', evidence: '' } },
         { ...dispute, id: 'D2' },
+        {
+          ...dispute,
+          id: 'D3',
+          check: { checker: 'codex', result: 'refute', evidence: 'src/a.ts has x' },
+        },
       ],
     })
     expect(questions[disputeKey(0)]).toMatchObject({
@@ -56,11 +61,12 @@ describe('jevQuestions', () => {
       fallback: 'unclear',
     })
     expect(questions[disputeKey(1)]?.details).toMatchObject({ check: 'not checked' })
-    expect(Object.keys(questions)).not.toContain('dispute_3')
+    expect(questions[disputeKey(2)]?.details).toMatchObject({ check: 'REFUTE: src/a.ts has x' })
+    expect(Object.keys(questions)).not.toContain('dispute_4')
   })
 
   it('falls the finalizer back to tie only when there is no plan', () => {
-    expect(jevQuestions({ plans: [], stage: 'draft' }).finalizer.fallback).toBe('tie')
+    expect(planQuestions({ plans: [], stage: 'draft' }).finalizer.fallback).toBe('tie')
   })
 })
 
@@ -70,6 +76,6 @@ describe('judgedPlans', () => {
       codex: { author: 'Codex', plan: bounded('x'.repeat(40_001)) },
     })
     expect(bounded('short')).toBe('short')
-    expect(bounded('x'.repeat(40_001))).toMatch(/\[truncated for Jev evaluation\]$/)
+    expect(bounded('x'.repeat(40_001))).toMatch(/\[truncated for evaluation\]$/)
   })
 })

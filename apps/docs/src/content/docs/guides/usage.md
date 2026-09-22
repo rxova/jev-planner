@@ -44,7 +44,7 @@ Only the whole text is compared, so a brief that quotes a placeholder, or a shor
 - `--review-effort <name>=<level>`, repeatable, to use another effort for that agent's cross-reviews
   and synthesis only, while its draft keeps `--effort`. The later stages edit plans rather than
   explore the repository, so a lower effort is meant to make them quicker; that is not measured.
-- `--jev-model` to pin a TypeSafe model rather than use `jev-latest`.
+- `--judge-model` to pin a TypeSafe model rather than use `jev-latest`.
 - `--finalizer <name>` to override Jev's routing decision with one of the selected agents.
 - `--finalizer none` to keep the cross-reviewed plan Jev rates stronger as it is, rather than
   merge. It saves the last agent call, at the cost of the merge; on a tie, or when no cross-review
@@ -152,19 +152,19 @@ Every run writes each round's plans as soon as the round ends, to a new folder u
     round1/           the independent drafts
       codex.md
       claude.md
-      jev-verdict.json  in balanced and fast mode; ultra judges only reviewed plans
+      verdict.json  in balanced and fast mode; ultra judges only reviewed plans
       timings.json    how long the round and each call in it took, in milliseconds
     round2/           only when a cross-review ran: the revised plans, and Jev's verdict
       codex.md
       claude.md
-      jev-verdict.json
+      verdict.json
     round3/           only when Jev asked for a second review
     final/
       plan.md         the merged plan, headed by the agent that merged it, or selected from
-      jev-verdict.json  the verdict the merge followed
+      verdict.json  the verdict the merge followed
 ```
 
-In `fast` mode, `round1/jev-verdict.json` is the verdict that decided the run: the accepted draft's,
+In `fast` mode, `round1/verdict.json` is the verdict that decided the run: the accepted draft's,
 or the one Jev gave the drafts together. The verdicts of drafts it turned down alone are not saved.
 A debate adds its own files; see [debate review](debate-review.md).
 

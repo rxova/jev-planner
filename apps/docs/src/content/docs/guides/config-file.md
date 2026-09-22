@@ -48,7 +48,7 @@ Each key stands for the flag of the same name.
 | `agents.<name>.effort`, `agents.<name>.reviewEffort` | `--effort <name>=…`, `--review-effort <name>=…` | A level; only for `codex` and `claude`                          |
 | `mode`, `reviewMode`                                 | `--mode`, `--review-mode`                       | `fast`, `balanced` or `ultra`; `standard` or `debate`           |
 | `reviewRounds`                                       | `--review-rounds`                               | `0`, `1` or `2`                                                 |
-| `finalizer`, `jevModel`                              | `--finalizer`, `--jev-model`                    | As the flags take them                                          |
+| `finalizer`, `judgeModel`                            | `--finalizer`, `--judge-model`                  | As the flags take them                                          |
 | `timeout`, `stragglerGrace`                          | `--timeout`, `--straggler-grace`                | Seconds                                                         |
 | `claimChecks`, `json`, `verbose`, `allowAnyTask`     | The flags of those names                        | `true` or `false`                                               |
 | `resume`, `rounds`                                   | `--no-resume`, `--no-rounds`                    | `false` turns them off                                          |

@@ -7,7 +7,7 @@ import type { CliDeps } from '../cli.js'
 import { Planner } from '../orchestrator.js'
 import { runProcess } from '../process.js'
 import type * as processModule from '../process.js'
-import type { JevJudge, JevVerdict } from '../types.js'
+import type { PlanJudge, Verdict } from '../types.js'
 
 vi.mock('../process.js', async (importOriginal) => ({
   ...(await importOriginal<typeof processModule>()),
@@ -58,7 +58,7 @@ function scriptCodex(calls: Call[]) {
   })
 }
 
-const verdict: JevVerdict = {
+const verdict: Verdict = {
   strongerPlan: 'sol',
   strongerPlanConfidence: 0.7,
   finalizer: 'terra',
@@ -88,8 +88,9 @@ afterEach(async () => {
 async function plan(argv: string[]) {
   const calls: Call[] = []
   scriptCodex(calls)
-  const judged: Parameters<JevJudge['judge']>[0][] = []
-  const jev: JevJudge = {
+  const judged: Parameters<PlanJudge['judge']>[0][] = []
+  const jev: PlanJudge = {
+    name: 'Jev',
     judge: (input) => {
       judged.push(input)
       return Promise.resolve(verdict)
@@ -106,6 +107,14 @@ async function plan(argv: string[]) {
     createPlanner: (setup) => new Planner(createAgents(setup, {}, []), jev),
     doctor: () => Promise.resolve([]),
     now: () => new Date('2026-09-22T10:00:00Z'),
+    program: {
+      name: 'jev-planner',
+      version: '0.0.0',
+      summary: 'plans',
+      judge: 'Jev',
+      judgeModelDefault: 'jev-latest',
+      judgeEnv: [{ variable: 'TYPESAFE_API_KEY', check: 'TypeSafe key', missing: 'no key' }],
+    },
   }
   const code = await main(
     [

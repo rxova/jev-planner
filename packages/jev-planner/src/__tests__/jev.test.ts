@@ -206,7 +206,7 @@ describe('TypeSafeJevJudge', () => {
     const plans = (requests[0]?.state as { plans: Record<string, { plan: string }> }).plans
     // No override is passed, so the SDK's own default goes out.
     expect(requests[0]?.model).toBe('jev-latest')
-    expect(plans.codex?.plan).toBe(`${'x'.repeat(40_000)}\n[truncated for Jev evaluation]`)
+    expect(plans.codex?.plan).toBe(`${'x'.repeat(40_000)}\n[truncated for evaluation]`)
     expect(plans.claude?.plan).toBe('short')
   })
 

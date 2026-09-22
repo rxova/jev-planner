@@ -132,7 +132,7 @@ round3/                 the replies and the revised plans
   claude.reply.md
   replies.json          { replies, unanswered }
   disputes.json         { disputes, overflow, claimChecks? }
-  jev-verdict.json      with a ruling for each dispute
+  verdict.json      with a ruling for each dispute
 ```
 
 When claim checks run, the replies round has no verdict, and a round after it holds each checker's
@@ -140,6 +140,6 @@ When claim checks run, the replies round has no verdict, and a round after it ho
 
 From code, pass `reviewMode: 'debate'` and `claimChecks: true` in `PlanOptions`. Each round's
 `PlanRound.debate` and `PlanRound.artifacts` carry the same data, `PlanResult.debate` carries the
-last debate state, `JevVerdict.disputes` holds the rulings, and `PlanCost.reviewMode` says which
+last debate state, `Verdict.disputes` holds the rulings, and `PlanCost.reviewMode` says which
 review ran. An agent built by `cliProvider` sets `readsRepository: true`; your own `PlanningAgent`
 sets it to take part in claim checks.

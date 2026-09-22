@@ -5,13 +5,13 @@ const MAX_PLAN_CHARS = 40_000
 /** A plan cut to what a judge is shown. */
 export function bounded(text: string): string {
   if (text.length <= MAX_PLAN_CHARS) return text
-  return `${text.slice(0, MAX_PLAN_CHARS)}\n[truncated for Jev evaluation]`
+  return `${text.slice(0, MAX_PLAN_CHARS)}\n[truncated for evaluation]`
 }
 
-export type Stage = 'solo' | 'draft' | 'review'
+export type JudgeStage = 'solo' | 'draft' | 'review'
 
 /** What a judge is told the plans are. */
-export const STAGE_TEXT: Record<Stage, string> = {
+export const STAGE_TEXT: Record<JudgeStage, string> = {
   solo: "One agent's independent draft, judged alone: no other agent has seen it",
   draft: 'Independent drafts: no agent has seen another agent’s plan yet',
   review: 'Cross-reviewed plans: each agent has read every other plan and revised its own',
@@ -20,10 +20,10 @@ export const STAGE_TEXT: Record<Stage, string> = {
 type Details = Readonly<Record<string, string | readonly string[]>>
 
 /**
- * One question for a judge, whatever answers it: TypeSafe Jev or a panel of
+ * One question for a judge, whatever answers it: TypeSafe's Jev or a panel of
  * models. Each kind declares the `fallback` a judge takes when it cannot answer.
  */
-export type JevQuestion =
+export type PlanQuestion =
   | {
       readonly kind: 'choice'
       readonly ask: string
@@ -55,15 +55,15 @@ export type DisputeKey = `dispute_${number}`
 export const disputeKey = (index: number) => `dispute_${String(index + 1)}` as DisputeKey
 
 /** Each verdict field's question, keyed by the name a judge answers under. */
-export type JevQuestions = {
-  readonly stronger_plan: JevQuestion & { readonly kind: 'choice' }
-  readonly finalizer: JevQuestion & { readonly kind: 'choice' }
-  readonly completeness: JevQuestion & { readonly kind: 'score' }
-  readonly feasibility: JevQuestion & { readonly kind: 'score' }
-  readonly risk_coverage: JevQuestion & { readonly kind: 'score' }
-  readonly needs_another_pass: JevQuestion & { readonly kind: 'binary' }
-  readonly stands_alone: JevQuestion & { readonly kind: 'binary' }
-} & Readonly<Record<DisputeKey, JevQuestion & { readonly kind: 'choice' }>>
+export type PlanQuestions = {
+  readonly stronger_plan: PlanQuestion & { readonly kind: 'choice' }
+  readonly finalizer: PlanQuestion & { readonly kind: 'choice' }
+  readonly completeness: PlanQuestion & { readonly kind: 'score' }
+  readonly feasibility: PlanQuestion & { readonly kind: 'score' }
+  readonly risk_coverage: PlanQuestion & { readonly kind: 'score' }
+  readonly needs_another_pass: PlanQuestion & { readonly kind: 'binary' }
+  readonly stands_alone: PlanQuestion & { readonly kind: 'binary' }
+} & Readonly<Record<DisputeKey, PlanQuestion & { readonly kind: 'choice' }>>
 
 function agentOptions(plans: readonly JudgedPlan[], describe: (label: string) => string) {
   return Object.fromEntries(plans.map(({ agent, label }) => [agent, describe(label)]))
@@ -76,7 +76,7 @@ function labelOf(plans: readonly JudgedPlan[], agent: AgentName): string {
 function disputeQuestion(
   plans: readonly JudgedPlan[],
   dispute: Dispute,
-): JevQuestion & { readonly kind: 'choice' } {
+): PlanQuestion & { readonly kind: 'choice' } {
   const critics = dispute.critics.map((critic) => labelOf(plans, critic)).join(' and ')
   const author = labelOf(plans, dispute.target)
   return {
@@ -100,7 +100,7 @@ function disputeQuestion(
 }
 
 /** Whether the plan could be the final plan: the strongest plan, or a lone draft. */
-function standsAlone(stage: Stage): JevQuestion & { readonly kind: 'binary' } {
+function standsAlone(stage: JudgeStage): PlanQuestion & { readonly kind: 'binary' } {
   // A judge that has failed never adopts a plan: the run synthesizes instead.
   return stage === 'solo'
     ? {
@@ -120,7 +120,7 @@ function standsAlone(stage: Stage): JevQuestion & { readonly kind: 'binary' } {
 }
 
 /** A rubric of four levels; a judge that cannot answer claims the lowest. */
-function rubric(ask: string, levels: readonly string[]): JevQuestion & { readonly kind: 'score' } {
+function rubric(ask: string, levels: readonly string[]): PlanQuestion & { readonly kind: 'score' } {
   return { kind: 'score', ask, levels, fallback: 0 }
 }
 
@@ -128,13 +128,13 @@ function rubric(ask: string, levels: readonly string[]): JevQuestion & { readonl
  * Every question of one judgement, in the order a verdict reads them. The
  * `finalizer` falls back to the first plan's agent, so it is always an agent.
  */
-export function jevQuestions(input: {
+export function planQuestions(input: {
   plans: readonly JudgedPlan[]
-  stage: Stage
+  stage: JudgeStage
   disputes?: readonly Dispute[]
-}): JevQuestions {
+}): PlanQuestions {
   const { plans, stage } = input
-  const disputes: Record<DisputeKey, JevQuestion & { readonly kind: 'choice' }> = {}
+  const disputes: Record<DisputeKey, PlanQuestion & { readonly kind: 'choice' }> = {}
   input.disputes?.forEach((dispute, index) => {
     disputes[disputeKey(index)] = disputeQuestion(plans, dispute)
   })

@@ -1,15 +1,18 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CONFIG_FILE, CONFIG_KEYS, findConfig, parseConfig } from '../config.js'
+import { CONFIG_KEYS, findConfig, parseConfig } from '../config.js'
 import { PROVIDERS } from '../providers.js'
+
+const CONFIG_FILE = 'jev-planner.json'
+const setup = { file: CONFIG_FILE, judgeEnv: ['TYPESAFE_API_KEY'] }
 
 const PATH = '/repo/jev-planner.json'
 
 /** A config's values from `settings`, as a discovered file unless `explicit`. */
 const parse = (settings: unknown, explicit = false) =>
-  parseConfig(JSON.stringify(settings), PATH, explicit)
+  parseConfig(JSON.stringify(settings), PATH, explicit, setup.judgeEnv)
 
 const rejects = (settings: unknown, message: string, explicit = false) => {
   expect(() => parse(settings, explicit)).toThrow(`${PATH}: ${message}`)
@@ -31,7 +34,7 @@ describe('parseConfig', () => {
           reviewRounds: 1,
           claimChecks: true,
           finalizer: 'none',
-          jevModel: 'jev-test',
+          judgeModel: 'jev-test',
           stragglerGrace: 0,
           timeout: 120.5,
           resume: false,
@@ -56,7 +59,7 @@ describe('parseConfig', () => {
       'review-rounds': '1',
       'claim-checks': true,
       finalizer: 'none',
-      'jev-model': 'jev-test',
+      'judge-model': 'jev-test',
       'straggler-grace': '0',
       timeout: '120.5',
       resume: false,
@@ -242,76 +245,32 @@ describe('findConfig', () => {
 
   it(`reads ${CONFIG_FILE} from the folder`, async () => {
     await writeFile(join(dir, CONFIG_FILE), '{"mode":"fast"}')
-    await expect(findConfig(dir, undefined)).resolves.toEqual({
+    await expect(findConfig(dir, undefined, setup)).resolves.toEqual({
       path: join(dir, CONFIG_FILE),
       values: { model: [], effort: [], 'review-effort': [], mode: 'fast' },
     })
   })
 
   it('finds nothing, silently, when the folder has no config', async () => {
-    await expect(findConfig(dir, undefined)).resolves.toBeUndefined()
+    await expect(findConfig(dir, undefined, setup)).resolves.toBeUndefined()
   })
 
   it('reports a config it finds but cannot read', async () => {
     await mkdir(join(dir, CONFIG_FILE))
-    await expect(findConfig(dir, undefined)).rejects.toThrow(
+    await expect(findConfig(dir, undefined, setup)).rejects.toThrow(
       `Cannot read the config ${join(dir, CONFIG_FILE)}: `,
     )
   })
 
   it('needs the file passed with --config to exist, and lets it set cwd', async () => {
     const path = join(dir, 'other.json')
-    await expect(findConfig(dir, path)).rejects.toThrow(`Cannot read the config ${path}: ENOENT`)
+    await expect(findConfig(dir, path, setup)).rejects.toThrow(
+      `Cannot read the config ${path}: ENOENT`,
+    )
     await writeFile(path, '{"cwd":"."}')
-    await expect(findConfig('/elsewhere', path)).resolves.toMatchObject({
+    await expect(findConfig('/elsewhere', path, setup)).resolves.toMatchObject({
       path,
       values: { cwd: dir },
     })
-  })
-})
-
-describe('config.schema.json', () => {
-  const read = async (path: string) =>
-    JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8')) as {
-      properties: Record<string, unknown>
-    }
-
-  it('lists the keys the config reads', async () => {
-    const schema = await read('../../config.schema.json')
-    expect(Object.keys(schema.properties).sort()).toEqual([...CONFIG_KEYS].sort())
-  })
-
-  it('lists every agent, with an effort only where the agent takes one', async () => {
-    const { properties } = await read('../../config.schema.json')
-    const agents = (properties.agents as { properties: Record<string, { properties: object }> })
-      .properties
-    expect(Object.keys(agents)).toEqual(PROVIDERS.map(({ id }) => id))
-    for (const provider of PROVIDERS) {
-      expect(Object.keys(agents[provider.id]?.properties ?? {})).toEqual(
-        provider.effort ? ['model', 'effort', 'reviewEffort'] : ['model'],
-      )
-    }
-  })
-
-  it('takes a named agent of any provider, with an effort only where the provider takes one', async () => {
-    const { properties } = await read('../../config.schema.json')
-    const named = (
-      properties.agents as {
-        additionalProperties: {
-          properties: { provider: { enum: string[] } }
-          if: { properties: { provider: { enum: string[] } } }
-        }
-      }
-    ).additionalProperties
-    expect(named.properties.provider.enum).toEqual(PROVIDERS.map(({ id }) => id))
-    expect(named.if.properties.provider.enum).toEqual(
-      PROVIDERS.filter(({ effort }) => !effort).map(({ id }) => id),
-    )
-  })
-
-  it('is the copy the docs site serves, byte for byte', async () => {
-    const shipped = new URL('../../config.schema.json', import.meta.url)
-    const hosted = new URL('../../../../apps/docs/public/config.schema.json', import.meta.url)
-    expect(await readFile(hosted, 'utf8')).toBe(await readFile(shipped, 'utf8'))
   })
 })
