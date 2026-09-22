@@ -206,7 +206,7 @@ for one more pass, and the finalizer always merges. Use it when the plan matters
 
 - **Jev judges each draft alone, as it arrives.** One at a time, in the order the agents answer,
   Jev is asked whether that plan could go to an implementer as it stands. The first one it rates
-  at 0.7 or more is the answer, and the agents still drafting are stopped.
+  at 0.5 or more is the answer, and the agents still drafting are stopped.
 - **Otherwise it is `balanced` without the cross-review.** When Jev accepts no draft, it judges
   them together and the finalizer merges them; no agent reviews another's plan.
 - **It favours the quickest agent.** Whichever agent answers first is judged first, so a quick
@@ -219,6 +219,9 @@ for one more pass, and the finalizer always merges. Use it when the plan matters
 Each draft Jev judges alone is one TypeSafe call, so `fast` makes 1 … N + 1 of them. It has no
 review round, so `--review-mode debate` and `--claim-checks` are rejected with it, and
 `--review-rounds` is ignored. `--finalizer` only picks who merges when no draft is accepted.
+
+[Modes compared](https://jev-planner.com/learn/modes-compared/) plans one real task in every mode,
+with the time, rounds, calls and Jev's verdicts of each.
 
 Every run prints what it spent on stderr, and `--json` includes it as `cost`:
 

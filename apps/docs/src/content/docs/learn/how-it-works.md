@@ -92,7 +92,7 @@ what happens next.
   cross-review, when one plan is already final, it answers with that plan and skips the merge. It
   also stops waiting for a slow agent once the others have answered.
 - **`fast` takes the first draft Jev accepts.** Jev judges each draft on its own as it arrives, and
-  the first one it rates final as it stands is the answer: the agents still drafting are stopped.
+  the first one it rates 0.5 or more is the answer: the agents still drafting are stopped.
   With two agents that can be two calls in one round. When Jev accepts none, the drafts are merged
   with no cross-review.
 
@@ -102,7 +102,7 @@ call on which steps a plan can do without. Use `ultra` when the plan matters mor
 `fast` goes further and pays for it: an accepted plan is one agent's work that no other agent has
 read, and the quickest agent is judged first, so a quick plan that clears the bar beats a slower,
 better one nobody waited for. An agent stopped mid-draft has still spent what it used. Use `fast`
-when one good plan is enough.
+when one good plan is enough. [Modes compared](modes-compared.md) runs one real task all four ways.
 
 ## Why the mode matters
 
