@@ -24,6 +24,22 @@ A debate replaces the first cross-review, and runs wherever that would run: alwa
 ultra`, and in `balanced` only when Jev asks for a review of the drafts. `--mode fast` has no review
 round, so it rejects `--review-mode debate` and `--claim-checks`.
 
+```mermaid diagram=debate caption="The debate review. A dashed step runs only when there is something for it to do."
+flowchart TD
+  dd["Every agent drafts"] --> dc["Critiques<br>up to 5 objections per plan<br>this run: 10 objections"]
+  dc --> dr["Replies<br>each author accepts or rejects, and revises<br>this run: all 10 accepted"]
+  dr -.-> dx["Disputes: the rejected objections<br>Jev rules on up to 8; this run: none"]
+  dx -.->|"with --claim-checks"| dk["Claim checks against the repository<br>this run: skipped, nothing disputed"]
+  dk -.-> dj
+  dx --> dj
+  dr --> dj["Jev judges, and rules on the disputes"]
+  dj -.->|"another pass ≥ 0.65"| dp["A pass at what is still open"]
+  dp --> dm["One agent merges"]
+  dj --> dm
+```
+
+The numbers are from the debate run on [Modes compared](../learn/modes-compared.md).
+
 1. **Critiques.** Each agent reads every other plan and lists numbered objections to each, at most
    five per plan, most important first. An objection that makes a claim someone could check by
    opening a file is tagged `[repo]`. The agent writes no plan in this round.
