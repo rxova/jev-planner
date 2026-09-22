@@ -21,7 +21,8 @@ minor release.
 ## What runs
 
 A debate replaces the first cross-review, and runs wherever that would run: always in `--mode
-ultra`, and in `balanced` only when Jev asks for a review of the drafts.
+ultra`, and in `balanced` only when Jev asks for a review of the drafts. `--mode fast` has no review
+round, so it rejects `--review-mode debate` and `--claim-checks`.
 
 1. **Critiques.** Each agent reads every other plan and lists numbered objections to each, at most
    five per plan, most important first. An objection that makes a claim someone could check by

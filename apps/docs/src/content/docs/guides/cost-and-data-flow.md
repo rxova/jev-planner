@@ -22,6 +22,11 @@ cross-review — and never more than `ultra` would:
 | One cross-review, then a merge               | 2N + 1      | 3      |
 | Two cross-reviews, then a merge              | 3N + 1      | 4      |
 
+`--mode fast` makes N agent calls when Jev accepts a draft on its own, and N + 1 when it has to merge
+them, in one or two rounds. Every agent it stops mid-draft still counts, and has still billed what it
+used. It makes one Jev call per draft it judges alone, plus one to judge them together when it
+accepts none: 1 … N + 1.
+
 Each evaluation uses one TypeSafe API call; `balanced` spends one extra to judge the drafts, and each
 further review round causes one re-evaluation. Every run reports its own totals on stderr, and
 `--json` includes them as `cost`.
@@ -31,7 +36,7 @@ critique and a reply from each agent — plus one call per agent that checks a c
 `--claim-checks`. Its Jev call rules on the disagreements in the same request; see
 [debate review](debate-review.md).
 
-A `balanced` round also stops waiting for a slow agent once half the others have answered, and aborts
+A `balanced` or `fast` round also stops waiting for a slow agent once half the others have answered, and aborts
 its call rather than leave it running, so a dropped call stops billing where the provider bills by
 use.
 

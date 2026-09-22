@@ -4,6 +4,11 @@ export type AgentName = string
 /**
  * How much work a run spends before it answers.
  *
+ * - `fast` answers with the first draft Jev judges good enough on its own, and
+ *   stops the agents still drafting. That plan is one agent's, which no other
+ *   agent has seen, and the quickest agent's draft is judged first, so it wins
+ *   most runs. When Jev accepts no draft, the drafts are merged with no
+ *   cross-review. It never cross-reviews.
  * - `balanced` lets Jev cut the run short: it judges the drafts first and orders a
  *   cross-review only when one would help, adopts a cross-reviewed plan that
  *   already stands alone instead of paying for a merge, and stops waiting on a
@@ -11,7 +16,7 @@ export type AgentName = string
  * - `ultra` always cross-reviews and always merges: the most material for the
  *   money, at 2N + 1 agent calls and three sequential rounds.
  */
-export type PlanMode = 'balanced' | 'ultra'
+export type PlanMode = 'fast' | 'balanced' | 'ultra'
 
 /**
  * How the agents review each other once Jev orders a cross-review.
@@ -189,8 +194,13 @@ export interface JevJudge {
   judge(input: {
     task: string
     plans: readonly JudgedPlan[]
-    /** Whether these are the independent drafts or plans that have been cross-reviewed. */
-    stage: 'draft' | 'review'
+    /**
+     * `draft` for the independent drafts, `review` for plans that have been
+     * cross-reviewed, and `solo` for one draft judged alone in `fast` mode.
+     * A `solo` verdict's `strongerPlan` and `finalizer` can only name that
+     * agent or `tie`, and the planner ignores both.
+     */
+    stage: 'solo' | 'draft' | 'review'
     /** In `debate` review, the rejected objections to rule on alongside the plans. */
     disputes?: readonly Dispute[]
     model?: string
@@ -201,9 +211,12 @@ export interface PlanOptions {
   task: string
   cwd: string
   timeoutMs: number
-  /** `balanced` (the default) lets Jev skip work a run does not need; `ultra` never skips. */
+  /**
+   * `balanced` (the default) lets Jev skip work a run does not need; `ultra`
+   * never skips; `fast` answers with the first draft Jev accepts. See `PlanMode`.
+   */
   mode?: PlanMode
-  /** Cross-review rounds a run may spend; `balanced` runs only the ones Jev asks for. */
+  /** Cross-review rounds a run may spend; `balanced` runs only the ones Jev asks for, `fast` none. */
   maxReviewRounds?: 0 | 1 | 2
   /** `standard` (the default) or `debate`; see `ReviewMode`. */
   reviewMode?: ReviewMode
@@ -211,17 +224,21 @@ export interface PlanOptions {
    * In `debate` review, have an agent that reads the repository check each
    * disputed claim about it before Jev rules. Needs two or more such agents;
    * with fewer, the checks are skipped and the run says so. `false` by default.
+   * Neither this nor `reviewMode: 'debate'` is allowed in `fast` mode, which has no review.
    */
   claimChecks?: boolean
   /**
    * How long a round waits for the agents still working once enough of them
-   * have answered, in `balanced` mode. `0` waits for every agent, as `ultra` always
+   * have answered, in `balanced` and `fast` mode. `0` waits for every agent, as `ultra` always
    * does. A dropped agent's call is aborted, and a round never falls below two
    * plans, so nothing is dropped that the round still needs.
    */
   stragglerGraceMs?: number
   jevModel?: string
-  /** Override Jev's choice; must be the name of one of the planner's agents. */
+  /**
+   * Override Jev's choice; must be the name of one of the planner's agents.
+   * In `fast` mode it only chooses who merges when Jev accepts no draft.
+   */
   finalizer?: AgentName
   /**
    * Skip the placeholder check `plan` runs before any agent call. An empty
@@ -233,6 +250,7 @@ export interface PlanOptions {
    * return that plan as it is, whatever `standsAloneProbability` says. Saves
    * the last agent call at some cost in quality. On a tie, or when no
    * cross-review ran, the finalizer still merges the plans. `false` by default.
+   * Ignored in `fast` mode, which never cross-reviews.
    */
   selectStronger?: boolean
   /**
@@ -279,7 +297,11 @@ export interface PlanRound {
   verdict?: JevVerdict
   /** How long the round took. */
   timings: RoundTimings
-  /** On the `final` round: the plan is one agent's own, adopted whole rather than merged. */
+  /**
+   * On the `final` round: the plan is one agent's own, adopted whole rather
+   * than merged. A `fast` run that accepts a draft still reports `draft`, then
+   * `final`.
+   */
   selected?: true
 }
 
@@ -289,7 +311,7 @@ export interface RoundTimings {
   totalMs: number
   /** Each agent call in the round that answered, by agent name; a dropped straggler has none. */
   agents: Record<AgentName, number>
-  /** Jev judging the round's plans. */
+  /** Jev judging the round's plans; in `fast` mode, every solo judgement in the round, added up. */
   jevMs?: number
 }
 
@@ -307,10 +329,11 @@ export interface PlanResult {
   finalizer: AgentName
   /**
    * The plan is `finalizer`'s own plan, adopted whole rather than merged: in
-   * `balanced` mode when Jev judged it final as it stands, or by `selectStronger`.
+   * `balanced` mode when Jev judged it final as it stands, in `fast` mode when
+   * Jev accepted it as it arrived, or by `selectStronger`.
    */
   selected?: true
-  /** Each agent's last plan, by agent name. */
+  /** Each agent's last plan, by agent name; in `fast` mode, only the drafts that arrived. */
   drafts: Record<AgentName, string>
   /** The debate, in `debate` review once one ran: its objections, replies, disputes and checks. */
   debate?: RoundDebate
@@ -329,8 +352,11 @@ export interface PlanCost {
   synthesized: boolean
   /** Agent calls made, the synthesis included. */
   agentCalls: number
-  /** Jev evaluations made: one per judged round. */
+  /** Jev evaluations made: one per judged round, and in `fast` mode one per draft judged alone. */
   jevCalls: number
-  /** Agents a round stopped waiting for, in the order they were dropped. */
+  /**
+   * Agents a round stopped waiting for, in the order they were dropped; in
+   * `fast` mode, also the agents stopped once a draft was accepted.
+   */
   dropped: AgentName[]
 }

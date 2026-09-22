@@ -36,7 +36,8 @@ Options:
       --jev-model <model>     Override Jev (default: SDK's jev-latest)
       --finalizer <id>        auto, none, or one of the agents (default: auto/Jev decides);
                               none keeps a cross-reviewed plan Jev rates stronger, unmerged
-      --mode <balanced|ultra>
+      --mode <fast|balanced|ultra>
+                              fast: answer with the first draft Jev accepts alone
                               balanced: Jev skips the rounds a run does not need
                               ultra: always cross-review, always merge (default: balanced)
       --review-rounds <0|1|2> Maximum cross-review rounds (default: 2)
@@ -45,7 +46,7 @@ Options:
                               Jev rules on the disagreements (experimental; default: standard)
       --claim-checks          In a debate, have two agents that read the repository
                               check the disputed claims about it; implies debate
-      --straggler-grace <s>   In balanced mode, how long a round waits for the agents
+      --straggler-grace <s>   In balanced and fast mode, how long a round waits for the agents
                               still working once half have answered; 0 waits for
                               every agent (default: 90)
       --timeout <seconds>     Timeout for each agent call (default: 600)
@@ -304,7 +305,7 @@ export function costLine(cost: PlanCost): string {
     plural(cost.agentCalls, 'agent call'),
     plural(cost.jevCalls, 'Jev call'),
     plural(cost.reviewRounds, 'cross-review round'),
-    cost.synthesized ? 'merged' : 'adopted whole',
+    cost.synthesized ? 'merged' : cost.mode === 'fast' ? 'selected' : 'adopted whole',
   ]
   if (cost.dropped.length > 0) parts.push(`not waited for: ${cost.dropped.join(', ')}`)
   return parts.join(', ')
@@ -327,14 +328,15 @@ function parseReviewRounds(value: string | undefined): 0 | 1 | 2 {
 
 function parseMode(value: string | undefined): PlanMode {
   if (value === undefined || value === 'balanced') return 'balanced'
-  if (value === 'ultra') return 'ultra'
-  throw new Error(`Invalid --mode value: ${value}. Expected balanced or ultra.`)
+  if (value === 'ultra' || value === 'fast') return value
+  throw new Error(`Invalid --mode value: ${value}. Expected fast, balanced or ultra.`)
 }
 
 function parseReviewMode(
   value: string | undefined,
   claimChecks: boolean,
   reviewRounds: number,
+  planMode: PlanMode,
 ): ReviewMode {
   let mode: ReviewMode
   if (value === undefined) mode = claimChecks ? 'debate' : 'standard'
@@ -342,6 +344,11 @@ function parseReviewMode(
   else throw new Error(`Invalid --review-mode value: ${value}. Expected standard or debate.`)
   if (claimChecks && mode !== 'debate') {
     throw new Error('--claim-checks runs in the debate review; drop --review-mode standard')
+  }
+  if (mode === 'debate' && planMode === 'fast') {
+    throw new Error(
+      `${claimChecks ? '--claim-checks' : '--review-mode debate'} needs a review round, and --mode fast has none`,
+    )
   }
   if (mode === 'debate' && reviewRounds === 0) {
     throw new Error('--review-mode debate is a review round; it needs --review-rounds 1 or 2')
@@ -352,7 +359,7 @@ function parseReviewMode(
 function parseStragglerGrace(value: string | undefined, mode: PlanMode): number | undefined {
   if (value === undefined) return undefined
   if (mode === 'ultra')
-    throw new Error('--straggler-grace is for --mode balanced; ultra never drops an agent')
+    throw new Error('--straggler-grace is for --mode balanced or fast; ultra never drops an agent')
   const seconds = Number(value)
   if (!Number.isFinite(seconds) || seconds < 0) {
     throw new Error('--straggler-grace must be a number of seconds, 0 or more')
@@ -452,7 +459,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
   const stragglerGraceMs = parseStragglerGrace(values['straggler-grace'], mode)
   const maxReviewRounds = parseReviewRounds(values['review-rounds'])
   const claimChecks = values['claim-checks']
-  const reviewMode = parseReviewMode(values['review-mode'], claimChecks, maxReviewRounds)
+  const reviewMode = parseReviewMode(values['review-mode'], claimChecks, maxReviewRounds, mode)
   if (values['no-rounds'] && values['rounds-dir'] !== undefined) {
     throw new Error('Pass --rounds-dir or --no-rounds, not both')
   }
