@@ -1,0 +1,26 @@
+---
+/**
+ * Starlight's hero, led by the example run.
+ *
+ * Only the landing page has a hero. The transcript comes first because it tells
+ * the whole story — providers drafting, Jev judging, the cross-review, one final
+ * plan — and the title, tagline and calls to action follow as its caption.
+ */
+import Default from '@astrojs/starlight/components/Hero.astro'
+
+import TerminalDemo from '../landing/TerminalDemo.astro'
+---
+
+<div class="lead"><TerminalDemo /></div>
+<Default />
+
+<style>
+  .lead {
+    padding-top: 2.5rem;
+  }
+  /* The transcript already opens the page; the hero's own top padding would
+     leave a screen of air between it and its caption. */
+  .lead + :global(.hero) {
+    padding-top: 2rem;
+  }
+</style>
