@@ -1,7 +1,12 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
   HOME,
+  byReadingOrder,
   MAX_DESCRIPTION,
   firstSentence,
   htmlRoute,
@@ -120,5 +125,62 @@ describe('renderMarkdown', () => {
     expect(
       renderMarkdown({ ...page, title: 'Subclassing Error: what the constructor does' }),
     ).toContain('title: "Subclassing Error: what the constructor does"')
+  })
+})
+
+describe('byReadingOrder', () => {
+  const sorted = (pages) => [...pages].sort(byReadingOrder).map(({ id }) => id)
+
+  it('follows the sidebar order, not the alphabet', () => {
+    expect(
+      sorted([
+        { id: 'guides/usage', order: 2 },
+        { id: 'guides/getting-started', order: 1 },
+        { id: 'guides/config-file', order: 3 },
+      ]),
+    ).toEqual(['guides/getting-started', 'guides/usage', 'guides/config-file'])
+  })
+
+  it('puts an unordered page last and breaks ties by id', () => {
+    expect(
+      sorted([
+        { id: 'zeta', order: undefined },
+        { id: 'beta', order: 1 },
+        { id: 'alpha', order: 1 },
+        { id: 'amber', order: undefined },
+      ]),
+    ).toEqual(['alpha', 'beta', 'amber', 'zeta'])
+  })
+})
+
+// The source tree, not a fixture: `byReadingOrder` can only order pages that say
+// where they belong, and Starlight sorts a page that forgot after the rest.
+const DOCS = fileURLToPath(new URL('../content/docs', import.meta.url))
+
+const docsFiles = readdirSync(DOCS, { withFileTypes: true, recursive: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+  .map((entry) => join(entry.parentPath, entry.name))
+
+describe('the docs sources', () => {
+  it('has pages to check', () => {
+    expect(docsFiles.length).toBeGreaterThan(5)
+  })
+
+  it.each(docsFiles)('%s sets a numeric sidebar.order', (file) => {
+    const frontmatter = readFileSync(file, 'utf8').split('---')[1] ?? ''
+    expect(frontmatter, file).toMatch(/\n\s*order: \d+/)
+  })
+
+  it('keeps the quick start a quick start', () => {
+    const source = readFileSync(join(DOCS, 'guides/getting-started.md'), 'utf8')
+    expect(source).toContain('title: Quick start')
+    for (const line of [
+      'npm install -g jev-planner',
+      'TYPESAFE_API_KEY',
+      'jev-planner doctor',
+      '-o PLAN.md',
+    ]) {
+      expect(source, line).toContain(line)
+    }
   })
 })

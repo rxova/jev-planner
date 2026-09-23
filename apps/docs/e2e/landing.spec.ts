@@ -239,3 +239,33 @@ test('keeps the base on every same-site link and through navigation', async ({ p
   expect(new URL(page.url()).pathname.startsWith(base)).toBe(true)
   await expect(page.locator('h1')).not.toHaveText(/not found/i)
 })
+
+test('offers starring the repository as a call to action', async ({ page }) => {
+  await page.goto(LANDING)
+
+  const star = page.getByRole('link', { name: 'Star on GitHub' })
+  await expect(star).toBeVisible()
+  await expect(star).toHaveAttribute('href', 'https://github.com/rxova/jev-planner')
+})
+
+test('shows the four stages as a numbered list, in order', async ({ page }) => {
+  await page.goto(LANDING)
+
+  const items = page.locator('.features ol > li')
+  await expect(items).toHaveCount(4)
+  const numbers = await items.locator('h3 a .n').allTextContents()
+  expect(numbers).toEqual(['1', '2', '3', '4'])
+})
+
+test('fits the quick start through its first command without scrolling', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'a phone scrolls; the point is the first screen')
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(DOCS)
+
+  // The install block: the reader should meet it without reaching for the mouse.
+  const install = page.locator('.expressive-code').first()
+  const bottom = await install.evaluate((el) => el.getBoundingClientRect().bottom)
+  expect(bottom).toBeLessThanOrEqual(800)
+})

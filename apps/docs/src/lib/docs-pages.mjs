@@ -22,6 +22,7 @@ import { splitFenced } from './mdx-to-markdown.mjs'
  * @property {string} title Frontmatter title.
  * @property {string | undefined} description Frontmatter description, or the first sentence.
  * @property {string} section Top-level directory, or `root`.
+ * @property {number | undefined} order Frontmatter `sidebar.order`; unset sorts last.
  * @property {string} mdRoute The `.md` route, relative to this build's base.
  * @property {string} htmlUrl Absolute URL of the canonical HTML page.
  * @property {string} mdUrl Absolute URL of the `.md` twin.
@@ -44,6 +45,22 @@ export const mdRoute = (id) => `/${id || HOME}.md`
 
 /** The canonical HTML route, which the `.md` twin cites as its source. */
 export const htmlRoute = (id) => (!id || id === HOME ? '/' : `/${id}/`)
+
+/**
+ * Reading order: the sidebar's order, then the id as a tiebreaker.
+ *
+ * The same rule Starlight applies to the sidebar, applied to every enumeration
+ * of the docs — the `.md` twins, `llms.txt`, `llms-full.txt` — so an agent meets
+ * the pages in the order a person does. Sorting by id alone put the quick start
+ * fourth in Guides, behind pages that assume it.
+ *
+ * @param {{ order?: number, id: string }} a
+ * @param {{ order?: number, id: string }} b
+ */
+export function byReadingOrder(a, b) {
+  const rank = (page) => page.order ?? Infinity
+  return rank(a) - rank(b) || a.id.localeCompare(b.id, 'en')
+}
 
 /**
  * Which part of the site a page belongs to, as llms.txt sections.

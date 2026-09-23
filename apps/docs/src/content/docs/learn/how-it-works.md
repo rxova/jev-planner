@@ -1,6 +1,8 @@
 ---
 title: How it works
 description: Independent drafts, Jev's typed evaluation, a cross-review when it earns its place, and one final plan.
+sidebar:
+  order: 1
 ---
 
 `jev-planner` creates repository-aware implementation plans by combining two or more AIs with
