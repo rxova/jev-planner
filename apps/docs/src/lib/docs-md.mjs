@@ -14,7 +14,14 @@ import { getCollection } from 'astro:content'
 
 import { withBase } from './base-url.mjs'
 import { mdxToMarkdown } from './mdx-to-markdown.mjs'
-import { HOME, sectionOf, mdRoute, htmlRoute, firstSentence } from './docs-pages.mjs'
+import {
+  HOME,
+  byReadingOrder,
+  sectionOf,
+  mdRoute,
+  htmlRoute,
+  firstSentence,
+} from './docs-pages.mjs'
 
 /**
  * A splash page is a landing page, not a document.
@@ -27,7 +34,7 @@ import { HOME, sectionOf, mdRoute, htmlRoute, firstSentence } from './docs-pages
 const isSplash = (entry) => entry.data.template === 'splash'
 
 /**
- * Every documentation page, normalized to markdown and sorted by id.
+ * Every documentation page, normalized to markdown, in reading order.
  *
  * `origin` and `base` come from the caller's `import.meta.env`, so a preview
  * build links to itself rather than advertising production URLs.
@@ -57,6 +64,9 @@ export async function docsPages({ origin, base = '/' }) {
         title: entry.data.title,
         description: entry.data.description ?? firstSentence(body),
         section: sectionOf(id),
+        // Starlight defaults `sidebar` to an object, so this is a read, not a
+        // guess; a page without an order sorts last, as it does in the sidebar.
+        order: entry.data.sidebar?.order,
         // The route is relative to this build's base, because that is what Astro
         // writes to disk. The URLs are absolute, because a `.md` read detached
         // from the site has nothing to resolve a relative link against.
@@ -66,5 +76,5 @@ export async function docsPages({ origin, base = '/' }) {
         body: mdxToMarkdown(body, { origin, base, fromRoute: route }),
       }
     })
-    .sort((a, b) => a.id.localeCompare(b.id, 'en'))
+    .sort(byReadingOrder)
 }

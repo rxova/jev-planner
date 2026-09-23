@@ -54,7 +54,9 @@ const jsonLd = JSON.stringify({
           icon: 'right-arrow',
           variant: 'primary',
         },
-        { text: 'GitHub', link: GITHUB, icon: 'github', variant: 'minimal' },
+        // The one call to action for the repository: a secondary button beside
+        // "Get started", not the header's icon link, which reads as navigation.
+        { text: 'Star on GitHub', link: GITHUB, icon: 'github', variant: 'secondary' },
       ],
     },
   }}

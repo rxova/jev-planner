@@ -5,28 +5,42 @@
  * The whole transcript is real text in the DOM from the first byte; the reveal
  * is CSS `animation-delay` only, plays once, and is skipped entirely under
  * `prefers-reduced-motion`. No script, no loop, no blinking cursor.
+ *
+ * The stage lines are the point of the block: they name the sequence a reader
+ * is here to learn, so they are larger, lit and ruled, and the output sits under
+ * them as evidence.
  */
 import { TRANSCRIPT } from './content.mjs'
 ---
 
 <section class="terminal not-content" aria-labelledby="example-run">
-  <h2 id="example-run" class="sr-only">Example run</h2>
-  <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
-  <pre tabindex="0"><code>{
-    TRANSCRIPT.map(({ kind, text }, i) => (
-      <span class:list={['line', kind]} style={`--i: ${String(i)}`}>{text}</span>
-    ))
-  }</code></pre>
+  <h2 id="example-run">One run, stage by stage</h2>
+  <div class="window">
+    <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+    <pre tabindex="0"><code>{
+      TRANSCRIPT.map(({ kind, text }, i) => (
+        <span class:list={['line', kind]} style={`--i: ${String(i)}`}>{text}</span>
+      ))
+    }</code></pre>
+  </div>
 </section>
 
 <style>
   .terminal {
-    max-width: 48rem;
-    margin: 2.5rem auto 0;
+    max-width: 56rem;
+    margin: 3rem auto 0;
+  }
+  .window {
     border: 1px solid var(--rx-rule);
     border-radius: var(--rx-radius);
     background: var(--rx-card);
     overflow: hidden;
+  }
+  h2 {
+    margin: 0 0 1rem;
+    font-size: var(--sl-text-2xl);
+    text-align: center;
+    color: var(--rx-fg);
   }
   .bar {
     display: flex;
@@ -42,11 +56,11 @@ import { TRANSCRIPT } from './content.mjs'
   }
   pre {
     margin: 0;
-    padding: 1rem 1.25rem 1.25rem;
+    padding: 1.25rem 1.5rem 1.5rem;
     overflow-x: auto;
     font-family: var(--sl-font-mono);
-    font-size: var(--sl-text-sm);
-    line-height: 1.7;
+    font-size: var(--sl-text-base);
+    line-height: 1.8;
     color: var(--rx-muted);
   }
   .line {
@@ -60,16 +74,49 @@ import { TRANSCRIPT } from './content.mjs'
     content: '$ ' / '';
     color: var(--rx-primary);
   }
+  .stage {
+    margin-block-start: 1rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--rx-primary);
+    color: var(--rx-fg);
+    font-family: var(--sl-font);
+    font-weight: 600;
+    /* A stage label is a sentence, not a column of output: it wraps at every
+       width rather than pushing the block sideways. */
+    white-space: pre-wrap;
+  }
   .note {
     color: var(--rx-muted);
     font-style: italic;
+  }
+
+  @media (max-width: 30rem) {
+    pre {
+      font-size: var(--sl-text-sm);
+      padding: 1rem 1.25rem 1.25rem;
+    }
+    /* On a phone the output wraps too, hanging under its own first line, so the
+       page itself never scrolls sideways. */
+    .line {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      padding-left: 1.25rem;
+      text-indent: -1.25rem;
+    }
+    .stage {
+      padding-left: 0.75rem;
+      text-indent: 0;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
     .line {
       opacity: 0;
       animation: reveal 0.35s ease-out forwards;
-      animation-delay: calc(var(--i) * 0.55s + 0.3s);
+      /* The block is taller than it was, so it is the likeliest LCP element:
+         the last line lands near 2.5 s rather than 4.5 s. Opacity and transform
+         only, so nothing reflows as it plays. */
+      animation-delay: calc(var(--i) * 0.2s + 0.3s);
     }
     @keyframes reveal {
       from {
