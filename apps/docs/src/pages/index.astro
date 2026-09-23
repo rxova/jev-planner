@@ -11,7 +11,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 
 import CopyCommand from '../components/landing/CopyCommand.astro'
 import FeatureGrid from '../components/landing/FeatureGrid.astro'
-import TerminalDemo from '../components/landing/TerminalDemo.astro'
+import Pitch from '../components/landing/Pitch.astro'
 import { GET_STARTED, GITHUB, INSTALL, TAGLINE, TITLE } from '../components/landing/content.mjs'
 import { withBase } from '../lib/base-url.mjs'
 
@@ -19,7 +19,7 @@ const base = import.meta.env.BASE_URL
 
 // Starlight titles a page "<title> | jev-planner", so the page title is the
 // pitch and the hero carries the name — otherwise the tab reads the name twice.
-const pageTitle = 'Multi-agent implementation plans, arbitrated by Jev'
+const pageTitle = 'Agents that plan together, orchestrated by Jev'
 
 // Structured data for the landing page only: the docs pages are articles about
 // the tool, not the tool.
@@ -62,6 +62,6 @@ const jsonLd = JSON.stringify({
   }}
 >
   <CopyCommand command={INSTALL} />
-  <TerminalDemo />
+  <Pitch />
   <FeatureGrid />
 </StarlightPage>

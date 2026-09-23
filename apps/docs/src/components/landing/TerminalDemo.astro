@@ -1,6 +1,8 @@
 ---
 /**
- * The example run: a static transcript, revealed a line at a time.
+ * The example run: a static transcript, revealed a line at a time. It opens
+ * the landing page (overrides/Hero.astro), above the title, because it tells
+ * the whole story before a word of prose does.
  *
  * The whole transcript is real text in the DOM from the first byte; the reveal
  * is CSS `animation-delay` only, plays once, and is skipped entirely under
@@ -13,8 +15,7 @@
 import { TRANSCRIPT } from './content.mjs'
 ---
 
-<section class="terminal not-content" aria-labelledby="example-run">
-  <h2 id="example-run">One run, stage by stage</h2>
+<section class="terminal not-content" aria-label="An example run, stage by stage">
   <div class="window">
     <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
     <pre tabindex="0"><code>{
@@ -28,19 +29,13 @@ import { TRANSCRIPT } from './content.mjs'
 <style>
   .terminal {
     max-width: 56rem;
-    margin: 3rem auto 0;
+    margin: 0 auto;
   }
   .window {
     border: 1px solid var(--rx-rule);
     border-radius: var(--rx-radius);
     background: var(--rx-card);
     overflow: hidden;
-  }
-  h2 {
-    margin: 0 0 1rem;
-    font-size: var(--sl-text-2xl);
-    text-align: center;
-    color: var(--rx-fg);
   }
   .bar {
     display: flex;
@@ -63,9 +58,14 @@ import { TRANSCRIPT } from './content.mjs'
     line-height: 1.8;
     color: var(--rx-muted);
   }
+  /* Every line wraps, hanging under its own first line, so no width hides the
+     end of one off the right edge or scrolls the page sideways. */
   .line {
     display: block;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    padding-left: 1.25rem;
+    text-indent: -1.25rem;
   }
   .command {
     color: var(--rx-fg);
@@ -81,9 +81,8 @@ import { TRANSCRIPT } from './content.mjs'
     color: var(--rx-fg);
     font-family: var(--sl-font);
     font-weight: 600;
-    /* A stage label is a sentence, not a column of output: it wraps at every
-       width rather than pushing the block sideways. */
-    white-space: pre-wrap;
+    /* A stage label is a sentence behind its own rule: no hanging indent. */
+    text-indent: 0;
   }
   .note {
     color: var(--rx-muted);
@@ -94,18 +93,6 @@ import { TRANSCRIPT } from './content.mjs'
     pre {
       font-size: var(--sl-text-sm);
       padding: 1rem 1.25rem 1.25rem;
-    }
-    /* On a phone the output wraps too, hanging under its own first line, so the
-       page itself never scrolls sideways. */
-    .line {
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      padding-left: 1.25rem;
-      text-indent: -1.25rem;
-    }
-    .stage {
-      padding-left: 0.75rem;
-      text-indent: 0;
     }
   }
 
