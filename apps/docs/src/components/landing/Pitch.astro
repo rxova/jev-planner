@@ -1,0 +1,59 @@
+---
+/**
+ * Why several agents: the pitch between the install command and the example
+ * run. Its copy is PITCH in content.mjs, which the `.md` twin renders too.
+ */
+import { PITCH } from './content.mjs'
+---
+
+<section class="pitch not-content" aria-labelledby="pitch">
+  <h2 id="pitch">{PITCH.heading}</h2>
+  <ul>
+    {
+      PITCH.points.map(({ title, body }) => (
+        <li>
+          <h3>{title}</h3>
+          <p>{body}</p>
+        </li>
+      ))
+    }
+  </ul>
+</section>
+
+<style>
+  .pitch {
+    max-width: 67.5rem;
+    margin: 4rem auto 0;
+  }
+  h2 {
+    margin-bottom: 1.5rem;
+    font-size: var(--sl-text-2xl);
+    text-align: center;
+    color: var(--rx-fg);
+  }
+  ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    padding: 1.25rem;
+    border-top: 3px solid var(--rx-primary);
+    border-radius: var(--rx-radius);
+    background: var(--rx-card);
+  }
+  h3 {
+    margin: 0 0 0.5rem;
+    font-size: var(--sl-text-lg);
+    color: var(--rx-fg);
+  }
+  p {
+    margin: 0;
+    color: var(--rx-muted);
+    font-size: var(--sl-text-sm);
+    line-height: 1.6;
+  }
+</style>

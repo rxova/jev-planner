@@ -120,7 +120,8 @@ test('reaches the calls to action in reading order from the keyboard', async ({
     if (id && !order.includes(id)) order.push(id)
   }
 
-  expect(order.slice(0, 3)).toEqual(['get-started', 'copy', 'transcript'])
+  // The transcript leads the page, so it is the first stop, then the calls to action.
+  expect(order.slice(0, 3)).toEqual(['transcript', 'get-started', 'copy'])
   expect(order.filter((id) => id.startsWith('feature:'))).toHaveLength(4)
 })
 

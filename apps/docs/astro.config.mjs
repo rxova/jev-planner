@@ -83,12 +83,15 @@ export default defineConfig({
       // Mirrors TAGLINE in src/components/landing/content.mjs: the sequence, in
       // one sentence, wherever the site introduces itself.
       description:
-        'A coding task in, one implementation plan out: Codex and Claude each draft against ' +
-        'your repository, TypeSafe Jev judges the drafts and calls a cross-review when it ' +
-        'would help, and one agent writes the final plan.',
+        'Ever wanted several agents to work out one plan together? jev-planner has multiple ' +
+        'providers — or one provider, several times over — draft against your repository, read ' +
+        "and critique each other's work, and settle on one final plan, orchestrated by TypeSafe Jev.",
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/rxova/jev-planner' }],
       favicon: '/favicon.svg',
-      components: { Head: './src/components/overrides/Head.astro' },
+      components: {
+        Head: './src/components/overrides/Head.astro',
+        Hero: './src/components/overrides/Hero.astro',
+      },
       // Starlight already writes the canonical link, og:url, og:title,
       // og:description, twitter:card and the sitemap link. It has no image.
       head: [

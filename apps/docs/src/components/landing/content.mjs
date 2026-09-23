@@ -11,9 +11,41 @@ import { withBase } from '../../lib/base-url.mjs'
 export const TITLE = 'jev-planner'
 
 export const TAGLINE =
-  'A coding task in, one implementation plan out: Codex and Claude each draft against your ' +
-  'repository, TypeSafe Jev judges the drafts and calls a cross-review when it would help, and ' +
-  'one agent writes the final plan.'
+  'Ever wanted several agents to work out one plan together? jev-planner has multiple ' +
+  'providers — or one provider, several times over — draft against your repository, read and ' +
+  "critique each other's work, and settle on one final plan, orchestrated by TypeSafe Jev."
+
+/**
+ * Why run several agents instead of one: the pitch under the install command.
+ *
+ * Each point rests on the README: parallel steps that wait for their slowest
+ * agent and the round folders (What it does, Output), the cross-review and the
+ * debate review, and one provider as several agents.
+ */
+export const PITCH = {
+  heading: 'Several minds, one plan',
+  points: [
+    {
+      title: 'Every plan for the price of the slowest',
+      body:
+        'The agents work in parallel, so each step takes only as long as your slowest agent — and ' +
+        'every draft is kept in the run folder, so you already have other plans to compare.',
+    },
+    {
+      title: 'Built by everyone, orchestrated by Jev',
+      body:
+        "Each agent reads the others' plans, corrects their facts about the repository and " +
+        'revises its own — or, in a debate, objects and answers. Jev judges every round, calls ' +
+        'for another when it would help, and picks the agent that merges the strongest ideas.',
+    },
+    {
+      title: 'Any mix of agents',
+      body:
+        'Codex, Claude, DeepSeek, Kimi and GLM, in any combination of two or more — even one ' +
+        'provider several times over, each instance with its own model and effort.',
+    },
+  ],
+}
 
 export const INSTALL = 'npm install -g jev-planner'
 
@@ -21,8 +53,14 @@ export const GITHUB = 'https://github.com/rxova/jev-planner'
 
 export const GET_STARTED = '/guides/getting-started/'
 
-/** The command the transcript below runs, from the README. */
-const DEMO_COMMAND = 'jev-planner -o PLAN.md "Add per-user rate limiting to the public API"'
+/**
+ * The command the transcript below runs: three agents, two of them one provider
+ * under different names (README, One provider, several agents). Their efforts
+ * differ, so the run prints no same-provider warning.
+ */
+const DEMO_COMMAND =
+  'jev-planner --agents codex,claude:deep,claude:quick --effort quick=low ' +
+  '-o PLAN.md "Add per-user rate limiting to the public API"'
 
 /** The last line of a run, whichever way it ended. */
 const WROTE = '[jev-planner] Wrote /home/you/my-app/PLAN.md'
@@ -45,10 +83,13 @@ export const STAGES = [
   {
     n: 1,
     label: 'Draft',
-    what: 'Each agent — Codex and Claude by default — plans alone against the repository, all in parallel; none sees another draft.',
+    what: 'Every agent — different providers, or several instances of one — plans alone against the repository, all in parallel; none sees another draft.',
     href: '/learn/how-it-works/#1-independent-drafts',
     lines: [
-      { kind: 'output', text: '[jev-planner] Drafting independent plans with Codex and Claude…' },
+      {
+        kind: 'output',
+        text: '[jev-planner] Drafting independent plans with Codex, Claude (deep) and Claude (quick)…',
+      },
     ],
   },
   {
@@ -67,7 +108,7 @@ export const STAGES = [
     what: "When Jev asks for one, each agent sees every other agent's plan and returns a revised, standalone plan — which Jev judges again.",
     href: '/learn/how-it-works/#3-cross-review',
     lines: [
-      { kind: 'output', text: '[jev-planner] Cross-reviewing the 2 drafts…' },
+      { kind: 'output', text: '[jev-planner] Cross-reviewing the 3 drafts…' },
       { kind: 'output', text: '[jev-planner] Re-evaluating the revised plans with Jev…' },
     ],
   },
@@ -117,6 +158,10 @@ export function landingMarkdown({ origin, base }) {
     '```sh',
     INSTALL,
     '```',
+    '',
+    `## ${PITCH.heading}`,
+    '',
+    ...PITCH.points.map(({ title, body }) => `- **${title}.** ${body}`),
     '',
     '## Example run',
     '',

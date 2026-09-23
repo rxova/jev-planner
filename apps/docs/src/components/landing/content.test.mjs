@@ -4,7 +4,15 @@ import { fileURLToPath } from 'node:url'
 import GithubSlugger from 'github-slugger'
 import { describe, expect, it } from 'vitest'
 
-import { GET_STARTED, GITHUB, INSTALL, STAGES, TRANSCRIPT, landingMarkdown } from './content.mjs'
+import {
+  GET_STARTED,
+  GITHUB,
+  INSTALL,
+  PITCH,
+  STAGES,
+  TRANSCRIPT,
+  landingMarkdown,
+} from './content.mjs'
 
 // A sub-path base, not the production root: it is the case where a link that
 // skipped `withBase` would show.
@@ -21,6 +29,11 @@ describe('landingMarkdown', () => {
     expect(md).toContain(`\n${INSTALL}\n`)
     for (const { text } of TRANSCRIPT) expect(md).toContain(text)
     expect(md).toContain(`$ ${TRANSCRIPT[0]?.text ?? ''}`)
+  })
+
+  it('makes the whole pitch', () => {
+    expect(md).toContain(`## ${PITCH.heading}`)
+    for (const { title, body } of PITCH.points) expect(md).toContain(`**${title}.** ${body}`)
   })
 
   it('names every stage and the star call to action', () => {
