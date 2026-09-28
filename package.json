@@ -55,7 +55,7 @@
     "prettier": "^3.9.7",
     "sherif": "^1.13.0",
     "tsx": "^4.23.13",
-    "turbo": "^2.10.13",
+    "turbo": "^2.11.4",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.70.0"
   }
