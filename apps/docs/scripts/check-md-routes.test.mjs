@@ -17,7 +17,7 @@ async function dist(files) {
   return dir
 }
 
-const PREFIX = 'https://rxova.org/packages/jev-planner'
+const PREFIX = 'https://rxova.dev/packages/jev-planner'
 
 /** A twin whose `source:` frontmatter pins the site prefix the checker reads back. */
 const twin = (route, body = 'Body.') =>

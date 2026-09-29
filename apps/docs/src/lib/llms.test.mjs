@@ -7,8 +7,8 @@ const page = (id, overrides = {}) => ({
   section: id.includes('/') ? id.split('/')[0] : 'root',
   title: id,
   description: `About ${id}.`,
-  mdUrl: `https://rxova.org/${id}.md`,
-  htmlUrl: `https://rxova.org/${id}/`,
+  mdUrl: `https://rxova.dev/${id}.md`,
+  htmlUrl: `https://rxova.dev/${id}/`,
   body: `Body of ${id}.`,
   ...overrides,
 })
@@ -49,7 +49,7 @@ describe('groupPages', () => {
 })
 
 describe('llmsIndex', () => {
-  const index = llmsIndex(pages, 'https://rxova.org')
+  const index = llmsIndex(pages, 'https://rxova.dev')
 
   it('leads with the H1 and the summary blockquote llmstxt.org expects', () => {
     const lines = index.split('\n')
@@ -80,18 +80,18 @@ describe('llmsIndex', () => {
   it('points at llms-full.txt absolutely', () => {
     // This document is read detached from the site as often as it is fetched
     // from it, and a pasted copy has nothing to resolve a relative path against.
-    expect(index).toContain('https://rxova.org/llms-full.txt')
+    expect(index).toContain('https://rxova.dev/llms-full.txt')
   })
 
   it('links the .md twins, not the HTML pages', () => {
-    expect(index).toContain('- [reference/api](https://rxova.org/reference/api.md): About')
+    expect(index).toContain('- [reference/api](https://rxova.dev/reference/api.md): About')
     expect(index).not.toMatch(/\]\(https:\/\/rxova\.org\/reference\/api\/\)/)
   })
 
   it('omits the colon for a page with no description', () => {
-    const bare = llmsIndex([page('index', { description: undefined })], 'https://rxova.org')
+    const bare = llmsIndex([page('index', { description: undefined })], 'https://rxova.dev')
 
-    expect(bare).toContain('- [index](https://rxova.org/index.md)\n')
+    expect(bare).toContain('- [index](https://rxova.dev/index.md)\n')
   })
 })
 
@@ -108,7 +108,7 @@ describe('llmsFull', () => {
   })
 
   it('states each page canonical HTML URL, so a reader can cite the page', () => {
-    expect(full).toContain('Source: https://rxova.org/reference/api/')
+    expect(full).toContain('Source: https://rxova.dev/reference/api/')
   })
 
   it('repeats the same summary the index carries', () => {
