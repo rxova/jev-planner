@@ -11,7 +11,7 @@ import {
   unwrapStarlightComponents,
 } from './mdx-to-markdown.mjs'
 
-const at = { origin: 'https://rxova.org', base: '/packages/jev-planner/' }
+const at = { origin: 'https://rxova.dev', base: '/packages/jev-planner/' }
 
 describe('mapUnfenced', () => {
   it('leaves fenced content alone', () => {
@@ -98,7 +98,7 @@ describe('resolveRelativeLinks', () => {
         ...at,
         fromRoute: '/learn/getting-started.md',
       }),
-    ).toBe('See [why](https://rxova.org/packages/jev-planner/learn/why.md).')
+    ).toBe('See [why](https://rxova.dev/packages/jev-planner/learn/why.md).')
   })
 
   it('carries the fragment through', () => {
@@ -107,7 +107,7 @@ describe('resolveRelativeLinks', () => {
         ...at,
         fromRoute: '/learn/why.md',
       }),
-    ).toBe('[the table](https://rxova.org/packages/jev-planner/reference/api.md#exports)')
+    ).toBe('[the table](https://rxova.dev/packages/jev-planner/reference/api.md#exports)')
   })
 
   it('leaves a link to a non-markdown target alone', () => {
@@ -120,7 +120,7 @@ describe('resolveRelativeLinks', () => {
 describe('absolutizeUrls', () => {
   it('absolutizes a root-relative link through the mount base', () => {
     expect(absolutizeUrls('[api](/reference/api/)', at)).toBe(
-      '[api](https://rxova.org/packages/jev-planner/reference/api/)',
+      '[api](https://rxova.dev/packages/jev-planner/reference/api/)',
     )
   })
 
@@ -130,7 +130,7 @@ describe('absolutizeUrls', () => {
 
   it('resolves a BASE_URL expression attribute', () => {
     expect(absolutizeUrls('<img src={`${import.meta.env.BASE_URL}favicon.png`} />', at)).toContain(
-      'src="https://rxova.org/packages/jev-planner/favicon.png"',
+      'src="https://rxova.dev/packages/jev-planner/favicon.png"',
     )
   })
 })
@@ -150,7 +150,7 @@ describe('mdxToMarkdown', () => {
 
     const out = mdxToMarkdown(source, { ...at, fromRoute: '/learn/why.md' })
 
-    expect(out).toContain('[the API](https://rxova.org/packages/jev-planner/reference/api.md)')
+    expect(out).toContain('[the API](https://rxova.dev/packages/jev-planner/reference/api.md)')
     expect(out).toContain('# ](/not-a-link) and an import line, both verbatim')
     expect(out.match(/import \{ Tabs \}/g)).toHaveLength(1)
   })
@@ -164,8 +164,8 @@ describe('mdxToMarkdown', () => {
     })
 
     expect(out).toBe(
-      '[a](https://rxova.org/packages/jev-planner/reference/api.md) ' +
-        '[b](https://rxova.org/packages/jev-planner/reference/api/)',
+      '[a](https://rxova.dev/packages/jev-planner/reference/api.md) ' +
+        '[b](https://rxova.dev/packages/jev-planner/reference/api/)',
     )
   })
 

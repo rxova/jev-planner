@@ -133,7 +133,7 @@ describe('baseProblems', () => {
   })
 
   it('flags the old aggregator mount at any base', () => {
-    expect(baseProblems('https://rxova.org/packages/jev-planner/', '/')).toHaveLength(1)
+    expect(baseProblems('https://rxova.dev/packages/jev-planner/', '/')).toHaveLength(1)
   })
 })
 
@@ -148,7 +148,7 @@ describe('metaProblems', () => {
       'has no og:url',
       'has no og:image',
     ])
-    const elsewhere = head().replaceAll(PREFIX, 'https://rxova.org/packages/jev-planner')
+    const elsewhere = head().replaceAll(PREFIX, 'https://rxova.dev/packages/jev-planner')
     expect(metaProblems(elsewhere, PREFIX)).toHaveLength(3)
   })
 })
