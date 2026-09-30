@@ -41,10 +41,10 @@
     // Root tasks (`//#`): each reads the whole tree in one pass, so there is
     // nothing to fan out, but caching them makes an unchanged tree free — and
     // with the remote cache in CI, free on the runner too.
-    // Typed lint of jev-planner reads core's types from its dist, which a clean
-    // checkout does not have yet.
+    // Typed lint reads what a clean checkout does not have yet: core's types
+    // from its dist, and the content types Astro generates for the docs.
     "//#eslint:check": {
-      "dependsOn": ["@rxova/planner-core#build"],
+      "dependsOn": ["@rxova/planner-core#build", "@repo/docs#sync"],
       "inputs": ["$TURBO_DEFAULT$", "!**/*.{md,mdx,css,svg,png,jpg,jpeg,webp,txt}", "!LICENSE"],
       "outputs": [],
       "outputLogs": "new-only"
