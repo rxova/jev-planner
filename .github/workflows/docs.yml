@@ -240,7 +240,7 @@ jobs:
             && '--at-least' || '' }}
         run: |
           echo "Expecting jev-planner $(jq -r .version packages/jev-planner/package.json) at $SHA ${AT_LEAST}"
-          node apps/docs/scripts/check-live-site.mjs --commit "$SHA" $AT_LEAST
+          node apps/docs/scripts/check-live-site.mjs --commit "$SHA" ${AT_LEAST:+"$AT_LEAST"}
 
   live:
     if: github.event_name == 'schedule'
