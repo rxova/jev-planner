@@ -7,7 +7,7 @@
 //       task["Task and repository"] --> drafts["Every agent drafts"]
 //     ```
 //
-// The `.md` twin is built from the source (see src/lib/mdx-to-markdown.mjs), so
+// The `.md` twin is built from the source (by @rxova/docs-kit, see src/lib/docs.ts), so
 // an agent reading it gets the Mermaid text. The HTML page gets the SVG from
 // src/diagrams/<id>.svg, inlined here, in a <figure>. Several ids, comma-separated,
 // go side by side in one figure. The caption is `caption="…"` from the info
