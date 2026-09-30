@@ -1,4 +1,4 @@
-import type { KnipConfig } from 'knip'
+import { baseKnipConfig } from '@rxova/repo-config/knip'
 
 /**
  * Unused files, exports and dependencies, as a gate rather than a report.
@@ -7,28 +7,11 @@ import type { KnipConfig } from 'knip'
  * kept working, still shows up in completions, and still reads as part of the
  * contract. Nothing else in this repository notices one.
  *
- * Entry points are inferred from each package's manifest, so what follows is
- * only what inference cannot know.
+ * Entry points are inferred from each package's manifest, so the preset only
+ * needs to hear about what inference cannot see. Its `apps/docs` default covers
+ * `@rxova/brand`, which Starlight loads from a string in `customCss`.
  */
-export default {
-  // Advice nobody has to act on is advice that stops being read.
-  treatConfigHintsAsErrors: true,
-  workspaces: {
-    'packages/tooling': {
-      // Repo scripts (not their tests or types), invoked by name from package.json and CI, never imported.
-      entry: [
-        'src/{check-changeset,check-llms,pack-smoke,verify}/*.ts',
-        '!src/**/*.{test,types}.ts',
-      ],
-      // `tsx` is spawned, not imported: check-changeset.test.ts runs the script
-      // under test with `execFileSync(process.execPath, ['--import', 'tsx', …])`.
-      // Knip reads imports, so a loader named in an argument list is invisible.
-      ignoreDependencies: ['tsx'],
-    },
-    'apps/docs': {
-      // Loaded by Starlight from a string in astro.config's `customCss`, which
-      // knip does not read as an import.
-      ignoreDependencies: ['@rxova/brand'],
-    },
-  },
-} satisfies KnipConfig
+export default baseKnipConfig({
+  // `rxova-repo-config check-exports` runs `attw` from a shell command, where knip cannot see it.
+  ignoreDependencies: ['@arethetypeswrong/cli'],
+})

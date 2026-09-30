@@ -51,8 +51,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
-    "check:exports": "publint --strict && attw --pack .",
-    "pack:smoke": "node --import tsx ../tooling/src/pack-smoke/pack-smoke.ts",
+    "check:exports": "rxova-repo-config check-exports",
+    "pack:smoke": "rxova-repo-config pack-smoke",
     "prepack": "pnpm build"
   },
   "dependencies": {
@@ -60,7 +60,6 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@repo/config": "workspace:*",
     "@rxova/planner-core": "workspace:*",
     "@types/node": "^26.6.1",
     "@vitest/coverage-v8": "^5.0.1",
