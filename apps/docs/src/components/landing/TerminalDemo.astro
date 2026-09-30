@@ -12,12 +12,16 @@
  * is here to learn, so they are larger, lit and ruled, and the output sits under
  * them as evidence.
  */
-import { TRANSCRIPT } from './content.mjs'
+import { TRANSCRIPT } from "./content.mjs";
 ---
 
 <section class="terminal not-content" aria-label="An example run, stage by stage">
   <div class="window">
-    <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="bar" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
     <pre tabindex="0"><code>{
       TRANSCRIPT.map(({ kind, text }, i) => (
         <span class:list={['line', kind]} style={`--i: ${String(i)}`}>{text}</span>
@@ -71,7 +75,7 @@ import { TRANSCRIPT } from './content.mjs'
     color: var(--rx-fg);
   }
   .command::before {
-    content: '$ ' / '';
+    content: "$ " / "";
     color: var(--rx-primary);
   }
   .stage {

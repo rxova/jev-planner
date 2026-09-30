@@ -19,10 +19,10 @@
 // never touched. Getting this wrong guts the examples silently, which is exactly
 // the failure a model would not notice and would then repeat back at you.
 
-import { withBase } from './base-url.mjs'
+import { withBase } from "./base-url.mjs";
 
 /** Opening or closing fence: ``` or ~~~, three or more, optionally indented. */
-const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/
+const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 
 /**
  * Split into fenced and unfenced runs and apply `fn` to the unfenced ones only.
@@ -31,30 +31,30 @@ const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/
  * string, which is not fence content.
  */
 export function mapUnfenced(text, fn, onFenceOpen = (line) => line) {
-  const out = []
-  let buffer = []
-  let marker = null
+  const out = [];
+  let buffer = [];
+  let marker = null;
 
   const flush = () => {
-    if (buffer.length > 0) out.push(fn(buffer.join('\n')))
-    buffer = []
-  }
+    if (buffer.length > 0) out.push(fn(buffer.join("\n")));
+    buffer = [];
+  };
 
-  for (const line of text.split('\n')) {
-    const match = FENCE.exec(line)
+  for (const line of text.split("\n")) {
+    const match = FENCE.exec(line);
 
     if (marker === null) {
       if (match) {
-        flush()
-        marker = match[2]
-        out.push(onFenceOpen(line))
+        flush();
+        marker = match[2];
+        out.push(onFenceOpen(line));
       } else {
-        buffer.push(line)
+        buffer.push(line);
       }
-      continue
+      continue;
     }
 
-    out.push(line)
+    out.push(line);
     // A closing fence is the same character, at least as long, and carries no
     // info string. Anything else is content that merely looks like a fence.
     if (
@@ -63,12 +63,12 @@ export function mapUnfenced(text, fn, onFenceOpen = (line) => line) {
       match[2].length >= marker.length &&
       !match[3].trim()
     ) {
-      marker = null
+      marker = null;
     }
   }
 
-  flush()
-  return out.join('\n')
+  flush();
+  return out.join("\n");
 }
 
 /**
@@ -80,25 +80,25 @@ export function mapUnfenced(text, fn, onFenceOpen = (line) => line) {
  * normalizer can never disagree about where a fence begins.
  */
 export function splitFenced(text) {
-  const unfenced = []
-  const openers = []
+  const unfenced = [];
+  const openers = [];
   mapUnfenced(
     text,
     (chunk) => {
-      unfenced.push(chunk)
-      return chunk
+      unfenced.push(chunk);
+      return chunk;
     },
     (line) => {
-      openers.push(line)
-      return line
+      openers.push(line);
+      return line;
     },
-  )
-  return { unfenced: unfenced.join('\n'), openers }
+  );
+  return { unfenced: unfenced.join("\n"), openers };
 }
 
 /** Real MDX imports. Only ever called on unfenced text — see the header. */
 export function stripImports(text) {
-  return text.replace(/^import[ \t][^\n]*\n?/gm, '')
+  return text.replace(/^import[ \t][^\n]*\n?/gm, "");
 }
 
 /**
@@ -116,9 +116,9 @@ export function stripImports(text) {
  */
 export function unwrapStarlightComponents(text) {
   return text
-    .replace(/^[ \t]*<TabItem\b[^>]*\blabel="([^"]*)"[^>]*>[ \t]*$/gm, '#### $1\n')
-    .replace(/^[ \t]*<Card\b[^>]*\btitle="([^"]*)"[^>]*>[ \t]*$/gm, '### $1\n')
-    .replace(/^[ \t]*<\/?(?:Tabs|TabItem|CardGrid|Card)\b[^>]*>[ \t]*$/gm, '')
+    .replace(/^[ \t]*<TabItem\b[^>]*\blabel="([^"]*)"[^>]*>[ \t]*$/gm, "#### $1\n")
+    .replace(/^[ \t]*<Card\b[^>]*\btitle="([^"]*)"[^>]*>[ \t]*$/gm, "### $1\n")
+    .replace(/^[ \t]*<\/?(?:Tabs|TabItem|CardGrid|Card)\b[^>]*>[ \t]*$/gm, "");
 }
 
 /**
@@ -130,13 +130,13 @@ export function unwrapStarlightComponents(text) {
  * rather than letting it quietly resolve to something plausible.
  */
 export function normalizePath(path) {
-  const out = []
-  for (const segment of path.split('/')) {
-    if (segment === '' || segment === '.') continue
-    if (segment === '..') out.pop()
-    else out.push(segment)
+  const out = [];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") out.pop();
+    else out.push(segment);
   }
-  return `/${out.join('/')}`
+  return `/${out.join("/")}`;
 }
 
 /**
@@ -157,13 +157,13 @@ export function normalizePath(path) {
  * filename here is already lower-case, so today this only matters if one is not.
  */
 export function resolveRelativeLinks(text, { origin, base, fromRoute }) {
-  const dir = fromRoute.slice(0, fromRoute.lastIndexOf('/') + 1)
+  const dir = fromRoute.slice(0, fromRoute.lastIndexOf("/") + 1);
 
   return text.replace(
     /(\]\()(\.{1,2}\/[^)\s#]*\.md)(#[^)\s]*)?(\))/g,
-    (_, open, path, hash = '', close) =>
+    (_, open, path, hash = "", close) =>
       open + origin + withBase(normalizePath(dir + path).toLowerCase(), base) + hash + close,
-  )
+  );
 }
 
 /**
@@ -176,7 +176,7 @@ export function resolveRelativeLinks(text, { origin, base, fromRoute }) {
  * other link on the site uses.
  */
 export function absolutizeUrls(text, { origin, base }) {
-  const url = (pathname) => `${origin}${withBase(pathname, base)}`
+  const url = (pathname) => `${origin}${withBase(pathname, base)}`;
 
   return (
     text
@@ -191,7 +191,7 @@ export function absolutizeUrls(text, { origin, base }) {
         /\b(href|src)=\{`\$\{import\.meta\.env\.BASE_URL\}([^`]*)`\}/g,
         (_, attr, rest) => `${attr}="${url(`/${rest}`)}"`,
       )
-  )
+  );
 }
 
 /**
@@ -204,7 +204,7 @@ export function absolutizeUrls(text, { origin, base }) {
  * `absolutizeUrls` first would leave it the only unhandled link shape in the
  * document.
  */
-export function mdxToMarkdown(source, { origin, base = '/', fromRoute = '/index.md' }) {
+export function mdxToMarkdown(source, { origin, base = "/", fromRoute = "/index.md" }) {
   return (
     mapUnfenced(source, (chunk) =>
       absolutizeUrls(
@@ -217,7 +217,7 @@ export function mdxToMarkdown(source, { origin, base = '/', fromRoute = '/index.
       ),
     )
       // Unwrapping components and stripping imports both leave blank lines behind.
-      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\n{3,}/g, "\n\n")
       .trim()
-  )
+  );
 }

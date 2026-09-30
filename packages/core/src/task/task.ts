@@ -1,14 +1,14 @@
 /** Thrown before any agent call when the task is empty or a placeholder. */
 export class TaskValidationError extends Error {
-  override name = 'TaskValidationError'
+  override name = "TaskValidationError";
 }
 
 export const MISSING_TASK_MESSAGE =
-  'Missing coding task. Pass it as an argument, with --file, on stdin, or as task in the config file.'
+  "Missing coding task. Pass it as an argument, with --file, on stdin, or as task in the config file.";
 
 /** Piped text and a configured task at once: the pipe is never silently ignored. */
 export const STDIN_CONFLICT_MESSAGE =
-  "The task is piped on stdin and set in the config. Pass the task as an argument or with --file to override the config's task."
+  "The task is piped on stdin and set in the config. Pass the task as an argument or with --file to override the config's task.";
 
 /**
  * Whole-text placeholders, compared after normalization. Kept short and fixed:
@@ -16,37 +16,37 @@ export const STDIN_CONFLICT_MESSAGE =
  * a real incident.
  */
 const PLACEHOLDERS = new Set([
-  'describe the coding change you want to plan',
-  'your task here',
-  'todo',
-  'tbd',
-  '<coding task>',
-])
+  "describe the coding change you want to plan",
+  "your task here",
+  "todo",
+  "tbd",
+  "<coding task>",
+]);
 
 /** Unfilled template slots: `<task>`, `{{task}}`, `[task]`, as the whole text. */
-const TEMPLATE_SLOTS = [/^<[^>]*>$/, /^\{\{.*\}\}$/s, /^\[[^\]]*\]$/]
+const TEMPLATE_SLOTS = [/^<[^>]*>$/, /^\{\{.*\}\}$/s, /^\[[^\]]*\]$/];
 
-const TRAILING_PUNCTUATION = new Set('.!?,;:…')
+const TRAILING_PUNCTUATION = new Set(".!?,;:…");
 
 /** Lowercase, collapse whitespace, drop trailing punctuation: for comparison only. */
 function normalize(text: string): string {
-  const collapsed = text.toLowerCase().replace(/\s+/g, ' ')
+  const collapsed = text.toLowerCase().replace(/\s+/g, " ");
   // A loop, not `/[.!?]+$/`: that regex is quadratic on a long run of punctuation.
-  let end = collapsed.length
-  while (end > 0 && TRAILING_PUNCTUATION.has(collapsed.charAt(end - 1))) end -= 1
-  return collapsed.slice(0, end)
+  let end = collapsed.length;
+  while (end > 0 && TRAILING_PUNCTUATION.has(collapsed.charAt(end - 1))) end -= 1;
+  return collapsed.slice(0, end);
 }
 
 function preview(text: string): string {
-  const line = text.replace(/\s+/g, ' ')
-  return line.length > 60 ? `${line.slice(0, 57)}...` : line
+  const line = text.replace(/\s+/g, " ");
+  return line.length > 60 ? `${line.slice(0, 57)}...` : line;
 }
 
 /** The trimmed task, or a `TaskValidationError` if nothing is left. */
 export function requireNonEmptyTask(raw: string): string {
-  const task = raw.trim()
-  if (!task) throw new TaskValidationError(MISSING_TASK_MESSAGE)
-  return task
+  const task = raw.trim();
+  if (!task) throw new TaskValidationError(MISSING_TASK_MESSAGE);
+  return task;
 }
 
 /**
@@ -56,7 +56,7 @@ export function requireNonEmptyTask(raw: string): string {
  * that quotes a placeholder passes, and so does any short real task.
  */
 export function validateTask(raw: string): string {
-  const task = requireNonEmptyTask(raw)
+  const task = requireNonEmptyTask(raw);
   if (
     PLACEHOLDERS.has(normalize(task)) ||
     TEMPLATE_SLOTS.some((slot) => slot.test(task)) ||
@@ -64,9 +64,9 @@ export function validateTask(raw: string): string {
   ) {
     throw new TaskValidationError(
       `The task looks like a placeholder: "${preview(task)}". ` +
-        'Pass the change to plan as an argument, with --file, on stdin or in the config file, ' +
-        'or use --allow-any-task to plan it anyway.',
-    )
+        "Pass the change to plan as an argument, with --file, on stdin or in the config file, " +
+        "or use --allow-any-task to plan it anyway.",
+    );
   }
-  return task
+  return task;
 }

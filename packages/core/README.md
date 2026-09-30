@@ -23,20 +23,20 @@ npm install @rxova/planner-core
 ## Plan from code
 
 ```ts
-import { PROVIDERS, Planner } from '@rxova/planner-core'
-import type { PlanJudge } from '@rxova/planner-core'
+import { PROVIDERS, Planner } from "@rxova/planner-core";
+import type { PlanJudge } from "@rxova/planner-core";
 
-declare const judge: PlanJudge // `name`, and `judge(input)` returning a `Verdict`
+declare const judge: PlanJudge; // `name`, and `judge(input)` returning a `Verdict`
 
-const secrets = PROVIDERS.flatMap((p) => p.secretEnv)
-const agents = PROVIDERS.filter((p) => ['codex', 'claude'].includes(p.id)).map((p) =>
+const secrets = PROVIDERS.flatMap((p) => p.secretEnv);
+const agents = PROVIDERS.filter((p) => ["codex", "claude"].includes(p.id)).map((p) =>
   p.create({ env: process.env, omitEnv: secrets }),
-)
+);
 const { plan, verdict, finalizer } = await new Planner(agents, judge).plan({
-  task: 'Add rate limiting to the public API',
+  task: "Add rate limiting to the public API",
   cwd: process.cwd(),
   timeoutMs: 600_000,
-})
+});
 ```
 
 A judge answers the questions `planQuestions` builds for each round: the stronger plan, the
@@ -47,25 +47,25 @@ on each dispute. `judgedPlans` gives the plans the way a judge should be sent th
 
 ```ts
 #!/usr/bin/env node
-import { main, processDeps } from '@rxova/planner-core'
-import type { PlannerProgram } from '@rxova/planner-core'
-import { MyJudge } from './my-judge.js'
+import { main, processDeps } from "@rxova/planner-core";
+import type { PlannerProgram } from "@rxova/planner-core";
+import { MyJudge } from "./my-judge.js";
 
 const program: PlannerProgram = {
-  name: 'my-planner',
-  version: '1.0.0',
-  summary: 'coding plans from two or more agents, judged by mine',
-  judge: 'Mine',
-  judgeModelDefault: 'mine-latest',
-  judgeEnv: [{ variable: 'MY_JUDGE_KEY', check: 'Judge key', missing: 'MY_JUDGE_KEY is not set.' }],
-}
+  name: "my-planner",
+  version: "1.0.0",
+  summary: "coding plans from two or more agents, judged by mine",
+  judge: "Mine",
+  judgeModelDefault: "mine-latest",
+  judgeEnv: [{ variable: "MY_JUDGE_KEY", check: "Judge key", missing: "MY_JUDGE_KEY is not set." }],
+};
 
 void main(
   process.argv.slice(2),
   processDeps(program, () => new MyJudge()),
 ).then((code) => {
-  process.exitCode = code
-})
+  process.exitCode = code;
+});
 ```
 
 The program gets every flag jev-planner has, `doctor`, a `my-planner.json` config file and a

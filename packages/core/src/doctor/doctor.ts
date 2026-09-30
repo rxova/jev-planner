@@ -1,15 +1,15 @@
-import { errorMessage, isError } from '@rxova/ts-utils'
-import { runProcess } from '../process/process.js'
-import type { Provider } from '../provider/provider.types.js'
-import type { CheckResult } from './doctor.types.js'
+import { errorMessage, isError } from "@rxova/ts-utils";
+import { runProcess } from "../process/process.js";
+import type { Provider } from "../provider/provider.types.js";
+import type { CheckResult } from "./doctor.types.js";
 
 /** The first line of `text`, trimmed; the whole of a one-line message. */
 function firstLine(text: string): string {
-  return text.trim().replace(/\n[\s\S]*$/, '')
+  return text.trim().replace(/\n[\s\S]*$/, "");
 }
 
 export function errorDetail(error: unknown): string {
-  return isError(error) ? firstLine(error.message) : errorMessage(error)
+  return isError(error) ? firstLine(error.message) : errorMessage(error);
 }
 
 /** Passes when `command args` exits 0; the detail is the first line it printed. */
@@ -20,10 +20,10 @@ export async function commandCheck(
   cwd: string,
 ): Promise<CheckResult> {
   try {
-    const result = await runProcess(command, args, { cwd, timeoutMs: 15_000 })
-    return { name, ok: true, detail: firstLine(result.stdout || result.stderr) || 'available' }
+    const result = await runProcess(command, args, { cwd, timeoutMs: 15_000 });
+    return { name, ok: true, detail: firstLine(result.stdout || result.stderr) || "available" };
   } catch (error) {
-    return { name, ok: false, detail: errorDetail(error) }
+    return { name, ok: false, detail: errorDetail(error) };
   }
 }
 
@@ -33,8 +33,8 @@ export function envCheck(
   variable: string,
   env: Readonly<Record<string, string | undefined>>,
 ): CheckResult {
-  const set = Boolean(env[variable]?.trim())
-  return { name, ok: set, detail: `${variable} is ${set ? 'set' : 'not set'}` }
+  const set = Boolean(env[variable]?.trim());
+  return { name, ok: set, detail: `${variable} is ${set ? "set" : "not set"}` };
 }
 
 /**
@@ -46,6 +46,6 @@ export async function runDoctor(
   providers: readonly Provider[],
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<CheckResult[]> {
-  const checks = await Promise.all(providers.map((provider) => provider.doctor(cwd, env)))
-  return checks.flat()
+  const checks = await Promise.all(providers.map((provider) => provider.doctor(cwd, env)));
+  return checks.flat();
 }

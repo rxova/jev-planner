@@ -1,27 +1,27 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
-import { parseArgs } from 'node:util'
-import { errorMessage } from '@rxova/ts-utils'
-import { findConfig, validateAgentName } from '../config/config.js'
-import { envCheck } from '../doctor/doctor.js'
-import { agentLabel } from '../provider/provider.js'
-import { DEFAULT_AGENTS, PROVIDERS } from '../providers/providers.js'
-import { requireNonEmptyTask, STDIN_CONFLICT_MESSAGE, validateTask } from '../task/task.js'
-import type { ConfigValues } from '../config/config.types.js'
-import type { AgentSetup, Provider, PlanningAgent } from '../provider/provider.types.js'
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { parseArgs } from "node:util";
+import { errorMessage } from "@rxova/ts-utils";
+import { findConfig, validateAgentName } from "../config/config.js";
+import { envCheck } from "../doctor/doctor.js";
+import { agentLabel } from "../provider/provider.js";
+import { DEFAULT_AGENTS, PROVIDERS } from "../providers/providers.js";
+import { requireNonEmptyTask, STDIN_CONFLICT_MESSAGE, validateTask } from "../task/task.js";
+import type { ConfigValues } from "../config/config.types.js";
+import type { AgentSetup, Provider, PlanningAgent } from "../provider/provider.types.js";
 import type {
   PlanCost,
   PlanMode,
   PlanRound,
   ReviewMode,
-} from '../orchestrator/orchestrator.types.js'
-import type { PlannerProgram, AgentSpec, PlannerSetup, CliDeps } from './cli.types.js'
+} from "../orchestrator/orchestrator.types.js";
+import type { PlannerProgram, AgentSpec, PlannerSetup, CliDeps } from "./cli.types.js";
 
 /** The file a program's CLI looks for in the repository. */
-const configFile = (program: PlannerProgram): string => `${program.name}.json`
+const configFile = (program: PlannerProgram): string => `${program.name}.json`;
 
 /** Where a program's runs keep their rounds by default, relative to the repository. */
-const runsDir = (program: PlannerProgram): string => `.${program.name}`
+const runsDir = (program: PlannerProgram): string => `.${program.name}`;
 
 /**
  * Every secret the program knows of, the judge's and every provider's: what
@@ -30,24 +30,24 @@ const runsDir = (program: PlannerProgram): string => `.${program.name}`
 export const secretEnv = (program: PlannerProgram): string[] => [
   ...program.judgeEnv.map(({ variable }) => variable),
   ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv),
-]
+];
 
 function agentLine(provider: Provider): string {
   const access =
-    provider.kind === 'cli'
-      ? `agent CLI, reads the repository${provider.effort ? '; takes --effort' : ''}`
-      : `chat API, gets a repository snapshot; needs ${provider.secretEnv.join(', ')}`
-  return `  ${provider.id.padEnd(26)}${provider.label}: ${access}`
+    provider.kind === "cli"
+      ? `agent CLI, reads the repository${provider.effort ? "; takes --effort" : ""}`
+      : `chat API, gets a repository snapshot; needs ${provider.secretEnv.join(", ")}`;
+  return `  ${provider.id.padEnd(26)}${provider.label}: ${access}`;
 }
 
 /** `--help`'s text for `program`. */
 export function helpText(program: PlannerProgram): string {
-  const { name, judge } = program
-  const variables = program.judgeEnv.map(({ variable }) => variable)
+  const { name, judge } = program;
+  const variables = program.judgeEnv.map(({ variable }) => variable);
   const requires =
     variables.length > 0
-      ? ` ${judge} requires ${variables.join(', ')}, which the config never holds.`
-      : ''
+      ? ` ${judge} requires ${variables.join(", ")}, which the config never holds.`
+      : "";
   return `${name} — ${program.summary}
 
 Usage:
@@ -62,7 +62,7 @@ Options:
   -f, --file <path>           Read the coding task from a UTF-8 file
   -o, --output <path>         Write the final plan to a file instead of stdout
   -a, --agents <provider[:name],…>
-                              Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(',')});
+                              Two or more comma-separated agents (default: ${DEFAULT_AGENTS.join(",")});
                               a provider can appear twice under different names,
                               as codex:sol,codex:terra
   -m, --model <name>=<model>  Override one agent's model; repeatable
@@ -97,18 +97,18 @@ Options:
   -v, --version               Show version
 
 Agents:
-${PROVIDERS.map(agentLine).join('\n')}
+${PROVIDERS.map(agentLine).join("\n")}
 
 The task can also be piped on stdin. A flag given here beats the config; --json,
 --verbose, --claim-checks and --allow-any-task each have a --no- form, and --resume
 and --rounds turn back on what the config turned off. Agent CLIs use their existing
-logins.${requires}`
+logins.${requires}`;
 }
 
 /** The planner's agents for `setup`: each spec's provider, built under the spec's name and label. */
 export function createAgents(
   setup: PlannerSetup,
-  env: AgentSetup['env'],
+  env: AgentSetup["env"],
   omitEnv: readonly string[],
 ): PlanningAgent[] {
   return setup.agents.map(({ name, label, provider }) =>
@@ -120,68 +120,68 @@ export function createAgents(
       omitEnv,
       env,
     }),
-  )
+  );
 }
 
 async function assertDirectory(path: string): Promise<void> {
-  const info = await stat(path).catch(() => undefined)
-  if (!info?.isDirectory()) throw new Error(`Not a directory: ${path}`)
+  const info = await stat(path).catch(() => undefined);
+  if (!info?.isDirectory()) throw new Error(`Not a directory: ${path}`);
 }
 
-const PROVIDER_IDS = PROVIDERS.map(({ id }) => id).join(', ')
+const PROVIDER_IDS = PROVIDERS.map(({ id }) => id).join(", ");
 
 function provider(id: string, flag: string): Provider {
-  const found = PROVIDERS.find((candidate) => candidate.id === id)
-  if (!found) throw new Error(`Unknown agent in ${flag}: ${id}. Expected one of ${PROVIDER_IDS}.`)
-  return found
+  const found = PROVIDERS.find((candidate) => candidate.id === id);
+  if (!found) throw new Error(`Unknown agent in ${flag}: ${id}. Expected one of ${PROVIDER_IDS}.`);
+  return found;
 }
 
 /** `<provider>[:<name>]`, as `--agents` and the config's `agents` list it. */
 function agentSpec(entry: string): AgentSpec {
-  const [id = '', name, ...rest] = entry.split(':').map((part) => part.trim().toLowerCase())
+  const [id = "", name, ...rest] = entry.split(":").map((part) => part.trim().toLowerCase());
   if (rest.length > 0) {
-    throw new Error(`Invalid agent in --agents: ${entry}. Expected <provider>[:<name>].`)
+    throw new Error(`Invalid agent in --agents: ${entry}. Expected <provider>[:<name>].`);
   }
-  const found = provider(id, '--agents')
-  const resolved = name === undefined ? found.id : validateAgentName(name, found.id)
-  return { name: resolved, label: agentLabel(found, resolved), provider: found }
+  const found = provider(id, "--agents");
+  const resolved = name === undefined ? found.id : validateAgentName(name, found.id);
+  return { name: resolved, label: agentLabel(found, resolved), provider: found };
 }
 
 function parseAgents(value: string | undefined): AgentSpec[] {
-  const agents = (value ?? DEFAULT_AGENTS.join(','))
-    .split(',')
+  const agents = (value ?? DEFAULT_AGENTS.join(","))
+    .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean)
-    .map(agentSpec)
-  const names = agents.map(({ name }) => name)
-  const duplicate = names.find((name, index) => names.indexOf(name) !== index)
+    .map(agentSpec);
+  const names = agents.map(({ name }) => name);
+  const duplicate = names.find((name, index) => names.indexOf(name) !== index);
   if (duplicate !== undefined) {
     const hint = PROVIDERS.some(({ id }) => id === duplicate)
       ? `; name each instance: ${duplicate}:a,${duplicate}:b`
-      : ''
-    throw new Error(`--agents lists ${duplicate} more than once${hint}`)
+      : "";
+    throw new Error(`--agents lists ${duplicate} more than once${hint}`);
   }
-  if (agents.length < 2) throw new Error('--agents needs at least two agents')
-  return agents
+  if (agents.length < 2) throw new Error("--agents needs at least two agents");
+  return agents;
 }
 
 /** The run's agent `name` sets, or an error that says what `name` is instead. */
 function agentNamed(name: string, flag: string, agents: readonly AgentSpec[]): AgentSpec {
-  const found = agents.find((agent) => agent.name === name)
-  if (found) return found
-  const instances = agents.filter((agent) => agent.provider.id === name)
-  const first = instances[0]
+  const found = agents.find((agent) => agent.name === name);
+  if (found) return found;
+  const instances = agents.filter((agent) => agent.provider.id === name);
+  const first = instances[0];
   if (first) {
     throw new Error(
-      `${flag} ${name}: the run's ${first.provider.label} agents are ${instances.map((agent) => agent.name).join(', ')}; name one`,
-    )
+      `${flag} ${name}: the run's ${first.provider.label} agents are ${instances.map((agent) => agent.name).join(", ")}; name one`,
+    );
   }
   if (PROVIDERS.some(({ id }) => id === name)) {
-    throw new Error(`${flag} sets ${name}, which is not one of the --agents`)
+    throw new Error(`${flag} sets ${name}, which is not one of the --agents`);
   }
   throw new Error(
-    `Unknown agent in ${flag}: ${name}. Expected one of ${agents.map((agent) => agent.name).join(', ')}.`,
-  )
+    `Unknown agent in ${flag}: ${name}. Expected one of ${agents.map((agent) => agent.name).join(", ")}.`,
+  );
 }
 
 /** Repeated `<name>=<value>` flags, by agent name; each must be one of the run's agents. */
@@ -191,20 +191,20 @@ function parseOverrides(
   agents: readonly AgentSpec[],
   accepts: (provider: Provider) => boolean = () => true,
 ): Record<string, string> {
-  const overrides: Record<string, string> = {}
-  const placeholder = flag.slice(2)
+  const overrides: Record<string, string> = {};
+  const placeholder = flag.slice(2);
   for (const value of values) {
-    const separator = value.indexOf('=')
-    const name = value.slice(0, separator).trim().toLowerCase()
-    const setting = value.slice(separator + 1).trim()
+    const separator = value.indexOf("=");
+    const name = value.slice(0, separator).trim().toLowerCase();
+    const setting = value.slice(separator + 1).trim();
     if (separator < 0 || !name || !setting) {
-      throw new Error(`Invalid ${flag} value: ${value}. Expected <agent>=<${placeholder}>.`)
+      throw new Error(`Invalid ${flag} value: ${value}. Expected <agent>=<${placeholder}>.`);
     }
-    const agent = agentNamed(name, flag, agents)
-    if (!accepts(agent.provider)) throw new Error(`${agent.provider.label} does not take ${flag}`)
-    overrides[name] = setting
+    const agent = agentNamed(name, flag, agents);
+    if (!accepts(agent.provider)) throw new Error(`${agent.provider.label} does not take ${flag}`);
+    overrides[name] = setting;
   }
-  return overrides
+  return overrides;
 }
 
 /** `auto` gives `undefined`, `none` gives `'none'`, an agent gives its name. */
@@ -212,22 +212,22 @@ function parseFinalizer(
   value: string | undefined,
   agents: readonly AgentSpec[],
 ): string | undefined {
-  if (value === undefined || value === 'auto') return undefined
-  const name = value.toLowerCase()
-  if (name === 'none' || agents.some((agent) => agent.name === name)) return name
+  if (value === undefined || value === "auto") return undefined;
+  const name = value.toLowerCase();
+  if (name === "none" || agents.some((agent) => agent.name === name)) return name;
   throw new Error(
-    `Invalid --finalizer value: ${value}. Expected auto, none or one of ${agents.map((a) => a.name).join(', ')}.`,
-  )
+    `Invalid --finalizer value: ${value}. Expected auto, none or one of ${agents.map((a) => a.name).join(", ")}.`,
+  );
 }
 
 /** Creates `dir`, which must be new or empty so rounds from different runs never mix. */
 async function prepareRoundsDir(dir: string): Promise<void> {
   const entries = await readdir(dir).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
-    throw error
-  })
-  if (entries.length > 0) throw new Error(`--rounds-dir must be new or empty: ${dir}`)
-  await mkdir(dir, { recursive: true })
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  });
+  if (entries.length > 0) throw new Error(`--rounds-dir must be new or empty: ${dir}`);
+  await mkdir(dir, { recursive: true });
 }
 
 /**
@@ -241,33 +241,33 @@ async function prepareRoundsDir(dir: string): Promise<void> {
  * already there is left alone.
  */
 async function newRunDir(home: string, now: Date, name: string): Promise<string> {
-  await mkdir(home, { recursive: true })
-  await writeFile(join(home, '.gitignore'), `# Written by ${name}: run output, not source.\n*\n`, {
-    flag: 'wx',
+  await mkdir(home, { recursive: true });
+  await writeFile(join(home, ".gitignore"), `# Written by ${name}: run output, not source.\n*\n`, {
+    flag: "wx",
   }).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-  })
-  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  });
+  const stamp = now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   for (let attempt = 1; ; attempt++) {
-    const dir = join(home, attempt === 1 ? stamp : `${stamp}-${String(attempt)}`)
+    const dir = join(home, attempt === 1 ? stamp : `${stamp}-${String(attempt)}`);
     try {
-      await mkdir(dir)
-      return dir
+      await mkdir(dir);
+      return dir;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
   }
 }
 
 /** What a debate round's raw answers are saved as, beside its plans. */
-const ARTIFACT_SUFFIX: Partial<Record<PlanRound['stage'], string>> = {
-  critique: 'critique',
-  reply: 'reply',
-  review: 'reply',
-  check: 'check',
-}
+const ARTIFACT_SUFFIX: Partial<Record<PlanRound["stage"], string>> = {
+  critique: "critique",
+  reply: "reply",
+  review: "reply",
+  check: "check",
+};
 
-const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 /**
  * One folder per round: `round<N>/<agent>.md` for each agent's plan, with the judge's
@@ -278,65 +278,65 @@ const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
  * critique and check rounds leave the plans unchanged, so write none.
  */
 async function writeRound(dir: string, round: PlanRound): Promise<void> {
-  const folder = join(dir, round.stage === 'final' ? 'final' : `round${String(round.round)}`)
-  await mkdir(folder, { recursive: true })
+  const folder = join(dir, round.stage === "final" ? "final" : `round${String(round.round)}`);
+  await mkdir(folder, { recursive: true });
   const files: [string, string][] =
-    round.stage === 'final'
+    round.stage === "final"
       ? Object.entries(round.plans).map(([agent, plan]) => [
-          'plan.md',
-          `<!-- ${round.selected ? 'selected from' : 'merged by'} ${agent} -->\n${plan.trim()}\n`,
+          "plan.md",
+          `<!-- ${round.selected ? "selected from" : "merged by"} ${agent} -->\n${plan.trim()}\n`,
         ])
-      : round.stage === 'critique' || round.stage === 'check'
+      : round.stage === "critique" || round.stage === "check"
         ? []
-        : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`])
-  const suffix = ARTIFACT_SUFFIX[round.stage]
+        : Object.entries(round.plans).map(([agent, plan]) => [`${agent}.md`, `${plan.trim()}\n`]);
+  const suffix = ARTIFACT_SUFFIX[round.stage];
   if (round.artifacts && suffix !== undefined) {
     for (const [agent, text] of Object.entries(round.artifacts)) {
-      files.push([`${agent}.${suffix}.md`, `${text.trim()}\n`])
+      files.push([`${agent}.${suffix}.md`, `${text.trim()}\n`]);
     }
   }
-  const { debate } = round
+  const { debate } = round;
   if (debate) {
-    if (round.stage === 'critique') files.push(['objections.json', json(debate.objections)])
+    if (round.stage === "critique") files.push(["objections.json", json(debate.objections)]);
     if (debate.replies) {
       files.push([
-        'replies.json',
+        "replies.json",
         json({ replies: debate.replies, unanswered: debate.unanswered ?? [] }),
-      ])
+      ]);
     }
     if (debate.disputes) {
       files.push([
-        'disputes.json',
+        "disputes.json",
         json({
           disputes: debate.disputes,
           overflow: debate.overflow ?? [],
           ...(debate.claimChecks ? { claimChecks: debate.claimChecks } : {}),
         }),
-      ])
+      ]);
     }
   }
-  if (round.verdict) files.push(['verdict.json', json(round.verdict)])
-  files.push(['timings.json', `${JSON.stringify(round.timings, null, 2)}\n`])
-  await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, 'utf8')))
+  if (round.verdict) files.push(["verdict.json", json(round.verdict)]);
+  files.push(["timings.json", `${JSON.stringify(round.timings, null, 2)}\n`]);
+  await Promise.all(files.map(([name, text]) => writeFile(join(folder, name), text, "utf8")));
 }
 
 /** `4m12s`, `51s` or `0.8s`: minutes once a minute has passed, tenths below ten seconds. */
 function formatDuration(ms: number): string {
-  const seconds = ms / 1_000
-  if (seconds < 10) return `${seconds.toFixed(1)}s`
-  const whole = Math.round(seconds)
-  if (whole < 60) return `${String(whole)}s`
-  return `${String(Math.floor(whole / 60))}m${String(whole % 60).padStart(2, '0')}s`
+  const seconds = ms / 1_000;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  const whole = Math.round(seconds);
+  if (whole < 60) return `${String(whole)}s`;
+  return `${String(Math.floor(whole / 60))}m${String(whole % 60).padStart(2, "0")}s`;
 }
 
-const STAGE_NAMES: Record<PlanRound['stage'], string> = {
-  draft: 'Drafts',
-  critique: 'Critiques',
-  reply: 'Replies',
-  check: 'Claim checks',
-  review: 'Review',
-  final: 'Final plan',
-}
+const STAGE_NAMES: Record<PlanRound["stage"], string> = {
+  draft: "Drafts",
+  critique: "Critiques",
+  reply: "Replies",
+  check: "Claim checks",
+  review: "Review",
+  final: "Final plan",
+};
 
 /** One line per round for `--verbose`: the round, then each agent call and the judge's. */
 function roundTimingLine(
@@ -351,9 +351,9 @@ function roundTimingLine(
     ...(round.timings.judgeMs === undefined
       ? []
       : [`${judge} ${formatDuration(round.timings.judgeMs)}`]),
-  ]
-  const line = `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)}`
-  return calls.length > 0 ? `${line} (${calls.join(', ')})` : line
+  ];
+  const line = `${STAGE_NAMES[round.stage]}: ${formatDuration(round.timings.totalMs)}`;
+  return calls.length > 0 ? `${line} (${calls.join(", ")})` : line;
 }
 
 /**
@@ -362,38 +362,38 @@ function roundTimingLine(
  */
 export function costLine(cost: PlanCost, judge: string): string {
   const plural = (count: number, thing: string) =>
-    `${String(count)} ${thing}${count === 1 ? '' : 's'}`
+    `${String(count)} ${thing}${count === 1 ? "" : "s"}`;
   const parts = [
     `${cost.mode} mode`,
-    ...(cost.reviewMode === 'debate' ? ['debate review'] : []),
-    plural(cost.agentCalls, 'agent call'),
+    ...(cost.reviewMode === "debate" ? ["debate review"] : []),
+    plural(cost.agentCalls, "agent call"),
     plural(cost.judgeCalls, `${judge} call`),
-    plural(cost.reviewRounds, 'cross-review round'),
-    cost.synthesized ? 'merged' : cost.mode === 'fast' ? 'selected' : 'adopted whole',
-  ]
-  if (cost.dropped.length > 0) parts.push(`not waited for: ${cost.dropped.join(', ')}`)
-  return parts.join(', ')
+    plural(cost.reviewRounds, "cross-review round"),
+    cost.synthesized ? "merged" : cost.mode === "fast" ? "selected" : "adopted whole",
+  ];
+  if (cost.dropped.length > 0) parts.push(`not waited for: ${cost.dropped.join(", ")}`);
+  return parts.join(", ");
 }
 
 function parseTimeout(value: string | undefined): number {
-  const seconds = Number(value ?? '600')
+  const seconds = Number(value ?? "600");
   if (!Number.isFinite(seconds) || seconds <= 0) {
-    throw new Error('--timeout must be a positive number of seconds')
+    throw new Error("--timeout must be a positive number of seconds");
   }
-  return Math.round(seconds * 1_000)
+  return Math.round(seconds * 1_000);
 }
 
 function parseReviewRounds(value: string | undefined): 0 | 1 | 2 {
-  if (value === undefined || value === '2') return 2
-  if (value === '1') return 1
-  if (value === '0') return 0
-  throw new Error('--review-rounds must be 0, 1 or 2')
+  if (value === undefined || value === "2") return 2;
+  if (value === "1") return 1;
+  if (value === "0") return 0;
+  throw new Error("--review-rounds must be 0, 1 or 2");
 }
 
 function parseMode(value: string | undefined): PlanMode {
-  if (value === undefined || value === 'balanced') return 'balanced'
-  if (value === 'ultra' || value === 'fast') return value
-  throw new Error(`Invalid --mode value: ${value}. Expected fast, balanced or ultra.`)
+  if (value === undefined || value === "balanced") return "balanced";
+  if (value === "ultra" || value === "fast") return value;
+  throw new Error(`Invalid --mode value: ${value}. Expected fast, balanced or ultra.`);
 }
 
 function parseReviewMode(
@@ -402,33 +402,33 @@ function parseReviewMode(
   reviewRounds: number,
   planMode: PlanMode,
 ): ReviewMode {
-  let mode: ReviewMode
-  if (value === undefined) mode = claimChecks ? 'debate' : 'standard'
-  else if (value === 'standard' || value === 'debate') mode = value
-  else throw new Error(`Invalid --review-mode value: ${value}. Expected standard or debate.`)
-  if (claimChecks && mode !== 'debate') {
-    throw new Error('--claim-checks runs in the debate review; drop --review-mode standard')
+  let mode: ReviewMode;
+  if (value === undefined) mode = claimChecks ? "debate" : "standard";
+  else if (value === "standard" || value === "debate") mode = value;
+  else throw new Error(`Invalid --review-mode value: ${value}. Expected standard or debate.`);
+  if (claimChecks && mode !== "debate") {
+    throw new Error("--claim-checks runs in the debate review; drop --review-mode standard");
   }
-  if (mode === 'debate' && planMode === 'fast') {
+  if (mode === "debate" && planMode === "fast") {
     throw new Error(
-      `${claimChecks ? '--claim-checks' : '--review-mode debate'} needs a review round, and --mode fast has none`,
-    )
+      `${claimChecks ? "--claim-checks" : "--review-mode debate"} needs a review round, and --mode fast has none`,
+    );
   }
-  if (mode === 'debate' && reviewRounds === 0) {
-    throw new Error('--review-mode debate is a review round; it needs --review-rounds 1 or 2')
+  if (mode === "debate" && reviewRounds === 0) {
+    throw new Error("--review-mode debate is a review round; it needs --review-rounds 1 or 2");
   }
-  return mode
+  return mode;
 }
 
 function parseStragglerGrace(value: string | undefined, mode: PlanMode): number | undefined {
-  if (value === undefined) return undefined
-  if (mode === 'ultra')
-    throw new Error('--straggler-grace is for --mode balanced or fast; ultra never drops an agent')
-  const seconds = Number(value)
+  if (value === undefined) return undefined;
+  if (mode === "ultra")
+    throw new Error("--straggler-grace is for --mode balanced or fast; ultra never drops an agent");
+  const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds < 0) {
-    throw new Error('--straggler-grace must be a number of seconds, 0 or more')
+    throw new Error("--straggler-grace must be a number of seconds, 0 or more");
   }
-  return Math.round(seconds * 1_000)
+  return Math.round(seconds * 1_000);
 }
 
 /**
@@ -437,8 +437,8 @@ function parseStragglerGrace(value: string | undefined, mode: PlanMode): number 
  * takes `--no-cwd` and the like as `false`.
  */
 function toggle(on: boolean | undefined, off: boolean | undefined, name: string) {
-  if (on && off) throw new Error(`Pass --${name} or --no-${name}, not both`)
-  return on ? true : off ? false : undefined
+  if (on && off) throw new Error(`Pass --${name} or --no-${name}, not both`);
+  return on ? true : off ? false : undefined;
 }
 
 /**
@@ -454,20 +454,20 @@ function withConfig(
   configAgents: string | undefined,
 ): string[] {
   const providerOf = new Map(
-    (configAgents ?? '').split(',').map((entry) => {
-      const [id = '', name = id] = entry.split(':')
-      return [name, id]
+    (configAgents ?? "").split(",").map((entry) => {
+      const [id = "", name = id] = entry.split(":");
+      return [name, id];
     }),
-  )
+  );
   return [
     ...configured.filter((entry) => {
-      const name = entry.slice(0, entry.indexOf('='))
+      const name = entry.slice(0, entry.indexOf("="));
       return agents.some(
         (agent) => agent.name === name && agent.provider.id === providerOf.get(name),
-      )
+      );
     }),
     ...given,
-  ]
+  ];
 }
 
 /**
@@ -479,20 +479,20 @@ function identicalWarning(
   models: Readonly<Record<string, string>>,
   efforts: Readonly<Record<string, string>>,
 ): string | undefined {
-  const groups = new Map<string, AgentSpec[]>()
+  const groups = new Map<string, AgentSpec[]>();
   for (const agent of agents) {
-    const key = JSON.stringify([agent.provider.id, models[agent.name], efforts[agent.name]])
-    groups.set(key, [...(groups.get(key) ?? []), agent])
+    const key = JSON.stringify([agent.provider.id, models[agent.name], efforts[agent.name]]);
+    groups.set(key, [...(groups.get(key) ?? []), agent]);
   }
-  const same = [...groups.values()].find((group) => group.length > 1)
-  if (!same) return undefined
-  const names = same.map(({ name }) => name)
-  const list = `${names.slice(0, -1).join(', ')} and ${String(names.at(-1))}`
-  const [first] = same
-  return `${list} are ${same.length > 2 ? 'all' : 'both'} ${String(first?.provider.label)} with the same model and effort; their drafts may barely differ. Vary --model or --effort.`
+  const same = [...groups.values()].find((group) => group.length > 1);
+  if (!same) return undefined;
+  const names = same.map(({ name }) => name);
+  const list = `${names.slice(0, -1).join(", ")} and ${String(names.at(-1))}`;
+  const [first] = same;
+  return `${list} are ${same.length > 2 ? "all" : "both"} ${String(first?.provider.label)} with the same model and effort; their drafts may barely differ. Vary --model or --effort.`;
 }
 
-const NO_CONFIG: ConfigValues = { model: [], effort: [], 'review-effort': [] }
+const NO_CONFIG: ConfigValues = { model: [], effort: [], "review-effort": [] };
 
 function parse(argv: readonly string[]) {
   return parseArgs({
@@ -500,193 +500,193 @@ function parse(argv: readonly string[]) {
     allowPositionals: true,
     strict: true,
     options: {
-      config: { type: 'string', short: 'c' },
-      'no-config': { type: 'boolean' },
-      cwd: { type: 'string', short: 'C' },
-      file: { type: 'string', short: 'f' },
-      output: { type: 'string', short: 'o' },
-      agents: { type: 'string', short: 'a' },
-      model: { type: 'string', short: 'm', multiple: true, default: [] },
-      effort: { type: 'string', short: 'e', multiple: true, default: [] },
-      'review-effort': { type: 'string', multiple: true, default: [] },
-      'judge-model': { type: 'string' },
-      finalizer: { type: 'string' },
-      mode: { type: 'string' },
-      'review-rounds': { type: 'string' },
-      'review-mode': { type: 'string' },
-      'claim-checks': { type: 'boolean' },
-      'no-claim-checks': { type: 'boolean' },
-      'straggler-grace': { type: 'string' },
-      timeout: { type: 'string' },
-      resume: { type: 'boolean' },
-      'no-resume': { type: 'boolean' },
-      json: { type: 'boolean' },
-      'no-json': { type: 'boolean' },
-      verbose: { type: 'boolean' },
-      'no-verbose': { type: 'boolean' },
-      'rounds-dir': { type: 'string' },
-      rounds: { type: 'boolean' },
-      'no-rounds': { type: 'boolean' },
-      'allow-any-task': { type: 'boolean' },
-      'no-allow-any-task': { type: 'boolean' },
-      help: { type: 'boolean', short: 'h', default: false },
-      version: { type: 'boolean', short: 'v', default: false },
+      config: { type: "string", short: "c" },
+      "no-config": { type: "boolean" },
+      cwd: { type: "string", short: "C" },
+      file: { type: "string", short: "f" },
+      output: { type: "string", short: "o" },
+      agents: { type: "string", short: "a" },
+      model: { type: "string", short: "m", multiple: true, default: [] },
+      effort: { type: "string", short: "e", multiple: true, default: [] },
+      "review-effort": { type: "string", multiple: true, default: [] },
+      "judge-model": { type: "string" },
+      finalizer: { type: "string" },
+      mode: { type: "string" },
+      "review-rounds": { type: "string" },
+      "review-mode": { type: "string" },
+      "claim-checks": { type: "boolean" },
+      "no-claim-checks": { type: "boolean" },
+      "straggler-grace": { type: "string" },
+      timeout: { type: "string" },
+      resume: { type: "boolean" },
+      "no-resume": { type: "boolean" },
+      json: { type: "boolean" },
+      "no-json": { type: "boolean" },
+      verbose: { type: "boolean" },
+      "no-verbose": { type: "boolean" },
+      "rounds-dir": { type: "string" },
+      rounds: { type: "boolean" },
+      "no-rounds": { type: "boolean" },
+      "allow-any-task": { type: "boolean" },
+      "no-allow-any-task": { type: "boolean" },
+      help: { type: "boolean", short: "h", default: false },
+      version: { type: "boolean", short: "v", default: false },
     },
-  })
+  });
 }
 
 async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
-  const { values, positionals } = parse(argv)
+  const { values, positionals } = parse(argv);
 
-  const { program } = deps
+  const { program } = deps;
   const say = (message: string) => {
-    deps.stderr(`[${program.name}] ${message}\n`)
-  }
+    deps.stderr(`[${program.name}] ${message}\n`);
+  };
   if (values.help) {
-    deps.stdout(`${helpText(program)}\n`)
-    return 0
+    deps.stdout(`${helpText(program)}\n`);
+    return 0;
   }
   if (values.version) {
-    deps.stdout(`${program.version}\n`)
-    return 0
+    deps.stdout(`${program.version}\n`);
+    return 0;
   }
 
-  const invoked = deps.cwd()
-  if (values.config !== undefined && values['no-config']) {
-    throw new Error('Pass --config or --no-config, not both')
+  const invoked = deps.cwd();
+  if (values.config !== undefined && values["no-config"]) {
+    throw new Error("Pass --config or --no-config, not both");
   }
-  const config = values['no-config']
+  const config = values["no-config"]
     ? undefined
     : await findConfig(
-        resolve(invoked, values.cwd ?? '.'),
+        resolve(invoked, values.cwd ?? "."),
         values.config === undefined ? undefined : resolve(invoked, values.config),
         {
           file: configFile(program),
           judgeEnv: program.judgeEnv.map(({ variable }) => variable),
         },
-      )
-  if (config) say(`Using config ${config.path}`)
-  const configured = config?.values ?? NO_CONFIG
+      );
+  if (config) say(`Using config ${config.path}`);
+  const configured = config?.values ?? NO_CONFIG;
 
-  const cwd = values.cwd === undefined ? (configured.cwd ?? invoked) : resolve(invoked, values.cwd)
-  await assertDirectory(cwd)
+  const cwd = values.cwd === undefined ? (configured.cwd ?? invoked) : resolve(invoked, values.cwd);
+  await assertDirectory(cwd);
 
-  const agents = parseAgents(values.agents ?? configured.agents)
-  if (positionals[0] === 'doctor') {
-    if (positionals.length > 1) throw new Error('doctor does not accept a task')
-    const providers = [...new Set(agents.map(({ provider }) => provider))]
+  const agents = parseAgents(values.agents ?? configured.agents);
+  if (positionals[0] === "doctor") {
+    if (positionals.length > 1) throw new Error("doctor does not accept a task");
+    const providers = [...new Set(agents.map(({ provider }) => provider))];
     const checks = [
       ...(await deps.doctor(cwd, providers)),
       ...program.judgeEnv.map(({ check, variable }) => envCheck(check, variable, deps.env)),
-    ]
+    ];
     for (const check of checks) {
-      deps.stdout(`${check.ok ? '✓' : '✗'} ${check.name}: ${check.detail}\n`)
+      deps.stdout(`${check.ok ? "✓" : "✗"} ${check.name}: ${check.detail}\n`);
     }
-    return checks.every((check) => check.ok) ? 0 : 1
+    return checks.every((check) => check.ok) ? 0 : 1;
   }
 
-  const taskPositionals = positionals[0] === 'plan' ? positionals.slice(1) : positionals
+  const taskPositionals = positionals[0] === "plan" ? positionals.slice(1) : positionals;
   if (values.file !== undefined && taskPositionals.length > 0) {
-    throw new Error('Provide the task either as arguments or with --file, not both')
+    throw new Error("Provide the task either as arguments or with --file, not both");
   }
 
-  let task = taskPositionals.join(' ').trim()
+  let task = taskPositionals.join(" ").trim();
   if (values.file !== undefined) {
-    task = (await readFile(resolve(invoked, values.file), 'utf8')).trim()
+    task = (await readFile(resolve(invoked, values.file), "utf8")).trim();
   }
   if (!task) {
     // stdin is read even when the config has a task, so a pipe is never
     // silently ignored in favour of a billable configured one.
-    const piped = (await deps.readStdin())?.trim() ?? ''
+    const piped = (await deps.readStdin())?.trim() ?? "";
     if (piped && (configured.task ?? configured.taskFile) !== undefined) {
-      throw new Error(STDIN_CONFLICT_MESSAGE)
+      throw new Error(STDIN_CONFLICT_MESSAGE);
     }
-    if (configured.task !== undefined) task = configured.task
+    if (configured.task !== undefined) task = configured.task;
     else if (configured.taskFile !== undefined) {
-      task = (await readFile(configured.taskFile, 'utf8')).trim()
-    } else task = piped
+      task = (await readFile(configured.taskFile, "utf8")).trim();
+    } else task = piped;
   }
   // Before the API-key check, so a placeholder is reported first and nothing
   // billable is set up for it.
   const allowAnyTask =
-    toggle(values['allow-any-task'], values['no-allow-any-task'], 'allow-any-task') ??
-    configured['allow-any-task'] ??
-    false
-  task = allowAnyTask ? requireNonEmptyTask(task) : validateTask(task)
-  const unset = program.judgeEnv.find(({ variable }) => !deps.env[variable]?.trim())
-  if (unset) throw new Error(unset.missing)
+    toggle(values["allow-any-task"], values["no-allow-any-task"], "allow-any-task") ??
+    configured["allow-any-task"] ??
+    false;
+  task = allowAnyTask ? requireNonEmptyTask(task) : validateTask(task);
+  const unset = program.judgeEnv.find(({ variable }) => !deps.env[variable]?.trim());
+  if (unset) throw new Error(unset.missing);
 
   const models = parseOverrides(
-    '--model',
+    "--model",
     withConfig(configured.model, values.model, agents, configured.agents),
     agents,
-  )
+  );
   const efforts = parseOverrides(
-    '--effort',
+    "--effort",
     withConfig(configured.effort, values.effort, agents, configured.agents),
     agents,
     (provider) => provider.effort,
-  )
+  );
   const reviewEfforts = parseOverrides(
-    '--review-effort',
-    withConfig(configured['review-effort'], values['review-effort'], agents, configured.agents),
+    "--review-effort",
+    withConfig(configured["review-effort"], values["review-effort"], agents, configured.agents),
     agents,
     (provider) => provider.effort,
-  )
-  const finalizer = parseFinalizer(values.finalizer ?? configured.finalizer, agents)
-  const judgeModel = values['judge-model'] ?? configured['judge-model']
-  const mode = parseMode(values.mode ?? configured.mode)
+  );
+  const finalizer = parseFinalizer(values.finalizer ?? configured.finalizer, agents);
+  const judgeModel = values["judge-model"] ?? configured["judge-model"];
+  const mode = parseMode(values.mode ?? configured.mode);
   const stragglerGraceMs = parseStragglerGrace(
-    values['straggler-grace'] ?? configured['straggler-grace'],
+    values["straggler-grace"] ?? configured["straggler-grace"],
     mode,
-  )
-  const maxReviewRounds = parseReviewRounds(values['review-rounds'] ?? configured['review-rounds'])
+  );
+  const maxReviewRounds = parseReviewRounds(values["review-rounds"] ?? configured["review-rounds"]);
   const claimChecks =
-    toggle(values['claim-checks'], values['no-claim-checks'], 'claim-checks') ??
-    configured['claim-checks'] ??
-    false
+    toggle(values["claim-checks"], values["no-claim-checks"], "claim-checks") ??
+    configured["claim-checks"] ??
+    false;
   const reviewMode = parseReviewMode(
-    values['review-mode'] ?? configured['review-mode'],
+    values["review-mode"] ?? configured["review-mode"],
     claimChecks,
     maxReviewRounds,
     mode,
-  )
-  const resume = toggle(values.resume, values['no-resume'], 'resume') ?? configured.resume ?? true
-  const asJson = toggle(values.json, values['no-json'], 'json') ?? configured.json ?? false
+  );
+  const resume = toggle(values.resume, values["no-resume"], "resume") ?? configured.resume ?? true;
+  const asJson = toggle(values.json, values["no-json"], "json") ?? configured.json ?? false;
   const verbose =
-    toggle(values.verbose, values['no-verbose'], 'verbose') ?? configured.verbose ?? false
-  const rounds = toggle(values.rounds, values['no-rounds'], 'rounds')
-  if (rounds === false && values['rounds-dir'] !== undefined) {
-    throw new Error('Pass --rounds-dir or --no-rounds, not both')
+    toggle(values.verbose, values["no-verbose"], "verbose") ?? configured.verbose ?? false;
+  const rounds = toggle(values.rounds, values["no-rounds"], "rounds");
+  if (rounds === false && values["rounds-dir"] !== undefined) {
+    throw new Error("Pass --rounds-dir or --no-rounds, not both");
   }
-  let roundsDir: string | undefined
-  if (values['rounds-dir'] !== undefined) {
-    roundsDir = resolve(cwd, values['rounds-dir'])
-    await prepareRoundsDir(roundsDir)
+  let roundsDir: string | undefined;
+  if (values["rounds-dir"] !== undefined) {
+    roundsDir = resolve(cwd, values["rounds-dir"]);
+    await prepareRoundsDir(roundsDir);
   } else if (rounds ?? configured.rounds ?? true) {
     roundsDir = await newRunDir(
       configured.runsDir ?? join(cwd, runsDir(program)),
       deps.now(),
       program.name,
-    )
+    );
   }
-  if (roundsDir !== undefined) say(`Writing rounds to ${roundsDir}`)
+  if (roundsDir !== undefined) say(`Writing rounds to ${roundsDir}`);
   // Before the planner and any paid call, so it is read while there is time to stop.
-  const warning = identicalWarning(agents, models, efforts)
-  if (warning !== undefined) say(warning)
-  const planner = deps.createPlanner({ agents, models, efforts })
-  const labels = new Map(agents.map(({ name, label }) => [name, label]))
+  const warning = identicalWarning(agents, models, efforts);
+  if (warning !== undefined) say(warning);
+  const planner = deps.createPlanner({ agents, models, efforts });
+  const labels = new Map(agents.map(({ name, label }) => [name, label]));
   const result = await planner.plan({
     task,
     cwd,
     timeoutMs: parseTimeout(values.timeout ?? configured.timeout),
     mode,
     maxReviewRounds,
-    ...(reviewMode === 'debate' ? { reviewMode } : {}),
+    ...(reviewMode === "debate" ? { reviewMode } : {}),
     ...(claimChecks ? { claimChecks } : {}),
     ...(stragglerGraceMs === undefined ? {} : { stragglerGraceMs }),
     ...(judgeModel ? { judgeModel } : {}),
-    ...(finalizer === 'none' ? { selectStronger: true } : finalizer ? { finalizer } : {}),
+    ...(finalizer === "none" ? { selectStronger: true } : finalizer ? { finalizer } : {}),
     ...(allowAnyTask ? { allowAnyTask } : {}),
     ...(Object.keys(reviewEfforts).length > 0 ? { reviewEfforts } : {}),
     ...(resume ? {} : { resume: false }),
@@ -694,7 +694,7 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
     ...(verbose
       ? {
           onAgentProgress: (agent: string, progress: string) => {
-            for (const line of progress.split('\n')) deps.stderr(`[${agent}] ${line}\n`)
+            for (const line of progress.split("\n")) deps.stderr(`[${agent}] ${line}\n`);
           },
         }
       : {}),
@@ -702,17 +702,17 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
       ? {}
       : {
           onRound: async (round: PlanRound) => {
-            if (verbose) say(roundTimingLine(round, labels, program.judge))
-            if (roundsDir !== undefined) await writeRound(roundsDir, round)
+            if (verbose) say(roundTimingLine(round, labels, program.judge));
+            if (roundsDir !== undefined) await writeRound(roundsDir, round);
           },
         }),
-  })
+  });
 
   if (verbose) {
-    say(`Total: ${formatDuration(result.timings.totalMs)}`)
-    say(`${program.judge} verdict:\n${JSON.stringify(result.verdict, null, 2)}`)
+    say(`Total: ${formatDuration(result.timings.totalMs)}`);
+    say(`${program.judge} verdict:\n${JSON.stringify(result.verdict, null, 2)}`);
   }
-  say(costLine(result.cost, program.judge))
+  say(costLine(result.cost, program.judge));
 
   const rendered = asJson
     ? `${JSON.stringify(
@@ -728,17 +728,17 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
         null,
         2,
       )}\n`
-    : `${result.plan.trim()}\n`
+    : `${result.plan.trim()}\n`;
 
-  const output = values.output ?? configured.output
+  const output = values.output ?? configured.output;
   if (output === undefined) {
-    deps.stdout(rendered)
+    deps.stdout(rendered);
   } else {
-    const outputPath = resolve(cwd, output)
-    await writeFile(outputPath, rendered, 'utf8')
-    say(`Wrote ${outputPath}`)
+    const outputPath = resolve(cwd, output);
+    await writeFile(outputPath, rendered, "utf8");
+    say(`Wrote ${outputPath}`);
   }
-  return 0
+  return 0;
 }
 
 /**
@@ -747,9 +747,9 @@ async function run(argv: readonly string[], deps: CliDeps): Promise<number> {
  */
 export async function main(argv: readonly string[], deps: CliDeps): Promise<number> {
   try {
-    return await run(argv, deps)
+    return await run(argv, deps);
   } catch (error) {
-    deps.stderr(`${deps.program.name}: ${errorMessage(error)}\n`)
-    return 1
+    deps.stderr(`${deps.program.name}: ${errorMessage(error)}\n`);
+    return 1;
   }
 }

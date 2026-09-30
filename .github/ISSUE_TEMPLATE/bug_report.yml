@@ -1,6 +1,6 @@
 name: Bug report
 description: Something the package does that it should not, or fails to do
-labels: ['bug']
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
@@ -13,7 +13,7 @@ body:
     attributes:
       label: Package version
       description: The version of `ts-extended-errors` you are on.
-      placeholder: '0.3.0'
+      placeholder: "0.3.0"
     validations:
       required: true
 
@@ -25,7 +25,7 @@ body:
         The runtime and its version, and whether your code loads the package as
         ESM or CommonJS. A bundler and its target matter for anything about
         `instanceof`.
-      placeholder: 'Node 22.14, ESM'
+      placeholder: "Node 22.14, ESM"
     validations:
       required: true
 

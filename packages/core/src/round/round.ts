@@ -1,27 +1,27 @@
-import type { PlanningAgent } from '../provider/provider.types.js'
-import type { Verdict } from '../questions/questions.types.js'
-import type { Accepted, Draft, Generate, Pending, RoundCall } from './round.types.js'
+import type { PlanningAgent } from "../provider/provider.types.js";
+import type { Verdict } from "../questions/questions.types.js";
+import type { Accepted, Draft, Generate, Pending, RoundCall } from "./round.types.js";
 
 /**
  * In `fast` mode, at or above this the judge is accepting one draft, judged alone, as the answer. Lower
  * than synthesis's `STANDS_ALONE`: in real runs the judge rated no plan above 0.59, so 0.7 never let a draft through.
  */
-export const ACCEPTED_ALONE = 0.5
+export const ACCEPTED_ALONE = 0.5;
 
 /** A round never returns fewer plans than this: below it, there is no collaboration left to judge. */
-const MIN_PLANS = 2
+const MIN_PLANS = 2;
 
 /** Each draft's plan, keyed by its agent's name: how a round is reported. */
 export const byName = (drafts: readonly Draft[]): Record<string, string> =>
-  Object.fromEntries(drafts.map(({ agent, plan }) => [agent.name, plan]))
+  Object.fromEntries(drafts.map(({ agent, plan }) => [agent.name, plan]));
 
 const pendingOf = (calls: readonly RoundCall[]): Pending[] =>
-  calls.map((call) => ({ call, controller: new AbortController() }))
+  calls.map((call) => ({ call, controller: new AbortController() }));
 
 /** Half of the round's calls, and at least one: once they are in, the grace starts. */
-const quorumOf = (pending: readonly Pending[]) => Math.max(1, Math.ceil(pending.length / 2))
+const quorumOf = (pending: readonly Pending[]) => Math.max(1, Math.ceil(pending.length / 2));
 
-const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)))
+const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 
 /**
  * Every agent's plan for one round, in parallel.
@@ -46,72 +46,72 @@ export function round(
         agent,
         plan: await generate(agent, prompt, later),
       })),
-    )
+    );
   }
 
   return new Promise<Draft[]>((resolve, reject) => {
-    const pending = pendingOf(calls)
-    const quorum = quorumOf(pending)
-    let answered = 0
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let settled = false
+    const pending = pendingOf(calls);
+    const quorum = quorumOf(pending);
+    let answered = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
 
     const finish = (callback: () => void): void => {
-      if (settled) return
-      settled = true
-      if (timer !== undefined) clearTimeout(timer)
-      callback()
-    }
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      callback();
+    };
 
     const settleIfDone = (): void => {
-      if (pending.some((entry) => entry.plan === undefined && entry.dropped === undefined)) return
+      if (pending.some((entry) => entry.plan === undefined && entry.dropped === undefined)) return;
       finish(() => {
         resolve(
           pending.flatMap(({ call, plan }) => {
-            const answer = plan ?? call.fallback
-            return answer === undefined ? [] : [{ agent: call.agent, plan: answer }]
+            const answer = plan ?? call.fallback;
+            return answer === undefined ? [] : [{ agent: call.agent, plan: answer }];
           }),
-        )
-      })
-    }
+        );
+      });
+    };
 
     const cutOff = (): void => {
       // What the round would answer with if it waited: one plan per call,
       // answered or not. Only dropping a call with nothing to fall back on
       // takes one away.
-      let remaining = pending.length
+      let remaining = pending.length;
       for (const entry of pending) {
-        if (entry.plan !== undefined || entry.dropped !== undefined) continue
+        if (entry.plan !== undefined || entry.dropped !== undefined) continue;
         if (entry.call.fallback === undefined) {
-          if (remaining - 1 < MIN_PLANS) continue
-          remaining -= 1
+          if (remaining - 1 < MIN_PLANS) continue;
+          remaining -= 1;
         }
-        entry.dropped = true
-        entry.controller.abort()
-        onDrop(entry.call.agent)
+        entry.dropped = true;
+        entry.controller.abort();
+        onDrop(entry.call.agent);
       }
-      settleIfDone()
-    }
+      settleIfDone();
+    };
 
     for (const entry of pending) {
       generate(entry.call.agent, entry.call.prompt, entry.call.later, entry.controller.signal).then(
         (plan) => {
-          if (settled || entry.dropped !== undefined) return
-          entry.plan = plan
-          answered += 1
-          if (timer === undefined && answered >= quorum) timer = setTimeout(cutOff, graceMs)
-          settleIfDone()
+          if (settled || entry.dropped !== undefined) return;
+          entry.plan = plan;
+          answered += 1;
+          if (timer === undefined && answered >= quorum) timer = setTimeout(cutOff, graceMs);
+          settleIfDone();
         },
         (error: unknown) => {
           // A call this round aborted was already accounted for.
-          if (entry.dropped !== undefined) return
+          if (entry.dropped !== undefined) return;
           finish(() => {
-            reject(asError(error))
-          })
+            reject(asError(error));
+          });
         },
-      )
+      );
     }
-  })
+  });
 }
 
 /**
@@ -137,22 +137,22 @@ export function firstAccepted(
   judgeSolo: (draft: Draft) => Promise<Verdict>,
 ): Promise<{ drafts: Draft[]; accepted?: Accepted }> {
   return new Promise((resolve, reject) => {
-    const pending = pendingOf(calls)
-    const quorum = quorumOf(pending)
-    const queue: Draft[] = []
-    let answered = 0
-    let judging = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let settled = false
+    const pending = pendingOf(calls);
+    const quorum = quorumOf(pending);
+    const queue: Draft[] = [];
+    let answered = 0;
+    let judging = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
 
     const running = () =>
-      pending.filter((entry) => entry.plan === undefined && entry.dropped === undefined)
+      pending.filter((entry) => entry.plan === undefined && entry.dropped === undefined);
     const finish = (callback: () => void): void => {
-      if (settled) return
-      settled = true
-      if (timer !== undefined) clearTimeout(timer)
-      callback()
-    }
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      callback();
+    };
     const resolveWith = (accepted?: Accepted): void => {
       finish(() => {
         resolve({
@@ -160,75 +160,75 @@ export function firstAccepted(
             plan === undefined ? [] : [{ agent: call.agent, plan }],
           ),
           ...(accepted ? { accepted } : {}),
-        })
-      })
-    }
+        });
+      });
+    };
     const fail = (error: unknown): void => {
       for (const entry of running()) {
-        entry.dropped = true
-        entry.controller.abort()
+        entry.dropped = true;
+        entry.controller.abort();
       }
       finish(() => {
-        reject(asError(error))
-      })
-    }
+        reject(asError(error));
+      });
+    };
 
     const judgeNext = (): void => {
-      if (settled || judging) return
-      const draft = queue.shift()
+      if (settled || judging) return;
+      const draft = queue.shift();
       if (!draft) {
-        if (running().length === 0) resolveWith()
-        return
+        if (running().length === 0) resolveWith();
+        return;
       }
-      judging = true
+      judging = true;
       judgeSolo(draft).then((verdict) => {
-        judging = false
-        if (settled) return
+        judging = false;
+        if (settled) return;
         if (verdict.standsAloneProbability < ACCEPTED_ALONE) {
-          judgeNext()
-          return
+          judgeNext();
+          return;
         }
         for (const entry of running()) {
-          entry.dropped = true
-          entry.controller.abort()
-          onDrop(entry.call.agent, draft)
+          entry.dropped = true;
+          entry.controller.abort();
+          onDrop(entry.call.agent, draft);
         }
-        resolveWith({ draft, verdict })
-      }, fail)
-    }
+        resolveWith({ draft, verdict });
+      }, fail);
+    };
 
     const cutOff = (): void => {
       // Every call is a draft, and a draft has nothing to stand in for it.
-      let remaining = pending.length
+      let remaining = pending.length;
       for (const entry of running()) {
-        if (remaining - 1 < MIN_PLANS) continue
-        remaining -= 1
-        entry.dropped = true
-        entry.controller.abort()
-        onDrop(entry.call.agent)
+        if (remaining - 1 < MIN_PLANS) continue;
+        remaining -= 1;
+        entry.dropped = true;
+        entry.controller.abort();
+        onDrop(entry.call.agent);
       }
-      judgeNext()
-    }
+      judgeNext();
+    };
 
     for (const entry of pending) {
-      const { agent, prompt, later } = entry.call
+      const { agent, prompt, later } = entry.call;
       generate(agent, prompt, later, entry.controller.signal).then(
         (plan) => {
-          if (settled || entry.dropped !== undefined) return
-          entry.plan = plan
-          answered += 1
+          if (settled || entry.dropped !== undefined) return;
+          entry.plan = plan;
+          answered += 1;
           if (graceMs > 0 && timer === undefined && answered >= quorum) {
-            timer = setTimeout(cutOff, graceMs)
+            timer = setTimeout(cutOff, graceMs);
           }
-          queue.push({ agent, plan })
-          judgeNext()
+          queue.push({ agent, plan });
+          judgeNext();
         },
         (error: unknown) => {
           // A call this round aborted was already accounted for.
-          if (entry.dropped !== undefined) return
-          fail(error)
+          if (entry.dropped !== undefined) return;
+          fail(error);
         },
-      )
+      );
     }
-  })
+  });
 }

@@ -41,7 +41,7 @@ jobs:
     env:
       # The version commit would otherwise fire the pre-commit hook. CI already
       # gated this code on the pull request.
-      HUSKY: '0'
+      HUSKY: "0"
     permissions:
       contents: write # version commit and tags
       pull-requests: write # the version pull request
@@ -55,7 +55,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pnpm
         with:
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@^11.5.1
       - run: pnpm install --frozen-lockfile
@@ -68,10 +68,10 @@ jobs:
           version-script: pnpm exec changeset version
           # Builds only the published packages, then `changeset publish`.
           publish-script: pnpm run release
-          commit-message: 'chore: version packages'
-          pr-title: 'chore: version packages'
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
         env:
-          NPM_CONFIG_PROVENANCE: 'true'
+          NPM_CONFIG_PROVENANCE: "true"
 
       # Empty unless this run published jev-planner. A bumped manifest that did
       # not publish is a release the docs would silently miss, so it fails.

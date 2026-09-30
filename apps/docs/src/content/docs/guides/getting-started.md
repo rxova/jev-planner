@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: 'From nothing to a first plan: two logged-in agents, the Jev key, doctor, one run.'
+description: "From nothing to a first plan: two logged-in agents, the Jev key, doctor, one run."
 sidebar:
   order: 1
 ---

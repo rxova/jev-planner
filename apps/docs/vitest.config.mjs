@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from "vitest/config";
 
 /**
  * Covers the agent-facing surfaces — the markdown normalizer, the page helpers,
@@ -18,7 +18,7 @@ import { defineConfig } from 'vitest/config'
  */
 export default defineConfig({
   test: {
-    include: ['scripts/**/*.test.mjs', 'src/**/*.test.mjs'],
-    environment: 'node',
+    include: ["scripts/**/*.test.mjs", "src/**/*.test.mjs"],
+    environment: "node",
   },
-})
+});

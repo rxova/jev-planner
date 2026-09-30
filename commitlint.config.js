@@ -1,1 +1,1 @@
-export { default } from '@rxova/repo-config/commitlint'
+export { default } from "@rxova/repo-config/commitlint";

@@ -16,23 +16,23 @@
 // source path *is* its route. Strip the extension, keep the fragment, add the
 // mount base.
 
-import { relative, dirname, sep } from 'node:path'
+import { relative, dirname, sep } from "node:path";
 
-import { withBase } from './base-url.mjs'
-import { normalizePath } from './mdx-to-markdown.mjs'
+import { withBase } from "./base-url.mjs";
+import { normalizePath } from "./mdx-to-markdown.mjs";
 
-const posix = (p) => p.split(sep).join('/')
+const posix = (p) => p.split(sep).join("/");
 
 /** `/guides/serialization.md` -> `/guides/serialization/`, and `/index.md` -> `/`. */
 function routeFor(path) {
-  const id = path.replace(/\.md$/, '')
-  return id === '/index' ? '/' : `${id}/`
+  const id = path.replace(/\.md$/, "");
+  return id === "/index" ? "/" : `${id}/`;
 }
 
 /** Every element in the tree, depth first. `unist-util-visit` for one node type. */
 function walk(node, fn) {
-  if (node.type === 'element') fn(node)
-  for (const child of node.children ?? []) walk(child, fn)
+  if (node.type === "element") fn(node);
+  for (const child of node.children ?? []) walk(child, fn);
 }
 
 /**
@@ -44,22 +44,22 @@ export function rehypeMdLinks({ base, docsRoot }) {
   return (tree, file) => {
     // A page rendered from something other than a file on disk has no source
     // path to resolve against. Nothing here is worth a crash.
-    if (!file?.path) return
+    if (!file?.path) return;
 
-    const from = `/${posix(relative(docsRoot, file.path))}`
-    const dir = dirname(from)
+    const from = `/${posix(relative(docsRoot, file.path))}`;
+    const dir = dirname(from);
 
     walk(tree, (node) => {
-      if (node.tagName !== 'a') return
+      if (node.tagName !== "a") return;
 
-      const href = node.properties?.href
-      if (typeof href !== 'string') return
+      const href = node.properties?.href;
+      if (typeof href !== "string") return;
 
-      const match = /^(\.{1,2}\/[^#]*\.md|[^/#:][^#:]*\.md)(#.*)?$/.exec(href)
-      if (!match) return
+      const match = /^(\.{1,2}\/[^#]*\.md|[^/#:][^#:]*\.md)(#.*)?$/.exec(href);
+      if (!match) return;
 
-      const [, path, hash = ''] = match
-      node.properties.href = withBase(routeFor(normalizePath(`${dir}/${path}`)), base) + hash
-    })
-  }
+      const [, path, hash = ""] = match;
+      node.properties.href = withBase(routeFor(normalizePath(`${dir}/${path}`)), base) + hash;
+    });
+  };
 }

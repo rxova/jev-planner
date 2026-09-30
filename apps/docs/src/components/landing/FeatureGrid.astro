@@ -7,29 +7,27 @@
  * content here: a screen reader that announces four unnumbered links in any
  * order has lost the one thing these cards teach.
  */
-import { withBase } from '../../lib/base-url.mjs'
-import { STAGES } from './content.mjs'
+import { withBase } from "../../lib/base-url.mjs";
+import { STAGES } from "./content.mjs";
 
-const base = import.meta.env.BASE_URL
+const base = import.meta.env.BASE_URL;
 ---
 
 <section class="features not-content" aria-labelledby="features">
   <h2 id="features">The four stages, in detail</h2>
   <ol>
-    {
-      STAGES.map(({ n, label, what, href, optional }) => (
-        <li class:list={[optional && 'optional']}>
-          <h3>
-            <a href={withBase(href, base)}>
-              <span class="n">{n}</span>
-              {label}
-            </a>
-          </h3>
-          <p>{what}</p>
-          {optional && <p class="when">Only when Jev asks for it.</p>}
-        </li>
-      ))
-    }
+    {STAGES.map(({ n, label, what, href, optional }) => (
+      <li class:list={[optional && "optional"]}>
+        <h3>
+          <a href={withBase(href, base)}>
+            <span class="n">{n}</span>
+            {label}
+          </a>
+        </h3>
+        <p>{what}</p>
+        {optional && <p class="when">Only when Jev asks for it.</p>}
+      </li>
+    ))}
   </ol>
 </section>
 
@@ -91,7 +89,7 @@ const base = import.meta.env.BASE_URL
   }
   /* The whole card is the link's hit area; the link text stays the title. */
   a::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     border-radius: inherit;

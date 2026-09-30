@@ -10,10 +10,10 @@
  * Left alone: protocol-relative (`//host`) and absolute URLs, and anything that
  * already carries the base — so applying it twice is a no-op.
  */
-export function withBase(url, base = '/') {
-  const prefix = base.replace(/\/+$/, '')
-  if (!prefix || typeof url !== 'string') return url
-  if (!url.startsWith('/') || url.startsWith('//')) return url
-  if (url === prefix || url.startsWith(`${prefix}/`)) return url
-  return prefix + url
+export function withBase(url, base = "/") {
+  const prefix = base.replace(/\/+$/, "");
+  if (!prefix || typeof url !== "string") return url;
+  if (!url.startsWith("/") || url.startsWith("//")) return url;
+  if (url === prefix || url.startsWith(`${prefix}/`)) return url;
+  return prefix + url;
 }

@@ -1,6 +1,6 @@
 name: Feature request
 description: A change or addition to the public API
-labels: ['enhancement']
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

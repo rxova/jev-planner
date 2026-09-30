@@ -1,8 +1,8 @@
-import { MAX_OBJECTIONS } from '../debate/debate.js'
-import type { AgentName } from '../provider/provider.types.js'
-import type { Dispute, DisputeRuling } from '../debate/debate.types.js'
-import type { Verdict } from '../questions/questions.types.js'
-import type { AuthoredPlan, ReceivedObjection, ClaimToCheck } from './prompts.types.js'
+import { MAX_OBJECTIONS } from "../debate/debate.js";
+import type { AgentName } from "../provider/provider.types.js";
+import type { Dispute, DisputeRuling } from "../debate/debate.types.js";
+import type { Verdict } from "../questions/questions.types.js";
+import type { AuthoredPlan, ReceivedObjection, ClaimToCheck } from "./prompts.types.js";
 
 /**
  * The rules every stage shares. How much of the repository to read differs by
@@ -15,27 +15,27 @@ ${repository} Make the plan specific to files and symbols that exist.
 Call out assumptions and unresolved questions. Prefer a small, verifiable sequence of changes.
 Include architecture, edge cases, tests, validation, and rollout/compatibility concerns.
 If the task is a placeholder or too vague to act on, say so and list the clarifying questions instead of inventing scope.
-Keep the response under 1,500 words. Return Markdown only.`
+Keep the response under 1,500 words. Return Markdown only.`;
 }
 
-const EXPLORE = 'Inspect the repository before deciding.'
+const EXPLORE = "Inspect the repository before deciding.";
 const CHECK_DISPUTES =
-  'You examined the repository while drafting. Open a file only to check a claim on which the plans disagree, or one you are unsure of.'
+  "You examined the repository while drafting. Open a file only to check a claim on which the plans disagree, or one you are unsure of.";
 const SETTLE_CONTRADICTIONS =
-  'Work from the plans below. Open a file only to settle a contradiction between them.'
+  "Work from the plans below. Open a file only to settle a contradiction between them.";
 
 /** "Claude", "Claude and GLM", "Claude, GLM and Kimi". */
 export function listLabels(labels: readonly string[]): string {
-  return labels.join(', ').replace(/, ([^,]*)$/, ' and $1')
+  return labels.join(", ").replace(/, ([^,]*)$/, " and $1");
 }
 
 function planBlocks(plans: readonly AuthoredPlan[], tag: string): string {
   return plans
     .map(
       ({ label, plan, name }) =>
-        `${label}'s plan:\n<${tag} author="${label}"${name === undefined ? '' : ` agent="${name}"`}>\n${plan}\n</${tag}>`,
+        `${label}'s plan:\n<${tag} author="${label}"${name === undefined ? "" : ` agent="${name}"`}>\n${plan}\n</${tag}>`,
     )
-    .join('\n\n')
+    .join("\n\n");
 }
 
 export function initialPlanPrompt(task: string, peers: readonly string[]): string {
@@ -46,12 +46,12 @@ You are the first planner in a collaboration with ${listLabels(peers)}. Produce 
 Task:
 <task>
 ${task}
-</task>`
+</task>`;
 }
 
 /** The task, unless the agent is continuing a conversation that already has it. */
 function taskBlock(task: string, resumed: boolean | undefined): string {
-  return resumed ? '' : `Task:\n<task>\n${task}\n</task>\n\n`
+  return resumed ? "" : `Task:\n<task>\n${task}\n</task>\n\n`;
 }
 
 /**
@@ -59,42 +59,42 @@ function taskBlock(task: string, resumed: boolean | undefined): string {
  * holds the task and its last plan: both are left out.
  */
 export function revisionPrompt(input: {
-  task: string
-  ownPlan: string
-  peerPlans: readonly AuthoredPlan[]
-  feedback?: string
+  task: string;
+  ownPlan: string;
+  peerPlans: readonly AuthoredPlan[];
+  feedback?: string;
   /** `feedback` is the disagreements a debate left open, not the judge's verdict. */
-  targeted?: boolean
-  resumed?: boolean | undefined
+  targeted?: boolean;
+  resumed?: boolean | undefined;
 }): string {
-  const peers = listLabels(input.peerPlans.map(({ label }) => label))
+  const peers = listLabels(input.peerPlans.map(({ label }) => label));
   const ownPlan = input.resumed
-    ? ''
-    : `Your earlier draft:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`
+    ? ""
+    : `Your earlier draft:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`;
   return `${planContract(CHECK_DISPUTES)}
 
 You are reviewing peer plans from ${peers}. Compare them with your ${
-    input.resumed ? 'last plan in this conversation' : 'own draft'
+    input.resumed ? "last plan in this conversation" : "own draft"
   }, correct weak assumptions,
 adopt useful details, and return a revised standalone plan. Do not merely write a critique.
 
-${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, 'peer-plan')}${
+${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, "peer-plan")}${
     input.feedback === undefined
-      ? ''
+      ? ""
       : input.targeted
         ? `\n\nThe debate left these disagreements open. Settle each one in your revised plan, checking the repository where a claim is about it:\n<open-disagreements>\n${input.feedback}\n</open-disagreements>`
         : `\n\nThe judge identified remaining uncertainty. Use this typed feedback to target the revision:\n<judge-feedback>\n${input.feedback}\n</judge-feedback>`
-  }`
+  }`;
 }
 
 /** `resumed` is for an agent continuing its own conversation: the task is left out. */
 export function finalPlanPrompt(input: {
-  task: string
-  plans: readonly AuthoredPlan[]
-  verdict: string
+  task: string;
+  plans: readonly AuthoredPlan[];
+  verdict: string;
   /** In `debate` review: the disputes and the judge's rulings on them. */
-  disputes?: string
-  resumed?: boolean | undefined
+  disputes?: string;
+  resumed?: boolean | undefined;
 }): string {
   return `${planContract(SETTLE_CONTRADICTIONS)}
 
@@ -102,27 +102,27 @@ Act as the final editor. Merge the best concrete parts of all the revised plans,
 Resolve contradictions explicitly. Return one self-contained execution plan—no discussion of the planning process,
 no winner announcement, and no judge commentary.
 
-${taskBlock(input.task, input.resumed)}${planBlocks(input.plans, 'revised-plan')}
+${taskBlock(input.task, input.resumed)}${planBlocks(input.plans, "revised-plan")}
 
 Judge verdict:
 <judge-verdict>
 ${input.verdict}
 </judge-verdict>${
     input.disputes === undefined
-      ? ''
+      ? ""
       : `
 
 The agents' disagreements, and the judge's ruling on each. Follow a ruling unless the plans show it wrong:
 <disputes>
 ${input.disputes}
 </disputes>`
-  }`
+  }`;
 }
 
 /** The format a critique answers in, shown to the critic. */
 const CRITIQUE_FORMAT = `TARGET: <agent>
 C1 [repo]: <claim about a file, symbol or export> — <why it matters>
-C2: <claim about the design> — <why it matters>`
+C2: <claim about the design> — <why it matters>`;
 
 /**
  * Asks an agent for its objections to every peer plan, and nothing else: no
@@ -130,14 +130,14 @@ C2: <claim about the design> — <why it matters>`
  * which already holds the task and its own plan.
  */
 export function critiquePrompt(input: {
-  task: string
-  ownPlan: string
-  peerPlans: readonly (AuthoredPlan & { name: AgentName })[]
-  resumed?: boolean | undefined
+  task: string;
+  ownPlan: string;
+  peerPlans: readonly (AuthoredPlan & { name: AgentName })[];
+  resumed?: boolean | undefined;
 }): string {
   const ownPlan = input.resumed
-    ? ''
-    : `Your own draft, for reference:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`
+    ? ""
+    : `Your own draft, for reference:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`;
   return `${planContract(CHECK_DISPUTES)}
 
 Do not write a plan this time. Critique the peer plans below: find what is wrong in each, not what
@@ -150,7 +150,7 @@ Mark an objection [repo] only when it makes a claim about the repository that so
 by opening a file. Say why each objection matters after a dash. Raise only objections you would
 defend; an author will accept or reject each one, and the judge will rule on the rejected ones.
 
-${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, 'peer-plan')}`
+${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, "peer-plan")}`;
 }
 
 /**
@@ -158,28 +158,28 @@ ${taskBlock(input.task, input.resumed)}${ownPlan}${planBlocks(input.peerPlans, '
  * return its revised plan. `resumed` leaves out the task and its own plan.
  */
 export function replyPrompt(input: {
-  task: string
-  ownPlan: string
-  objections: readonly ReceivedObjection[]
-  resumed?: boolean | undefined
+  task: string;
+  ownPlan: string;
+  objections: readonly ReceivedObjection[];
+  resumed?: boolean | undefined;
 }): string {
-  const ownPlan = input.resumed ? '' : `Your plan:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`
+  const ownPlan = input.resumed ? "" : `Your plan:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`;
   const received =
     input.objections.length === 0
-      ? 'No objections were raised against your plan. Return it, improved where you see fit.'
+      ? "No objections were raised against your plan. Return it, improved where you see fit."
       : `The other agents raised these objections against your plan:
 <objections>
 ${input.objections
   .map(
     ({ id, criticLabel, claim, why, repo }) =>
-      `${id} (${criticLabel}${repo ? ', about the repository' : ''}): ${claim}${why ? ` — ${why}` : ''}`,
+      `${id} (${criticLabel}${repo ? ", about the repository" : ""}): ${claim}${why ? ` — ${why}` : ""}`,
   )
-  .join('\n')}
+  .join("\n")}
 </objections>
 
 Answer every objection on its own line, by its id: ACCEPT when it is right, and change your plan to
 match; REJECT when it is wrong, with the reason. Open a file before rejecting a claim about the
-repository. Then return your revised plan, complete and standalone.`
+repository. Then return your revised plan, complete and standalone.`;
   return `${planContract(CHECK_DISPUTES)}
 
 ${received}
@@ -193,7 +193,7 @@ Answer in this format:
 <your whole revised plan>
 </revised-plan>
 
-${taskBlock(input.task, input.resumed)}${ownPlan}`.trimEnd()
+${taskBlock(input.task, input.resumed)}${ownPlan}`.trimEnd();
 }
 
 /**
@@ -201,9 +201,9 @@ ${taskBlock(input.task, input.resumed)}${ownPlan}`.trimEnd()
  * one answer per claim. `resumed` leaves out the task.
  */
 export function claimCheckPrompt(input: {
-  task: string
-  claims: readonly ClaimToCheck[]
-  resumed?: boolean | undefined
+  task: string;
+  claims: readonly ClaimToCheck[];
+  resumed?: boolean | undefined;
 }): string {
   return `You are checking disputed claims about this repository, not planning. Work read-only.
 Open the files each claim is about and answer on one line per claim, by its id:
@@ -219,25 +219,25 @@ ${input.claims
   .map(
     ({ id, claim, criticLabels, authorLabel, rejections }) =>
       `${id}: ${claim}\n  Raised by ${listLabels(criticLabels)} against ${authorLabel}'s plan.${
-        rejections.length > 0 ? ` ${authorLabel} rejected it: ${rejections.join(' / ')}` : ''
+        rejections.length > 0 ? ` ${authorLabel} rejected it: ${rejections.join(" / ")}` : ""
       }`,
   )
-  .join('\n')}
-</claims>`
+  .join("\n")}
+</claims>`;
 }
 
 /** Below this confidence, a ruling leaves its dispute open. */
-export const SETTLED = 0.65
+export const SETTLED = 0.65;
 
-const RULING_TEXT: Record<DisputeRuling['choice'], (critics: string, author: string) => string> = {
+const RULING_TEXT: Record<DisputeRuling["choice"], (critics: string, author: string) => string> = {
   critic: (critics) => `${critics}'s objection holds`,
   author: (_critics, author) => `${author}'s position holds`,
-  unclear: () => 'the material does not settle it',
-}
+  unclear: () => "the material does not settle it",
+};
 
 /** Whether a dispute is settled: the judge ruled for a side, and with at least `SETTLED` confidence. */
 export function isSettled(ruling: DisputeRuling | undefined): boolean {
-  return ruling !== undefined && ruling.choice !== 'unclear' && ruling.confidence >= SETTLED
+  return ruling !== undefined && ruling.choice !== "unclear" && ruling.confidence >= SETTLED;
 }
 
 /** `D1 (Codex → Claude): <claim>. Judge: Claude's position holds (0.72). Check: REFUTE src/jev.ts.` */
@@ -246,39 +246,39 @@ function disputeLine(
   ruling: DisputeRuling | undefined,
   label: (name: AgentName) => string,
 ): string {
-  const critics = listLabels(dispute.critics.map(label))
-  const author = label(dispute.target)
-  const parts = [`${dispute.id} (${critics} → ${author}): ${dispute.claim.replace(/\.$/, '')}.`]
+  const critics = listLabels(dispute.critics.map(label));
+  const author = label(dispute.target);
+  const parts = [`${dispute.id} (${critics} → ${author}): ${dispute.claim.replace(/\.$/, "")}.`];
   parts.push(
     ruling
       ? `Judge: ${RULING_TEXT[ruling.choice](critics, author)} (${ruling.confidence.toFixed(2)}).`
-      : 'Judge: not judged.',
-  )
+      : "Judge: not judged.",
+  );
   if (dispute.check) {
-    const evidence = dispute.check.evidence ? ` ${dispute.check.evidence.replace(/\.$/, '')}` : ''
-    parts.push(`Check: ${dispute.check.result.toUpperCase()}${evidence}.`)
+    const evidence = dispute.check.evidence ? ` ${dispute.check.evidence.replace(/\.$/, "")}` : "";
+    parts.push(`Check: ${dispute.check.result.toUpperCase()}${evidence}.`);
   }
-  return parts.join(' ')
+  return parts.join(" ");
 }
 
 /** Every dispute and the judge's ruling on it, one per line, for the final merge. */
 export function disputeSummary(input: {
-  disputes: readonly Dispute[]
-  overflow: readonly Dispute[]
-  rulings: readonly DisputeRuling[]
-  label: (name: AgentName) => string
+  disputes: readonly Dispute[];
+  overflow: readonly Dispute[];
+  rulings: readonly DisputeRuling[];
+  label: (name: AgentName) => string;
 }): string {
-  const ruling = (id: string) => input.rulings.find((candidate) => candidate.id === id)
+  const ruling = (id: string) => input.rulings.find((candidate) => candidate.id === id);
   return [...input.disputes, ...input.overflow]
     .map((dispute) => disputeLine(dispute, ruling(dispute.id), input.label))
-    .join('\n')
+    .join("\n");
 }
 
 const SCORE_NAMES = {
-  completeness: 'completeness',
-  feasibility: 'feasibility and grounding in the repository',
-  riskCoverage: 'coverage of edge cases, tests and rollout risks',
-} as const
+  completeness: "completeness",
+  feasibility: "feasibility and grounding in the repository",
+  riskCoverage: "coverage of edge cases, tests and rollout risks",
+} as const;
 
 /**
  * What a second pass after a debate aims at: the disputes the judge's rulings left
@@ -287,21 +287,21 @@ const SCORE_NAMES = {
  * can also mean something is missing that nobody disputed.
  */
 export function disputeFeedback(input: {
-  disputes: readonly Dispute[]
-  overflow: readonly Dispute[]
-  verdict: Verdict
-  label: (name: AgentName) => string
+  disputes: readonly Dispute[];
+  overflow: readonly Dispute[];
+  verdict: Verdict;
+  label: (name: AgentName) => string;
 }): string {
-  const rulings = input.verdict.disputes ?? []
-  const ruling = (id: string) => rulings.find((candidate) => candidate.id === id)
-  const open = input.disputes.filter((dispute) => !isSettled(ruling(dispute.id)))
+  const rulings = input.verdict.disputes ?? [];
+  const ruling = (id: string) => rulings.find((candidate) => candidate.id === id);
+  const open = input.disputes.filter((dispute) => !isSettled(ruling(dispute.id)));
   const lines = [
     ...open.map((dispute) => disputeLine(dispute, ruling(dispute.id), input.label)),
     ...input.overflow.map((dispute) => disputeLine(dispute, undefined, input.label)),
-  ]
-  if (lines.length > 0) return lines.join('\n')
+  ];
+  if (lines.length > 0) return lines.join("\n");
   const name = (Object.keys(SCORE_NAMES) as (keyof typeof SCORE_NAMES)[]).reduce((weakest, next) =>
     input.verdict[next] < input.verdict[weakest] ? next : weakest,
-  )
-  return `No disagreement is left open, but the judge still expects another pass to improve the plan. Its weakest score is ${SCORE_NAMES[name]}: ${input.verdict[name].toFixed(1)} of 3. Strengthen that.`
+  );
+  return `No disagreement is left open, but the judge still expects another pass to improve the plan. Its weakest score is ${SCORE_NAMES[name]}: ${input.verdict[name].toFixed(1)} of 3. Strengthen that.`;
 }

@@ -22,13 +22,13 @@ inputs:
   node-version:
     description: Node.js version to install.
     required: false
-    default: '24'
+    default: "24"
   registry-url:
     description: >-
       npm registry to configure auth against. Only the publishing job needs this —
       it is what writes the .npmrc that Trusted Publishing authenticates with.
     required: false
-    default: ''
+    default: ""
 
 runs:
   using: composite
@@ -121,10 +121,10 @@ runs:
       if: steps.restored.outputs.usable != 'true'
       uses: pnpm/action-setup@v6
       env:
-        npm_config_fetch_timeout: '20000'
-        npm_config_fetch_retries: '1'
-        npm_config_fetch_retry_mintimeout: '5000'
-        npm_config_fetch_retry_maxtimeout: '10000'
+        npm_config_fetch_timeout: "20000"
+        npm_config_fetch_retries: "1"
+        npm_config_fetch_retry_mintimeout: "5000"
+        npm_config_fetch_retry_maxtimeout: "10000"
 
     - name: Setup Node
       uses: actions/setup-node@v7

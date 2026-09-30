@@ -38,9 +38,9 @@ on:
   # from it and are reviewed against it.
   pull_request:
     paths:
-      - 'apps/docs/**'
-      - 'packages/jev-planner/README.md'
-      - '.github/workflows/docs.yml'
+      - "apps/docs/**"
+      - "packages/jev-planner/README.md"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
   # From release.yml, after a publish that includes jev-planner.
   workflow_call:
@@ -49,15 +49,15 @@ on:
         description: The jev-planner version just published; the build fails on any other.
         type: string
         required: false
-        default: ''
+        default: ""
       ref:
         description: The release commit to build.
         type: string
         required: false
-        default: ''
+        default: ""
   # DNS, Pages settings and redirects drift without a commit to notice them.
   schedule:
-    - cron: '23 6 * * 1'
+    - cron: "23 6 * * 1"
 
 permissions:
   contents: read

@@ -5,15 +5,15 @@
 // thing. Every claim is lifted from packages/jev-planner/README.md; nothing here
 // is allowed to promise more than the README does.
 
-import { renderMarkdown } from '../../lib/docs-pages.mjs'
-import { withBase } from '../../lib/base-url.mjs'
+import { renderMarkdown } from "../../lib/docs-pages.mjs";
+import { withBase } from "../../lib/base-url.mjs";
 
-export const TITLE = 'jev-planner'
+export const TITLE = "jev-planner";
 
 export const TAGLINE =
-  'Ever wanted several agents to work out one plan together? jev-planner has multiple ' +
-  'providers — or one provider, several times over — draft against your repository, read and ' +
-  "critique each other's work, and settle on one final plan, orchestrated by TypeSafe Jev."
+  "Ever wanted several agents to work out one plan together? jev-planner has multiple " +
+  "providers — or one provider, several times over — draft against your repository, read and " +
+  "critique each other's work, and settle on one final plan, orchestrated by TypeSafe Jev.";
 
 /**
  * Why run several agents instead of one: the pitch under the install command.
@@ -23,35 +23,35 @@ export const TAGLINE =
  * debate review, and one provider as several agents.
  */
 export const PITCH = {
-  heading: 'Several minds, one plan',
+  heading: "Several minds, one plan",
   points: [
     {
-      title: 'Every plan for the price of the slowest',
+      title: "Every plan for the price of the slowest",
       body:
-        'The agents work in parallel, so each step takes only as long as your slowest agent — and ' +
-        'every draft is kept in the run folder, so you already have other plans to compare.',
+        "The agents work in parallel, so each step takes only as long as your slowest agent — and " +
+        "every draft is kept in the run folder, so you already have other plans to compare.",
     },
     {
-      title: 'Built by everyone, orchestrated by Jev',
+      title: "Built by everyone, orchestrated by Jev",
       body:
         "Each agent reads the others' plans, corrects their facts about the repository and " +
-        'revises its own — or, in a debate, objects and answers. Jev judges every round, calls ' +
-        'for another when it would help, and picks the agent that merges the strongest ideas.',
+        "revises its own — or, in a debate, objects and answers. Jev judges every round, calls " +
+        "for another when it would help, and picks the agent that merges the strongest ideas.",
     },
     {
-      title: 'Any mix of agents',
+      title: "Any mix of agents",
       body:
-        'Codex, Claude, DeepSeek, Kimi and GLM, in any combination of two or more — even one ' +
-        'provider several times over, each instance with its own model and effort.',
+        "Codex, Claude, DeepSeek, Kimi and GLM, in any combination of two or more — even one " +
+        "provider several times over, each instance with its own model and effort.",
     },
   ],
-}
+};
 
-export const INSTALL = 'npm install -g jev-planner'
+export const INSTALL = "npm install -g jev-planner";
 
-export const GITHUB = 'https://github.com/rxova/jev-planner'
+export const GITHUB = "https://github.com/rxova/jev-planner";
 
-export const GET_STARTED = '/guides/getting-started/'
+export const GET_STARTED = "/guides/getting-started/";
 
 /**
  * The command the transcript below runs: three agents, two of them one provider
@@ -59,11 +59,11 @@ export const GET_STARTED = '/guides/getting-started/'
  * differ, so the run prints no same-provider warning.
  */
 const DEMO_COMMAND =
-  'jev-planner --agents codex,claude:deep,claude:quick --effort quick=low ' +
-  '-o PLAN.md "Add per-user rate limiting to the public API"'
+  "jev-planner --agents codex,claude:deep,claude:quick --effort quick=low " +
+  '-o PLAN.md "Add per-user rate limiting to the public API"';
 
 /** The last line of a run, whichever way it ended. */
-const WROTE = '[jev-planner] Wrote /home/you/my-app/PLAN.md'
+const WROTE = "[jev-planner] Wrote /home/you/my-app/PLAN.md";
 
 /**
  * The four stages of a run, in order: the sequence the landing page exists to
@@ -82,65 +82,65 @@ const WROTE = '[jev-planner] Wrote /home/you/my-app/PLAN.md'
 export const STAGES = [
   {
     n: 1,
-    label: 'Draft',
-    what: 'Every agent — different providers, or several instances of one — plans alone against the repository, all in parallel; none sees another draft.',
-    href: '/learn/how-it-works/#1-independent-drafts',
+    label: "Draft",
+    what: "Every agent — different providers, or several instances of one — plans alone against the repository, all in parallel; none sees another draft.",
+    href: "/learn/how-it-works/#1-independent-drafts",
     lines: [
       {
-        kind: 'output',
-        text: '[jev-planner] Drafting independent plans with Codex, Claude (deep) and Claude (quick)…',
+        kind: "output",
+        text: "[jev-planner] Drafting independent plans with Codex, Claude (deep) and Claude (quick)…",
       },
     ],
   },
   {
     n: 2,
-    label: 'Jev judges',
-    what: 'Jev scores completeness, feasibility and risk coverage, chooses a finalizer, and decides whether a cross-review would materially improve the plan.',
-    href: '/learn/how-it-works/#2-jev-evaluates',
+    label: "Jev judges",
+    what: "Jev scores completeness, feasibility and risk coverage, chooses a finalizer, and decides whether a cross-review would materially improve the plan.",
+    href: "/learn/how-it-works/#2-jev-evaluates",
     lines: [
-      { kind: 'output', text: '[jev-planner] Asking Jev for typed quality and routing decisions…' },
+      { kind: "output", text: "[jev-planner] Asking Jev for typed quality and routing decisions…" },
     ],
   },
   {
     n: 3,
-    label: 'Cross-review',
+    label: "Cross-review",
     optional: true,
     what: "When Jev asks for one, each agent sees every other agent's plan and returns a revised, standalone plan — which Jev judges again.",
-    href: '/learn/how-it-works/#3-cross-review',
+    href: "/learn/how-it-works/#3-cross-review",
     lines: [
-      { kind: 'output', text: '[jev-planner] Cross-reviewing the 3 drafts…' },
-      { kind: 'output', text: '[jev-planner] Re-evaluating the revised plans with Jev…' },
+      { kind: "output", text: "[jev-planner] Cross-reviewing the 3 drafts…" },
+      { kind: "output", text: "[jev-planner] Re-evaluating the revised plans with Jev…" },
     ],
   },
   {
     n: 4,
-    label: 'Final plan',
-    what: 'The agent Jev chose merges the strongest ideas into one plan, unless one reviewed plan already stands alone.',
-    href: '/learn/how-it-works/#4-synthesis',
+    label: "Final plan",
+    what: "The agent Jev chose merges the strongest ideas into one plan, unless one reviewed plan already stands alone.",
+    href: "/learn/how-it-works/#4-synthesis",
     lines: [
       {
-        kind: 'note',
+        kind: "note",
         text:
           '# then "Synthesizing the final plan with …": the agent Jev chose merges the plans, ' +
-          'or one reviewed plan is adopted as it stands',
+          "or one reviewed plan is adopted as it stands",
       },
     ],
   },
-]
+];
 
 /** The stage's own line in the transcript: the number, the label, the point. */
 const stageLine = ({ n, label, what, optional }) =>
-  `${String(n)} · ${label}${optional ? ' (only when Jev asks)' : ''} — ${what}`
+  `${String(n)} · ${label}${optional ? " (only when Jev asks)" : ""} — ${what}`;
 
 /**
  * The demo transcript: the command from the README, then each stage announcing
  * itself and printing what it prints.
  */
 export const TRANSCRIPT = [
-  { kind: 'command', text: DEMO_COMMAND },
-  ...STAGES.flatMap((stage) => [{ kind: 'stage', text: stageLine(stage) }, ...stage.lines]),
-  { kind: 'output', text: WROTE },
-]
+  { kind: "command", text: DEMO_COMMAND },
+  ...STAGES.flatMap((stage) => [{ kind: "stage", text: stageLine(stage) }, ...stage.lines]),
+  { kind: "output", text: WROTE },
+];
 
 /**
  * The landing page as markdown, for `/index.md`.
@@ -151,36 +151,36 @@ export const TRANSCRIPT = [
  * @param {{ origin: string, base: string }} site
  */
 export function landingMarkdown({ origin, base }) {
-  const url = (path) => `${origin}${withBase(path, base)}`
+  const url = (path) => `${origin}${withBase(path, base)}`;
   const body = [
     TAGLINE,
-    '',
-    '```sh',
+    "",
+    "```sh",
     INSTALL,
-    '```',
-    '',
+    "```",
+    "",
     `## ${PITCH.heading}`,
-    '',
+    "",
     ...PITCH.points.map(({ title, body }) => `- **${title}.** ${body}`),
-    '',
-    '## Example run',
-    '',
-    '```text',
+    "",
+    "## Example run",
+    "",
+    "```text",
     ...TRANSCRIPT.map(({ kind, text }) => {
-      if (kind === 'command') return `$ ${text}`
+      if (kind === "command") return `$ ${text}`;
       // A stage label is not output, so it is not dressed up as any.
-      return kind === 'stage' ? `# ${text}` : text
+      return kind === "stage" ? `# ${text}` : text;
     }),
-    '```',
-    '',
-    '## The four stages',
-    '',
+    "```",
+    "",
+    "## The four stages",
+    "",
     ...STAGES.map(
       ({ n, label, what, href }) => `- [${String(n)}. ${label}](${url(href)}): ${what}`,
     ),
-    '',
+    "",
     `[Get started](${url(GET_STARTED)}) · [Star on GitHub](${GITHUB})`,
-  ].join('\n')
+  ].join("\n");
 
-  return renderMarkdown({ title: TITLE, description: TAGLINE, htmlUrl: url('/'), body })
+  return renderMarkdown({ title: TITLE, description: TAGLINE, htmlUrl: url("/"), body });
 }

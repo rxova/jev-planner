@@ -18,4 +18,4 @@ runs:
     - uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
       with:
         provider: github
-        server-port: '0'
+        server-port: "0"

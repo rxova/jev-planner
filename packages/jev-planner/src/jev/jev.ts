@@ -1,6 +1,6 @@
-import { choice, noul, score, TypeSafeClient } from '@typesafe-ai/sdk'
-import type { Question, ScoreCriteria } from '@typesafe-ai/sdk'
-import { disputeKey, judgedPlans, planQuestions, STAGE_TEXT } from '@rxova/planner-core'
+import { choice, noul, score, TypeSafeClient } from "@typesafe-ai/sdk";
+import type { Question, ScoreCriteria } from "@typesafe-ai/sdk";
+import { disputeKey, judgedPlans, planQuestions, STAGE_TEXT } from "@rxova/planner-core";
 import type {
   Dispute,
   DisputeRuling,
@@ -9,39 +9,39 @@ import type {
   PlanJudge,
   PlanQuestion,
   Verdict,
-} from '@rxova/planner-core'
-import type { Answers } from './jev.types.js'
+} from "@rxova/planner-core";
+import type { Answers } from "./jev.types.js";
 
 /** A neutral question as the SDK asks it. */
 function toTypeSafe(question: PlanQuestion): Question {
-  if (question.kind === 'choice') {
+  if (question.kind === "choice") {
     const instructions = question.details
       ? { question: question.ask, ...question.details }
-      : question.ask
-    return choice(instructions, question.options)
+      : question.ask;
+    return choice(instructions, question.options);
   }
-  if (question.kind === 'score') {
+  if (question.kind === "score") {
     // A rubric has at least two levels; the SDK's tuple type says so.
-    return score(question.ask, question.levels as unknown as ScoreCriteria)
+    return score(question.ask, question.levels as unknown as ScoreCriteria);
   }
-  return noul(question.ask, { true: question.yes, false: question.no })
+  return noul(question.ask, { true: question.yes, false: question.no });
 }
 
 /** TypeSafe Jev, asked the planner's questions in one `systemOne` call per judged round. */
 export class TypeSafeJevJudge implements PlanJudge {
-  readonly name = 'Jev'
+  readonly name = "Jev";
 
   constructor(private readonly client: TypeSafeClient = new TypeSafeClient()) {}
 
   async judge(input: {
-    task: string
-    plans: readonly JudgedPlan[]
-    stage: JudgeStage
-    disputes?: readonly Dispute[]
-    model?: string
+    task: string;
+    plans: readonly JudgedPlan[];
+    stage: JudgeStage;
+    disputes?: readonly Dispute[];
+    model?: string;
   }): Promise<Verdict> {
-    const disputes = input.disputes ?? []
-    const questions = planQuestions({ plans: input.plans, stage: input.stage, disputes })
+    const disputes = input.disputes ?? [];
+    const questions = planQuestions({ plans: input.plans, stage: input.stage, disputes });
     const response = await this.client.systemOne({
       ...(input.model ? { model: input.model } : {}),
       state: {
@@ -52,10 +52,10 @@ export class TypeSafeJevJudge implements PlanJudge {
       questions: Object.fromEntries(
         Object.entries(questions).map(([key, question]) => [key, toTypeSafe(question)]),
       ),
-    })
+    });
 
     // The questions are built at run time, so the SDK cannot infer the answers; the keys are ours.
-    const answers = response.answers as unknown as Answers
+    const answers = response.answers as unknown as Answers;
     return {
       strongerPlan: answers.stronger_plan.choice,
       strongerPlanConfidence: answers.stronger_plan.confidence,
@@ -72,14 +72,14 @@ export class TypeSafeJevJudge implements PlanJudge {
       ...(disputes.length > 0
         ? {
             disputes: disputes.map((dispute, index): DisputeRuling => {
-              const answer = answers[disputeKey(index)]
+              const answer = answers[disputeKey(index)];
               return answer
                 ? { id: dispute.id, choice: answer.choice, confidence: answer.confidence }
-                : { id: dispute.id, choice: 'unclear', confidence: 0 }
+                : { id: dispute.id, choice: "unclear", confidence: 0 };
             }),
           }
         : {}),
       model: response.model,
-    }
+    };
   }
 }

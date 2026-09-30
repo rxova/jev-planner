@@ -7,10 +7,10 @@
  * outcome is announced, for sighted and screen-reader users alike.
  */
 interface Props {
-  command: string
+  command: string;
 }
 
-const { command } = Astro.props
+const { command } = Astro.props;
 ---
 
 <div class="copy-command not-content" data-copy-command>
@@ -22,36 +22,36 @@ const { command } = Astro.props
 </div>
 
 <script>
-  for (const root of document.querySelectorAll<HTMLElement>('[data-copy-command]')) {
-    const code = root.querySelector('code')
-    const button = root.querySelector('button')
-    const status = root.querySelector<HTMLElement>('.status')
-    if (!code || !button || !status) continue
+  for (const root of document.querySelectorAll<HTMLElement>("[data-copy-command]")) {
+    const code = root.querySelector("code");
+    const button = root.querySelector("button");
+    const status = root.querySelector<HTMLElement>(".status");
+    if (!code || !button || !status) continue;
 
     const say = (message: string) => {
-      status.textContent = message
-    }
+      status.textContent = message;
+    };
 
-    button.addEventListener('click', () => {
+    button.addEventListener("click", () => {
       // `navigator.clipboard` is missing outright outside a secure context, so
       // the call goes inside the promise, where that lands in the same fallback.
       Promise.resolve()
         .then(() => navigator.clipboard.writeText(code.textContent))
         .then(
-        () => {
-          say('Copied to clipboard')
-        },
-        () => {
-          // Leave the command selected so one keystroke finishes the job.
-          const range = document.createRange()
-          range.selectNodeContents(code)
-          const selection = window.getSelection()
-          selection?.removeAllRanges()
-          selection?.addRange(range)
-          say('Could not copy — the command is selected, press Ctrl+C or ⌘C')
-        },
-      )
-    })
+          () => {
+            say("Copied to clipboard");
+          },
+          () => {
+            // Leave the command selected so one keystroke finishes the job.
+            const range = document.createRange();
+            range.selectNodeContents(code);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            say("Could not copy — the command is selected, press Ctrl+C or ⌘C");
+          },
+        );
+    });
   }
 </script>
 
@@ -78,7 +78,7 @@ const { command } = Astro.props
     overflow-wrap: anywhere;
   }
   code::before {
-    content: '$ ' / '';
+    content: "$ " / "";
     color: var(--rx-muted);
     user-select: none;
   }
@@ -100,7 +100,7 @@ const { command } = Astro.props
     background: var(--rx-primary);
     color: #fff;
   }
-  :global([data-theme='dark']) button:hover {
+  :global([data-theme="dark"]) button:hover {
     color: var(--rx-bg);
   }
   /* Outside the box, with its line reserved, so the message appearing moves nothing. */

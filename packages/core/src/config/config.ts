@@ -1,88 +1,88 @@
-import { readFile } from 'node:fs/promises'
-import { isRecord } from '@rxova/ts-utils'
-import { dirname, join, resolve } from 'node:path'
-import { PROVIDERS } from '../providers/providers.js'
-import type { ConfigSetup, ConfigValues, LoadedConfig, Context } from './config.types.js'
+import { readFile } from "node:fs/promises";
+import { isRecord } from "@rxova/ts-utils";
+import { dirname, join, resolve } from "node:path";
+import { PROVIDERS } from "../providers/providers.js";
+import type { ConfigSetup, ConfigValues, LoadedConfig, Context } from "./config.types.js";
 
-const IDS = PROVIDERS.map(({ id }) => id)
-const PROVIDER_IDS = IDS.join(', ')
+const IDS = PROVIDERS.map(({ id }) => id);
+const PROVIDER_IDS = IDS.join(", ");
 
 /** Where the keys a config must never hold belong instead: the judge's, then every provider's. */
 const secretEnv = (judgeEnv: readonly string[]) => [
   ...judgeEnv,
   ...PROVIDERS.flatMap(({ secretEnv }) => secretEnv),
-]
+];
 
-const SECRET = /key|token|secret|password/i
+const SECRET = /key|token|secret|password/i;
 
 function object(at: string, value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) throw new Error(`${at}: must be an object`)
-  return value
+  if (!isRecord(value)) throw new Error(`${at}: must be an object`);
+  return value;
 }
 
 function string(at: string, value: unknown): string {
-  if (typeof value !== 'string' || !value.trim())
-    throw new Error(`${at}: must be a non-empty string`)
-  return value.trim()
+  if (typeof value !== "string" || !value.trim())
+    throw new Error(`${at}: must be a non-empty string`);
+  return value.trim();
 }
 
 function boolean(at: string, value: unknown): boolean {
-  if (typeof value !== 'boolean') throw new Error(`${at}: must be true or false`)
-  return value
+  if (typeof value !== "boolean") throw new Error(`${at}: must be true or false`);
+  return value;
 }
 
 function notOneOf(at: string, options: readonly (string | number)[]): Error {
   return new Error(
-    `${at}: must be one of ${options.map((option) => JSON.stringify(option)).join(', ')}`,
-  )
+    `${at}: must be one of ${options.map((option) => JSON.stringify(option)).join(", ")}`,
+  );
 }
 
 function choice<T extends string | number>(at: string, value: unknown, options: readonly T[]): T {
-  if (!options.includes(value as T)) throw notOneOf(at, options)
-  return value as T
+  if (!options.includes(value as T)) throw notOneOf(at, options);
+  return value as T;
 }
 
 /** A number of seconds, as the matching flag's text; zero only where `zero` allows it. */
 function seconds(at: string, value: unknown, zero = false): string {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || (!zero && value === 0)) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || (!zero && value === 0)) {
     throw new Error(
-      `${at}: must be ${zero ? 'a number of seconds, 0 or more' : 'a positive number of seconds'}`,
-    )
+      `${at}: must be ${zero ? "a number of seconds, 0 or more" : "a positive number of seconds"}`,
+    );
   }
-  return String(value)
+  return String(value);
 }
 
 function unknownKey(at: string, expected: readonly string[], judgeEnv: readonly string[]): Error {
-  const key = at.slice(at.lastIndexOf('.') + 1)
+  const key = at.slice(at.lastIndexOf(".") + 1);
   if (SECRET.test(key)) {
     return new Error(
       `${at}: a config never holds a secret; it is meant to be committed. ` +
-        `Set ${secretEnv(judgeEnv).join(', ')} in the environment instead.`,
-    )
+        `Set ${secretEnv(judgeEnv).join(", ")} in the environment instead.`,
+    );
   }
-  return new Error(`${at}: unknown key. Expected one of ${expected.join(', ')}.`)
+  return new Error(`${at}: unknown key. Expected one of ${expected.join(", ")}.`);
 }
 
 const AGENT_FIELDS = {
-  model: 'model',
-  effort: 'effort',
-  reviewEffort: 'review-effort',
-} as const
+  model: "model",
+  effort: "effort",
+  reviewEffort: "review-effort",
+} as const;
 
-const NAME = /^[a-z][a-z0-9-]{0,23}$/
+const NAME = /^[a-z][a-z0-9-]{0,23}$/;
 
 /** Taken by `--finalizer` (`auto`, `none`), by the judge's verdict (`tie`), or by Windows as a file name. */
 const RESERVED = new Set([
-  'auto',
-  'none',
-  'tie',
-  'con',
-  'prn',
-  'aux',
-  'nul',
+  "auto",
+  "none",
+  "tie",
+  "con",
+  "prn",
+  "aux",
+  "nul",
   ...Array.from({ length: 9 }, (_, index) => `com${String(index + 1)}`),
   ...Array.from({ length: 9 }, (_, index) => `lpt${String(index + 1)}`),
-])
+]);
 
 /**
  * The name of an agent of `provider`, lowercased, or an error: a letter, then
@@ -91,95 +91,95 @@ const RESERVED = new Set([
  * word the run gives its own meaning, nor another provider's id.
  */
 export function validateAgentName(name: string, provider: string): string {
-  const lower = name.trim().toLowerCase()
+  const lower = name.trim().toLowerCase();
   if (!NAME.test(lower)) {
     throw new Error(
       `${name}: an agent name is a letter, then letters, digits or -, at most 24 characters`,
-    )
+    );
   }
-  if (RESERVED.has(lower)) throw new Error(`${lower}: a reserved word, not an agent name`)
+  if (RESERVED.has(lower)) throw new Error(`${lower}: a reserved word, not an agent name`);
   if (lower !== provider && PROVIDERS.some(({ id }) => id === lower)) {
-    throw new Error(`${lower}: the name of another provider, not an agent name`)
+    throw new Error(`${lower}: the name of another provider, not an agent name`);
   }
-  return lower
+  return lower;
 }
 
 function agents(value: unknown, { judgeEnv }: Context): Partial<ConfigValues> {
-  const entries = Object.entries(object('agents', value))
-  if (entries.length < 2) throw new Error('agents: needs at least two agents')
-  const values = { model: [] as string[], effort: [] as string[], 'review-effort': [] as string[] }
-  const specs: string[] = []
-  const names = new Set<string>()
+  const entries = Object.entries(object("agents", value));
+  if (entries.length < 2) throw new Error("agents: needs at least two agents");
+  const values = { model: [] as string[], effort: [] as string[], "review-effort": [] as string[] };
+  const specs: string[] = [];
+  const names = new Set<string>();
   for (const [key, settings] of entries) {
-    const fields = object(`agents.${key}`, settings)
-    const own = PROVIDERS.find(({ id }) => id === key)
-    const named = own === undefined
-    if (!named && 'provider' in fields) {
+    const fields = object(`agents.${key}`, settings);
+    const own = PROVIDERS.find(({ id }) => id === key);
+    const named = own === undefined;
+    if (!named && "provider" in fields) {
       throw new Error(
         `agents.${key}.provider: a provider key names its own provider; use another key for an instance`,
-      )
+      );
     }
-    if (named && !('provider' in fields)) {
+    if (named && !("provider" in fields)) {
       throw new Error(
         `agents.${key}: unknown agent. Expected one of ${PROVIDER_IDS}. A named agent sets "provider".`,
-      )
+      );
     }
-    const provider = own ?? PROVIDERS.find(({ id }) => id === fields.provider)
-    if (!provider) throw notOneOf(`agents.${key}.provider`, IDS)
-    let name: string
+    const provider = own ?? PROVIDERS.find(({ id }) => id === fields.provider);
+    if (!provider) throw notOneOf(`agents.${key}.provider`, IDS);
+    let name: string;
     try {
-      name = validateAgentName(key, provider.id)
+      name = validateAgentName(key, provider.id);
     } catch (error) {
-      throw new Error(`agents.${(error as Error).message}`, { cause: error })
+      throw new Error(`agents.${(error as Error).message}`, { cause: error });
     }
-    if (names.has(name)) throw new Error(`agents.${key}: ${name} is listed more than once`)
-    names.add(name)
-    specs.push(named ? `${provider.id}:${name}` : name)
+    if (names.has(name)) throw new Error(`agents.${key}: ${name} is listed more than once`);
+    names.add(name);
+    specs.push(named ? `${provider.id}:${name}` : name);
     for (const [field, setting] of Object.entries(fields)) {
-      if (named && field === 'provider') continue
-      const at = `agents.${key}.${field}`
+      if (named && field === "provider") continue;
+      const at = `agents.${key}.${field}`;
       if (!Object.hasOwn(AGENT_FIELDS, field)) {
         throw unknownKey(
           at,
-          [...(named ? ['provider'] : []), ...Object.keys(AGENT_FIELDS)],
+          [...(named ? ["provider"] : []), ...Object.keys(AGENT_FIELDS)],
           judgeEnv,
-        )
+        );
       }
-      const flag = AGENT_FIELDS[field as keyof typeof AGENT_FIELDS]
-      if (flag !== 'model' && !provider.effort) {
-        throw new Error(`${at}: ${provider.label} does not take effort`)
+      const flag = AGENT_FIELDS[field as keyof typeof AGENT_FIELDS];
+      if (flag !== "model" && !provider.effort) {
+        throw new Error(`${at}: ${provider.label} does not take effort`);
       }
-      values[flag].push(`${name}=${string(at, setting)}`)
+      values[flag].push(`${name}=${string(at, setting)}`);
     }
   }
-  return { agents: specs.join(','), ...values }
+  return { agents: specs.join(","), ...values };
 }
 
 /** Every top-level key, what it becomes, and its check. The keys follow the flags' names. */
 const SETTINGS: Record<string, (value: unknown, context: Context) => Partial<ConfigValues>> = {
   agents,
-  mode: (value) => ({ mode: choice('mode', value, ['fast', 'balanced', 'ultra']) }),
-  reviewMode: (value) => ({ 'review-mode': choice('reviewMode', value, ['standard', 'debate']) }),
-  reviewRounds: (value) => ({ 'review-rounds': String(choice('reviewRounds', value, [0, 1, 2])) }),
-  claimChecks: (value) => ({ 'claim-checks': boolean('claimChecks', value) }),
-  finalizer: (value) => ({ finalizer: string('finalizer', value) }),
-  judgeModel: (value) => ({ 'judge-model': string('judgeModel', value) }),
-  stragglerGrace: (value) => ({ 'straggler-grace': seconds('stragglerGrace', value, true) }),
-  timeout: (value) => ({ timeout: seconds('timeout', value) }),
-  resume: (value) => ({ resume: boolean('resume', value) }),
-  rounds: (value) => ({ rounds: boolean('rounds', value) }),
-  json: (value) => ({ json: boolean('json', value) }),
-  verbose: (value) => ({ verbose: boolean('verbose', value) }),
-  allowAnyTask: (value) => ({ 'allow-any-task': boolean('allowAnyTask', value) }),
-  runsDir: (value, { dir }) => ({ runsDir: resolve(dir, string('runsDir', value)) }),
-  output: (value, { dir }) => ({ output: resolve(dir, string('output', value)) }),
-  cwd: (value, { dir }) => ({ cwd: resolve(dir, string('cwd', value)) }),
-  task: (value) => ({ task: string('task', value) }),
-  taskFile: (value, { dir }) => ({ taskFile: resolve(dir, string('taskFile', value)) }),
-}
+  mode: (value) => ({ mode: choice("mode", value, ["fast", "balanced", "ultra"]) }),
+  reviewMode: (value) => ({ "review-mode": choice("reviewMode", value, ["standard", "debate"]) }),
+  reviewRounds: (value) => ({ "review-rounds": String(choice("reviewRounds", value, [0, 1, 2])) }),
+  claimChecks: (value) => ({ "claim-checks": boolean("claimChecks", value) }),
+  finalizer: (value) => ({ finalizer: string("finalizer", value) }),
+  judgeModel: (value) => ({ "judge-model": string("judgeModel", value) }),
+  stragglerGrace: (value) => ({ "straggler-grace": seconds("stragglerGrace", value, true) }),
+  timeout: (value) => ({ timeout: seconds("timeout", value) }),
+  resume: (value) => ({ resume: boolean("resume", value) }),
+  rounds: (value) => ({ rounds: boolean("rounds", value) }),
+  json: (value) => ({ json: boolean("json", value) }),
+  verbose: (value) => ({ verbose: boolean("verbose", value) }),
+  allowAnyTask: (value) => ({ "allow-any-task": boolean("allowAnyTask", value) }),
+  runsDir: (value, { dir }) => ({ runsDir: resolve(dir, string("runsDir", value)) }),
+  output: (value, { dir }) => ({ output: resolve(dir, string("output", value)) }),
+  cwd: (value, { dir }) => ({ cwd: resolve(dir, string("cwd", value)) }),
+  task: (value) => ({ task: string("task", value) }),
+  taskFile: (value, { dir }) => ({ taskFile: resolve(dir, string("taskFile", value)) }),
+};
 
 /** Every key a config may hold, `$schema` included; `config.schema.json` must list the same. */
-export const CONFIG_KEYS: readonly string[] = ['$schema', ...Object.keys(SETTINGS)]
+export const CONFIG_KEYS: readonly string[] = ["$schema", ...Object.keys(SETTINGS)];
 
 /**
  * Checks a config's text and turns it into flag-shaped values. Every error
@@ -198,34 +198,34 @@ export function parseConfig(
   explicit: boolean,
   judgeEnv: readonly string[] = [],
 ): ConfigValues {
-  let raw: unknown
+  let raw: unknown;
   try {
-    raw = JSON.parse(text.replace(/^\uFEFF/, ''))
+    raw = JSON.parse(text.replace(/^\uFEFF/, ""));
   } catch (error) {
-    throw new Error(`${path}: not valid JSON: ${(error as Error).message}`, { cause: error })
+    throw new Error(`${path}: not valid JSON: ${(error as Error).message}`, { cause: error });
   }
-  const values: ConfigValues = { model: [], effort: [], 'review-effort': [] }
+  const values: ConfigValues = { model: [], effort: [], "review-effort": [] };
   try {
-    const top = object('the top level', raw)
-    const dir = dirname(path)
+    const top = object("the top level", raw);
+    const dir = dirname(path);
     for (const [key, value] of Object.entries(top)) {
-      if (key === '$schema') continue
-      if (!Object.hasOwn(SETTINGS, key)) throw unknownKey(key, CONFIG_KEYS, judgeEnv)
-      Object.assign(values, SETTINGS[key]?.(value, { dir, judgeEnv }))
+      if (key === "$schema") continue;
+      if (!Object.hasOwn(SETTINGS, key)) throw unknownKey(key, CONFIG_KEYS, judgeEnv);
+      Object.assign(values, SETTINGS[key]?.(value, { dir, judgeEnv }));
     }
-    if ('cwd' in top && !explicit) {
+    if ("cwd" in top && !explicit) {
       throw new Error(
-        'cwd: allowed only in a file passed with --config, so a config inside a repository cannot point the agents at another one',
-      )
+        "cwd: allowed only in a file passed with --config, so a config inside a repository cannot point the agents at another one",
+      );
     }
-    if ('task' in top && 'taskFile' in top) throw new Error('task and taskFile: set one, not both')
+    if ("task" in top && "taskFile" in top) throw new Error("task and taskFile: set one, not both");
     if (values.runsDir !== undefined && values.rounds === false) {
-      throw new Error('runsDir and rounds: false: set one, not both')
+      throw new Error("runsDir and rounds: false: set one, not both");
     }
   } catch (error) {
-    throw new Error(`${path}: ${(error as Error).message}`, { cause: error })
+    throw new Error(`${path}: ${(error as Error).message}`, { cause: error });
   }
-  return values
+  return values;
 }
 
 /**
@@ -238,16 +238,16 @@ export async function findConfig(
   explicit: string | undefined,
   setup: ConfigSetup,
 ): Promise<LoadedConfig | undefined> {
-  const path = explicit ?? join(dir, setup.file)
-  let text: string
+  const path = explicit ?? join(dir, setup.file);
+  let text: string;
   try {
-    text = await readFile(path, 'utf8')
+    text = await readFile(path, "utf8");
   } catch (error) {
-    if (explicit === undefined && (error as NodeJS.ErrnoException).code === 'ENOENT')
-      return undefined
+    if (explicit === undefined && (error as NodeJS.ErrnoException).code === "ENOENT")
+      return undefined;
     throw new Error(`Cannot read the config ${path}: ${(error as Error).message}`, {
       cause: error,
-    })
+    });
   }
-  return { path, values: parseConfig(text, path, explicit !== undefined, setup.judgeEnv) }
+  return { path, values: parseConfig(text, path, explicit !== undefined, setup.judgeEnv) };
 }
