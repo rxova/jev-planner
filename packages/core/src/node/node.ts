@@ -1,16 +1,16 @@
-import { createAgents, secretEnv } from '../cli/cli.js'
-import { runDoctor } from '../doctor/doctor.js'
-import { Planner } from '../orchestrator/orchestrator.js'
-import type { CliDeps, PlannerProgram } from '../cli/cli.types.js'
-import type { PlanJudge } from '../questions/questions.types.js'
+import { createAgents, secretEnv } from "../cli/cli.js";
+import { runDoctor } from "../doctor/doctor.js";
+import { Planner } from "../orchestrator/orchestrator.js";
+import type { CliDeps, PlannerProgram } from "../cli/cli.types.js";
+import type { PlanJudge } from "../questions/questions.types.js";
 
 async function readPipedStdin(): Promise<string | undefined> {
-  if (process.stdin.isTTY) return undefined
-  const chunks: Buffer[] = []
+  if (process.stdin.isTTY) return undefined;
+  const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string))
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
   }
-  return Buffer.concat(chunks).toString('utf8').trim()
+  return Buffer.concat(chunks).toString("utf8").trim();
 }
 
 /**
@@ -22,7 +22,7 @@ async function readPipedStdin(): Promise<string | undefined> {
  * subprocess: an agent only ever sees the login it uses itself.
  */
 export function processDeps(program: PlannerProgram, judge: () => PlanJudge): CliDeps {
-  const omitEnv = secretEnv(program)
+  const omitEnv = secretEnv(program);
   return {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
@@ -33,5 +33,5 @@ export function processDeps(program: PlannerProgram, judge: () => PlanJudge): Cl
     doctor: runDoctor,
     now: () => new Date(),
     program,
-  }
+  };
 }

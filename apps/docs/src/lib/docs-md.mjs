@@ -10,10 +10,10 @@
 // which are plain modules; this file is the adapter between them and the
 // collection.
 
-import { getCollection } from 'astro:content'
+import { getCollection } from "astro:content";
 
-import { withBase } from './base-url.mjs'
-import { mdxToMarkdown } from './mdx-to-markdown.mjs'
+import { withBase } from "./base-url.mjs";
+import { mdxToMarkdown } from "./mdx-to-markdown.mjs";
 import {
   HOME,
   byReadingOrder,
@@ -21,7 +21,7 @@ import {
   mdRoute,
   htmlRoute,
   firstSentence,
-} from './docs-pages.mjs'
+} from "./docs-pages.mjs";
 
 /**
  * A splash page is a landing page, not a document.
@@ -31,7 +31,7 @@ import {
  * splash is ever added it excludes itself, instead of being served to an agent
  * as a hollowed-out `.md` that costs a fetch and teaches it nothing.
  */
-const isSplash = (entry) => entry.data.template === 'splash'
+const isSplash = (entry) => entry.data.template === "splash";
 
 /**
  * Every documentation page, normalized to markdown, in reading order.
@@ -47,17 +47,17 @@ const isSplash = (entry) => entry.data.template === 'splash'
  * @param {{ origin: string, base?: string }} options
  * @returns {Promise<import('./docs-pages.mjs').DocsPage[]>}
  */
-export async function docsPages({ origin, base = '/' }) {
-  const toUrl = (pathname) => `${origin}${withBase(pathname, base)}`
-  const entries = await getCollection('docs', (entry) => !isSplash(entry))
+export async function docsPages({ origin, base = "/" }) {
+  const toUrl = (pathname) => `${origin}${withBase(pathname, base)}`;
+  const entries = await getCollection("docs", (entry) => !isSplash(entry));
 
   return entries
     .map((entry) => {
-      const body = entry.body ?? ''
-      const id = entry.id || HOME
+      const body = entry.body ?? "";
+      const id = entry.id || HOME;
       // Doc-relative links resolve against the twin being written, so the route
       // has to be computed before the body is normalized rather than alongside it.
-      const route = mdRoute(entry.id)
+      const route = mdRoute(entry.id);
 
       return {
         id,
@@ -74,7 +74,7 @@ export async function docsPages({ origin, base = '/' }) {
         htmlUrl: toUrl(htmlRoute(entry.id)),
         mdUrl: toUrl(route),
         body: mdxToMarkdown(body, { origin, base, fromRoute: route }),
-      }
+      };
     })
-    .sort(byReadingOrder)
+    .sort(byReadingOrder);
 }

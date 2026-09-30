@@ -1,4 +1,4 @@
-import { baseKnipConfig } from '@rxova/repo-config/knip'
+import { baseKnipConfig } from "@rxova/repo-config/knip";
 
 /**
  * Unused files, exports and dependencies, as a gate rather than a report.
@@ -13,5 +13,5 @@ import { baseKnipConfig } from '@rxova/repo-config/knip'
  */
 export default baseKnipConfig({
   // `rxova-repo-config check-exports` runs `attw` from a shell command, where knip cannot see it.
-  ignoreDependencies: ['@arethetypeswrong/cli'],
-})
+  ignoreDependencies: ["@arethetypeswrong/cli"],
+});

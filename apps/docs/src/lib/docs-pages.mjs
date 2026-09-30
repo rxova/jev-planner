@@ -6,7 +6,7 @@
 // worth testing, because a wrong route or a mis-sectioned page produces output
 // that still looks complete.
 
-import { splitFenced } from './mdx-to-markdown.mjs'
+import { splitFenced } from "./mdx-to-markdown.mjs";
 
 /**
  * One documentation page, normalized.
@@ -38,13 +38,13 @@ import { splitFenced } from './mdx-to-markdown.mjs'
  * which is not a route this site serves, and every twin would cite a dead URL
  * as its source.
  */
-export const HOME = 'index'
+export const HOME = "index";
 
 /** The `.md` route for a page id. The home page is `/index.md`, not `/.md`. */
-export const mdRoute = (id) => `/${id || HOME}.md`
+export const mdRoute = (id) => `/${id || HOME}.md`;
 
 /** The canonical HTML route, which the `.md` twin cites as its source. */
-export const htmlRoute = (id) => (!id || id === HOME ? '/' : `/${id}/`)
+export const htmlRoute = (id) => (!id || id === HOME ? "/" : `/${id}/`);
 
 /**
  * Reading order: the sidebar's order, then the id as a tiebreaker.
@@ -58,8 +58,8 @@ export const htmlRoute = (id) => (!id || id === HOME ? '/' : `/${id}/`)
  * @param {{ order?: number, id: string }} b
  */
 export function byReadingOrder(a, b) {
-  const rank = (page) => page.order ?? Infinity
-  return rank(a) - rank(b) || a.id.localeCompare(b.id, 'en')
+  const rank = (page) => page.order ?? Infinity;
+  return rank(a) - rank(b) || a.id.localeCompare(b.id, "en");
 }
 
 /**
@@ -72,10 +72,10 @@ export function byReadingOrder(a, b) {
  * human label; a directory it does not know still appears, under its own name.
  */
 export function sectionOf(id) {
-  if (id === HOME) return 'root'
+  if (id === HOME) return "root";
   // A file at the content root is framing material, not a section of its own —
   // there is no directory to name it after.
-  return id.includes('/') ? id.split('/')[0] : 'root'
+  return id.includes("/") ? id.split("/")[0] : "root";
 }
 
 /**
@@ -86,39 +86,39 @@ export function sectionOf(id) {
  * their question. Every page here does set a description, so this is the
  * fallback that keeps a page which forgot from contributing nothing.
  */
-export const MAX_DESCRIPTION = 200
+export const MAX_DESCRIPTION = 200;
 
 export function firstSentence(body) {
   // Fence CONTENTS, not just the fence markers. Filtering line-by-line on a
   // leading ``` drops the delimiters and keeps the code between them, so a page
   // that opens with a diff would be described as "- statements: 95,".
   const prose = splitFenced(body)
-    .unfenced.split('\n')
+    .unfenced.split("\n")
     // Fences, headings, JSX, and directive syntax: none of them summarise a page.
     .filter(
       (line) => line.trim() && !/^\s*(?:[`~]{3}|#|<|import\b|export\b|:::|\||-{3,})/.test(line),
     )
-    .join(' ')
+    .join(" ")
     // Links collapse to their text. Stripping only the brackets would leave the
     // URL welded to the words around it.
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     // Emphasis comes off BEFORE the match, not after. A page opening
     // "**defineError** returns a class." would otherwise have its sentence-ending
     // period followed by `*` rather than whitespace, so nothing would match and
     // the page would silently lose its description.
-    .replace(/[*_`[\]]/g, '')
-    .trim()
+    .replace(/[*_`[\]]/g, "")
+    .trim();
 
-  const match = new RegExp(`^(.{20,${MAX_DESCRIPTION}}?[.!?])\\s`).exec(`${prose} `)
-  if (match) return match[1]
+  const match = new RegExp(`^(.{20,${MAX_DESCRIPTION}}?[.!?])\\s`).exec(`${prose} `);
+  if (match) return match[1];
 
   // No sentence ends inside the budget. Truncating beats returning nothing: a
   // page arriving in llms.txt as a bare link with no idea what it covers is the
   // one thing the index exists to prevent.
-  if (prose.length <= 20) return undefined
-  const clipped = prose.slice(0, MAX_DESCRIPTION)
-  const lastSpace = clipped.lastIndexOf(' ')
-  return `${(lastSpace > 20 ? clipped.slice(0, lastSpace) : clipped).replace(/[,;:—-]$/, '')}…`
+  if (prose.length <= 20) return undefined;
+  const clipped = prose.slice(0, MAX_DESCRIPTION);
+  const lastSpace = clipped.lastIndexOf(" ");
+  return `${(lastSpace > 20 ? clipped.slice(0, lastSpace) : clipped).replace(/[,;:—-]$/, "")}…`;
 }
 
 /**
@@ -134,15 +134,15 @@ export function firstSentence(body) {
  */
 export function renderMarkdown(page) {
   return [
-    '---',
+    "---",
     `title: ${JSON.stringify(page.title)}`,
     ...(page.description ? [`description: ${JSON.stringify(page.description)}`] : []),
     `source: ${page.htmlUrl}`,
-    '---',
-    '',
+    "---",
+    "",
     `# ${page.title}`,
-    '',
+    "",
     page.body,
-    '',
-  ].join('\n')
+    "",
+  ].join("\n");
 }

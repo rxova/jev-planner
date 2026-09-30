@@ -26,8 +26,8 @@ on:
     # Nothing a check reads. Push only: on `pull_request` a skipped workflow
     # never reports, so a required check would wait forever.
     paths-ignore:
-      - '**/CHANGELOG.md'
-      - 'LICENSE'
+      - "**/CHANGELOG.md"
+      - "LICENSE"
   pull_request:
     # No `edited`: it fires on body edits too, and would re-run this whole graph
     # because a description gained a link. The title check is pr-title.yml.

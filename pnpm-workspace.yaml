@@ -24,7 +24,7 @@ fetchRetryMaxtimeout: 10000
 # By name rather than by version: an exact version expires at the next release
 # and has to be renewed every time.
 minimumReleaseAgeExclude:
-  - '@rxova/brand'
-  - '@rxova/docs-kit'
-  - '@rxova/repo-config'
-  - '@rxova/ts-utils'
+  - "@rxova/brand"
+  - "@rxova/docs-kit"
+  - "@rxova/repo-config"
+  - "@rxova/ts-utils"

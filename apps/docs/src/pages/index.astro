@@ -7,56 +7,56 @@
  * one theme system, not two. Its copy lives in components/landing/content.mjs,
  * which the `.md` twin at index.md.ts renders too.
  */
-import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 
-import CopyCommand from '../components/landing/CopyCommand.astro'
-import FeatureGrid from '../components/landing/FeatureGrid.astro'
-import Pitch from '../components/landing/Pitch.astro'
-import { GET_STARTED, GITHUB, INSTALL, TAGLINE, TITLE } from '../components/landing/content.mjs'
-import { withBase } from '../lib/base-url.mjs'
+import CopyCommand from "../components/landing/CopyCommand.astro";
+import FeatureGrid from "../components/landing/FeatureGrid.astro";
+import Pitch from "../components/landing/Pitch.astro";
+import { GET_STARTED, GITHUB, INSTALL, TAGLINE, TITLE } from "../components/landing/content.mjs";
+import { withBase } from "../lib/base-url.mjs";
 
-const base = import.meta.env.BASE_URL
+const base = import.meta.env.BASE_URL;
 
 // Starlight titles a page "<title> | jev-planner", so the page title is the
 // pitch and the hero carries the name — otherwise the tab reads the name twice.
-const pageTitle = 'Agents that plan together, orchestrated by Jev'
+const pageTitle = "Agents that plan together, orchestrated by Jev";
 
 // Structured data for the landing page only: the docs pages are articles about
 // the tool, not the tool.
 const jsonLd = JSON.stringify({
-  '@context': 'https://schema.org',
-  '@type': 'SoftwareApplication',
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
   name: TITLE,
   description: TAGLINE,
-  applicationCategory: 'DeveloperApplication',
-  operatingSystem: 'macOS, Linux, Windows',
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "macOS, Linux, Windows",
   url: new URL(base, Astro.site).href,
-  downloadUrl: 'https://www.npmjs.com/package/jev-planner',
+  downloadUrl: "https://www.npmjs.com/package/jev-planner",
   codeRepository: GITHUB,
-  license: 'https://opensource.org/licenses/MIT',
-  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-})
+  license: "https://opensource.org/licenses/MIT",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+});
 ---
 
 <StarlightPage
   frontmatter={{
     title: pageTitle,
     description: TAGLINE,
-    template: 'splash',
-    head: [{ tag: 'script', attrs: { type: 'application/ld+json' }, content: jsonLd }],
+    template: "splash",
+    head: [{ tag: "script", attrs: { type: "application/ld+json" }, content: jsonLd }],
     hero: {
       title: TITLE,
       tagline: TAGLINE,
       actions: [
         {
-          text: 'Get started',
+          text: "Get started",
           link: withBase(GET_STARTED, base),
-          icon: 'right-arrow',
-          variant: 'primary',
+          icon: "right-arrow",
+          variant: "primary",
         },
         // The one call to action for the repository: a secondary button beside
         // "Get started", not the header's icon link, which reads as navigation.
-        { text: 'Star on GitHub', link: GITHUB, icon: 'github', variant: 'secondary' },
+        { text: "Star on GitHub", link: GITHUB, icon: "github", variant: "secondary" },
       ],
     },
   }}

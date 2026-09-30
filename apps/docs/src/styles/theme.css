@@ -14,7 +14,7 @@
 
 /* The sidebar's badges, such as Experimental. In the light theme Starlight
    sets them white on accent-high, which the brand mixes light: about 2:1. */
-:root[data-theme='light'] {
+:root[data-theme="light"] {
   --sl-badge-default-text: var(--rx-fg);
 }
 
@@ -34,7 +34,7 @@
    drawn over the neutral border the brand gives it. Starlight fixes the header
    in place, which already anchors the hairline; do not reposition it. */
 header.header::after {
-  content: '';
+  content: "";
   position: absolute;
   inset-inline: 0;
   inset-block-end: -1px;

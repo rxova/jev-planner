@@ -1,14 +1,14 @@
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath } from "node:url";
 
-import { defineConfig } from 'astro/config'
-import { unified } from '@astrojs/markdown-remark'
-import starlight from '@astrojs/starlight'
-import starlightLinksValidator from 'starlight-links-validator'
-import sitemap from '@astrojs/sitemap'
+import { defineConfig } from "astro/config";
+import { unified } from "@astrojs/markdown-remark";
+import starlight from "@astrojs/starlight";
+import starlightLinksValidator from "starlight-links-validator";
+import sitemap from "@astrojs/sitemap";
 
-import { rehypeMdLinks } from './src/lib/rehype-md-links.mjs'
-import { remarkDiagrams } from './src/lib/remark-diagrams.mjs'
-import { assertReleaseVersion, manifestVersion } from './src/lib/version-marker.mjs'
+import { rehypeMdLinks } from "./src/lib/rehype-md-links.mjs";
+import { remarkDiagrams } from "./src/lib/remark-diagrams.mjs";
+import { assertReleaseVersion, manifestVersion } from "./src/lib/version-marker.mjs";
 
 /**
  * The defaults are production: GitHub Pages serves this repository's site at
@@ -21,18 +21,18 @@ import { assertReleaseVersion, manifestVersion } from './src/lib/version-marker.
  * is what Pages falls back to without the domain — and check-site-build rejects
  * a root-relative link that skips it.
  */
-const site = process.env.DOCS_URL ?? 'https://jev-planner.com'
-const base = process.env.DOCS_BASE_URL ?? '/'
+const site = process.env.DOCS_URL ?? "https://jev-planner.com";
+const base = process.env.DOCS_BASE_URL ?? "/";
 
 /**
  * The social card, absolute: a crawler resolves nothing against the page it
  * found the tag on. Rendered by scripts/make-og.mjs into public/.
  */
-const ogImage = new URL(`${base.replace(/\/?$/, '/')}og.png`, site).href
+const ogImage = new URL(`${base.replace(/\/?$/, "/")}og.png`, site).href;
 
 // A release deploy (release.yml → docs.yml) names the version it publishes;
 // fail here, before anything renders, if the checkout is some other version.
-assertReleaseVersion(process.env.DOCS_RELEASE_VERSION, manifestVersion())
+assertReleaseVersion(process.env.DOCS_RELEASE_VERSION, manifestVersion());
 
 export default defineConfig({
   site,
@@ -48,12 +48,12 @@ export default defineConfig({
     // not run on this site; the `.md` twin keeps the fence as it is.
     processor: unified({
       remarkPlugins: [
-        [remarkDiagrams, { dir: fileURLToPath(new URL('src/diagrams', import.meta.url)) }],
+        [remarkDiagrams, { dir: fileURLToPath(new URL("src/diagrams", import.meta.url)) }],
       ],
       rehypePlugins: [
         [
           rehypeMdLinks,
-          { base, docsRoot: fileURLToPath(new URL('src/content/docs', import.meta.url)) },
+          { base, docsRoot: fileURLToPath(new URL("src/content/docs", import.meta.url)) },
         ],
       ],
     }),
@@ -69,45 +69,45 @@ export default defineConfig({
       // would hand a search engine three URLs per page and ask it to pick.
       // version.json is for the deploy check, not for readers.
       filter: (page) =>
-        !page.endsWith('.md') && !page.endsWith('.json') && !/\/llms(?:-full)?\.txt$/.test(page),
+        !page.endsWith(".md") && !page.endsWith(".json") && !/\/llms(?:-full)?\.txt$/.test(page),
     }),
     starlight({
-      title: 'jev-planner',
+      title: "jev-planner",
       logo: {
-        dark: './src/assets/logo-dark.svg',
-        light: './src/assets/logo-light.svg',
+        dark: "./src/assets/logo-dark.svg",
+        light: "./src/assets/logo-light.svg",
         // The visually hidden title below supplies the link's accessible name.
-        alt: '',
+        alt: "",
         replacesTitle: true,
       },
       // Mirrors TAGLINE in src/components/landing/content.mjs: the sequence, in
       // one sentence, wherever the site introduces itself.
       description:
-        'Ever wanted several agents to work out one plan together? jev-planner has multiple ' +
-        'providers — or one provider, several times over — draft against your repository, read ' +
+        "Ever wanted several agents to work out one plan together? jev-planner has multiple " +
+        "providers — or one provider, several times over — draft against your repository, read " +
         "and critique each other's work, and settle on one final plan, orchestrated by TypeSafe Jev.",
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/rxova/jev-planner' }],
-      favicon: '/favicon.svg',
+      social: [{ icon: "github", label: "GitHub", href: "https://github.com/rxova/jev-planner" }],
+      favicon: "/favicon.svg",
       components: {
-        Head: './src/components/overrides/Head.astro',
-        Hero: './src/components/overrides/Hero.astro',
+        Head: "./src/components/overrides/Head.astro",
+        Hero: "./src/components/overrides/Hero.astro",
       },
       // Starlight already writes the canonical link, og:url, og:title,
       // og:description, twitter:card and the sitemap link. It has no image.
       head: [
-        { tag: 'meta', attrs: { property: 'og:image', content: ogImage } },
-        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
-        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: "meta", attrs: { property: "og:image", content: ogImage } },
+        { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
+        { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
         {
-          tag: 'meta',
+          tag: "meta",
           attrs: {
-            property: 'og:image:alt',
-            content: 'jev-planner: implementation plans from AIs that review each other.',
+            property: "og:image:alt",
+            content: "jev-planner: implementation plans from AIs that review each other.",
           },
         },
       ],
       // The brand face, then the brand's Starlight mapping; theme.css adjusts it.
-      customCss: ['./src/styles/fonts.css', '@rxova/brand/starlight.css', './src/styles/theme.css'],
+      customCss: ["./src/styles/fonts.css", "@rxova/brand/starlight.css", "./src/styles/theme.css"],
       // Wrap long lines instead of scrolling them. A scrolling code block is a
       // region keyboard users cannot reach (axe: scrollable-region-focusable),
       // and on a phone most commands on these pages are wider than the screen.
@@ -116,9 +116,9 @@ export default defineConfig({
       // directories sets `sidebar.order` in its frontmatter: Starlight sorts an
       // unordered page after the ordered ones, which reads as random.
       sidebar: [
-        { label: 'Learn', items: [{ autogenerate: { directory: 'learn' } }] },
-        { label: 'Guides', items: [{ autogenerate: { directory: 'guides' } }] },
-        { label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },
+        { label: "Learn", items: [{ autogenerate: { directory: "learn" } }] },
+        { label: "Guides", items: [{ autogenerate: { directory: "guides" } }] },
+        { label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
       ],
       plugins: [
         // Every page here links to several others, so a link that rots is a
@@ -127,4 +127,4 @@ export default defineConfig({
       ],
     }),
   ],
-})
+});

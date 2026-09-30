@@ -13,28 +13,28 @@
 // collides: `guides/serialization/` is a directory and `guides/serialization.md` is a
 // sibling file.
 
-import type { APIRoute, GetStaticPaths } from 'astro'
+import type { APIRoute, GetStaticPaths } from "astro";
 
-import { docsPages } from '../lib/docs-md.mjs'
-import { renderMarkdown } from '../lib/docs-pages.mjs'
-import type { DocsPage } from '../lib/docs-pages.mjs'
+import { docsPages } from "../lib/docs-md.mjs";
+import { renderMarkdown } from "../lib/docs-pages.mjs";
+import type { DocsPage } from "../lib/docs-pages.mjs";
 
-export const prerender = true
+export const prerender = true;
 
 export const getStaticPaths: GetStaticPaths = async () => {
   const pages = await docsPages({
     origin: import.meta.env.SITE,
     base: import.meta.env.BASE_URL,
-  })
+  });
 
   // The route param carries no extension: the filename does. `[...slug].md.ts`
   // means slug `guides/serialization` is written to `guides/serialization.md`.
-  return pages.map((page) => ({ params: { slug: page.id }, props: { page } }))
-}
+  return pages.map((page) => ({ params: { slug: page.id }, props: { page } }));
+};
 
 // The props this route hands itself, named so `props.page` is the page rather
 // than `any` — `APIRoute`'s default props type is an index signature.
 export const GET: APIRoute<{ page: DocsPage }> = ({ props }) =>
   new Response(renderMarkdown(props.page), {
-    headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
-  })
+    headers: { "Content-Type": "text/markdown; charset=utf-8" },
+  });
