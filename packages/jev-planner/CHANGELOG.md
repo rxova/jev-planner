@@ -1,5 +1,11 @@
 # jev-planner
 
+## 0.1.1
+
+### Patch Changes
+
+- [#7](https://github.com/rxova/jev-planner/pull/7) [`b0a6240`](https://github.com/rxova/jev-planner/commit/b0a624096d7649e75913904e86635dcb17635e4b) - Take the error-message and object checks from `@rxova/ts-utils`, inlined at build time. No behavior change, except that a thrown value `String()` cannot convert now reports its object tag (`[object Object]`) instead of failing the error handler. Still one runtime dependency.
+
 ## 0.1.0
 
 ### Minor Changes
