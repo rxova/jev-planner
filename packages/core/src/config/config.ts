@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { isRecord } from '@rxova/ts-utils'
 import { dirname, join, resolve } from 'node:path'
 import { PROVIDERS } from '../providers/providers.js'
 import type { ConfigSetup, ConfigValues, LoadedConfig, Context } from './config.types.js'
@@ -15,10 +16,8 @@ const secretEnv = (judgeEnv: readonly string[]) => [
 const SECRET = /key|token|secret|password/i
 
 function object(at: string, value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${at}: must be an object`)
-  }
-  return value as Record<string, unknown>
+  if (!isRecord(value)) throw new Error(`${at}: must be an object`)
+  return value
 }
 
 function string(at: string, value: unknown): string {

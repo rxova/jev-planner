@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { errorMessage } from '@rxova/ts-utils'
 import { findConfig, validateAgentName } from '../config/config.js'
 import { envCheck } from '../doctor/doctor.js'
 import { agentLabel } from '../provider/provider.js'
@@ -748,7 +749,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
   try {
     return await run(argv, deps)
   } catch (error) {
-    deps.stderr(`${deps.program.name}: ${error instanceof Error ? error.message : String(error)}\n`)
+    deps.stderr(`${deps.program.name}: ${errorMessage(error)}\n`)
     return 1
   }
 }
