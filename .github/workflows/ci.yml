@@ -1,285 +1,98 @@
 name: CI
 
-# One job per kind of failure. This was a single job because GitHub bills each
-# job rounded up to the whole minute, and four jobs meant four checkouts, four
-# Node setups and four installs on the bill — which is the right trade for a
-# private repository and the wrong one for a public repository, where Actions
-# minutes are free.
+# Every job is a reusable workflow from rxova/shared, called at @main. What
+# stays here is the graph: which jobs run, and when. The steps are the ones
+# `pnpm run verify` runs, and the pre-push hook runs that end to end, so a
+# green push is a green pipeline.
 #
-# Split here ahead of that change rather than after it, deliberately: a red check
-# that names what broke is worth more than the minutes while the repository is
-# still private, and the slow jobs now run beside each other rather than behind
-# each other. Reversible if the bill ever says otherwise — `verify` runs the same
-# checks in one process.
-#
-# The steps are the same ones `pnpm run verify` runs, in the same order, and the
-# pre-push hook still runs that script end to end — so a green push is still a
-# green pipeline.
-#
-# Turbo's remote cache lives in this repository's Actions cache, so a push that
-# touched one package replays every other package's tasks instead of re-running
-# them.
+# The docs site is not built here: docs.yml builds it for jev-planner.com, runs
+# its browser tests against that dist and deploys it.
 
 on:
   push:
     branches: [main]
-    # Nothing a check reads. Push only: on `pull_request` a skipped workflow
-    # never reports, so a required check would wait forever.
-    paths-ignore:
-      - "**/CHANGELOG.md"
-      - "LICENSE"
   pull_request:
-    # No `edited`: it fires on body edits too, and would re-run this whole graph
-    # because a description gained a link. The title check is pr-title.yml.
-    # `labeled`/`unlabeled` stay: the changeset check's escape hatch is a label,
-    # and a re-run replays the old event, labels and all, so only a new event
-    # sees one that was just added.
+    # No `edited`: the title check lives in pr-title.yml. `labeled`/`unlabeled`
+    # re-run the changeset gate, whose escape hatch is a label.
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
 
-# A superseded pull request run is cancelled: its verdict is about a commit
-# nobody is going to merge. Nothing on main is cancelled — a push there is the
-# last chance to judge that commit, and Release reads this workflow's conclusion
-# to decide whether to publish.
+# Superseded pull request runs are cancelled; main runs always finish, because
+# Release reads this workflow's conclusion to decide whether to publish.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  commits:
+  commitlint:
     name: commit messages
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      # Full history: commitlint reads the pull request's range.
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/setup-pnpm
-      - run: pnpm install --frozen-lockfile
-
-      - name: Lint the branch commits
-        if: github.event_name == 'pull_request'
-        run: >-
-          pnpm exec commitlint --verbose
-          --from ${{ github.event.pull_request.base.sha }}
-          --to ${{ github.event.pull_request.head.sha }}
-
-      - name: Lint the pushed commit
-        if: github.event_name == 'push'
-        run: pnpm exec commitlint --last --verbose
+    uses: rxova/shared/.github/workflows/commit-messages.yml@main
 
   checks:
-    name: format · lint · types · build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-pnpm
-      - uses: ./.github/actions/turbo-cache
-      - run: pnpm install --frozen-lockfile
-
-      - name: Check formatting
-        run: pnpm run format:check
-      - name: Lint
-        run: pnpm run lint
-      - name: Check llms.txt against the exports
-        run: pnpm run check:llms
-      - name: Typecheck
-        run: pnpm exec turbo run typecheck
-      # The docs site is excluded on purpose: docs.yml builds it for
-      # jev-planner.com, runs its browser tests against that dist and deploys
-      # it. Building it here as well would spend every pull request re-checking
-      # a dist that job already checks.
-      - name: Build
-        run: pnpm exec turbo run build --filter='!@repo/docs'
-
-      # Turbo only runs suites it knows about. A package with a vitest config
-      # but no `test` script would be skipped without a word, so look for the
-      # config rather than trusting the task graph.
-      - name: Every package with tests is in the task graph
-        run: |
-          set -eu
-          missing=''
-          for config in packages/*/vitest.config.* apps/*/vitest.config.*; do
-            [ -e "$config" ] || continue
-            pkg=$(dirname "$config")
-            node -e "process.exit(require('./$pkg/package.json').scripts?.test ? 0 : 1)" \
-              || missing="$missing $pkg"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::these packages have a vitest config but no test script:$missing"
-            exit 1
-          fi
+    name: lint · format · types · build
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    uses: rxova/shared/.github/workflows/repo-checks.yml@main
+    with:
+      build-command: pnpm exec turbo run build --filter='!@repo/docs'
+      extra-command: pnpm run check:llms
 
   test:
-    name: unit (node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        # The package supports Node >= 20.19, but pnpm 11 needs >= 22.13 to
-        # install, so 20 is exercised by `compat` below against the real tarball
-        # rather than here against the workspace.
-        node-version: [22, 24]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-pnpm
-        with:
-          node-version: ${{ matrix.node-version }}
-      - uses: ./.github/actions/turbo-cache
-      - run: pnpm install --frozen-lockfile
+    name: unit
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    uses: rxova/shared/.github/workflows/unit-tests.yml@main
+    with:
+      # Linux only, as before. The planner spawns agent CLIs and resolves config
+      # paths, and the suite has not been run on macOS or Windows yet.
+      operating-systems: '["ubuntu-latest"]'
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Test with coverage thresholds
-        run: pnpm exec turbo run test
-
-      - name: Upload coverage reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-node${{ matrix.node-version }}
-          path: |
-            packages/*/coverage
-            apps/*/coverage
-          if-no-files-found: ignore
-          retention-days: 7
+  supply-chain:
+    name: audit · sherif · knip · dedupe
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    uses: rxova/shared/.github/workflows/supply-chain.yml@main
 
   package:
     name: package contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-pnpm
-      - uses: ./.github/actions/turbo-cache
-      - run: pnpm install --frozen-lockfile
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    uses: rxova/shared/.github/workflows/package-contract.yml@main
 
-      - name: Publint and Are The Types Wrong
-        run: pnpm run check:exports
-      # Packs the real tarball, installs it into a scratch project and loads it
-      # with plain Node, through `import` and `require`: the package the way npm
-      # serves it, which nothing above looks at. It is also the only check that
-      # catches a `files` entry that dropped dist or llms.txt.
-      - name: Pack smoke test
-        run: pnpm run pack:smoke
-
+  # The package supports Node >= 20.19, but pnpm needs >= 22.13 to install, so
+  # the floor is exercised against the real tarball with plain `node`.
   compat:
-    name: published package on node 20
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-pnpm
-      - uses: ./.github/actions/turbo-cache
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec turbo run build --filter='!@repo/docs'
+    name: published package on the engines floor
+    needs: [commitlint]
+    if: needs.commitlint.outputs.code-changed == 'true'
+    uses: rxova/shared/.github/workflows/node-floor-smoke.yml@main
 
-      # Everything else runs on the Node in .nvmrc, while `engines` promises
-      # less — and until this job existed nothing checked the promise. The floor
-      # is read from the manifest, so lowering it moves the check with it. Plain
-      # `node` from here on: pnpm 11 does not start below 22.13.
-      - name: Read the Node floor from engines
-        id: floor
-        run: >-
-          node -p "'version=' + require('./packages/jev-planner/package.json').engines.node.replace(/^>=/, '')"
-          >> "$GITHUB_OUTPUT"
-      - name: Switch to Node ${{ steps.floor.outputs.version }}
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ steps.floor.outputs.version }}
-      - name: Pack, install and load on Node ${{ steps.floor.outputs.version }}
-        working-directory: packages/jev-planner
-        run: |
-          node --version
-          node ../../node_modules/@rxova/repo-config/dist/cli.js pack-smoke
-
-  supply-chain:
-    name: audit · dedupe
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-pnpm
-      - uses: ./.github/actions/turbo-cache
-      - run: pnpm install --frozen-lockfile
-
-      # Not a Turbo task, and deliberately not part of `verify`: its verdict
-      # changes with the upstream advisory database, not with this tree, so a
-      # cached pass could replay over a fresh CVE and a fresh CVE could block a
-      # push that touched nothing. `--ignore-registry-errors` keeps an
-      # unreachable advisory endpoint from turning the build red.
-      - name: Audit dependencies
-        timeout-minutes: 5
-        run: pnpm run audit:check
-      # One version of each dependency across the workspace. Two packages on
-      # two minors of the same library typecheck fine and then disagree at
-      # runtime.
-      - name: Check dependency versions across the workspace
-        run: pnpm run sherif:check
-      # Unused files, exports and dependencies. The only check here that
-      # notices an export nothing imports.
-      - name: Check for unused files, exports and dependencies
-        run: pnpm run knip:check
-      - name: Check dependency dedupe
-        run: pnpm run dedupe:check
+  docs-checks:
+    name: docs checks
+    needs: [commitlint]
+    if: needs.commitlint.outputs.docs-only == 'true'
+    uses: rxova/shared/.github/workflows/docs-checks.yml@main
+    with:
+      command: pnpm run prettier:check
 
   changeset:
     name: changeset present
-    # A change to the library without a changeset would release it with an
-    # unchanged version. It still runs when the `skip-changeset` label is set,
-    # rather than being skipped by an `if:`, so that honouring the label shows in
-    # a log. The version pull request is exempt: it consumes the changesets.
-    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/setup-pnpm
-      - run: pnpm install --frozen-lockfile
+    needs: [commitlint]
+    uses: rxova/shared/.github/workflows/changeset-gate.yml@main
 
-      - name: Require a changeset when the library changed
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: pnpm exec rxova-repo-config check-changeset
-
-  # The single context branch protection (and the org ruleset) requires.
-  #
-  # Requiring the job names directly does not work: protection reads the newest
-  # report for a name, and a matrix job does not report under a stable one —
-  # skipped before expansion, it publishes the literal
-  # `unit (node ${{ matrix.node-version }})` instead of one name per leg. Any job
-  # whose `if:` can go false has the same problem, since a `skipped` report does
-  # not satisfy a required context.
-  #
-  # One always-reported context sidesteps all of it. `skipped` is an answer this
-  # workflow gives deliberately — `changeset` on a push — so the gate accepts it.
-  # `cancelled` is not: a run killed mid-flight has reached no verdict.
+  # The one context branch protection requires. `skipped` passes; `failure`
+  # and `cancelled` do not.
   gate:
     name: all checks
     if: always()
-    needs: [commits, checks, test, package, compat, supply-chain, changeset]
+    needs: [commitlint, checks, test, supply-chain, package, compat, docs-checks, changeset]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every job to have passed or skipped
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          echo "$RESULTS"
-          bad=$(echo "$RESULTS" | jq -r 'to_entries
-            | map(select(.value.result != "success" and .value.result != "skipped"))
-            | .[] | "\(.key): \(.value.result)"')
-          if [ -n "$bad" ]; then
-            echo "::error::a required job did not pass"
-            echo "$bad"
-            exit 1
-          fi
-          echo "every job passed or was deliberately skipped"
+      - uses: rxova/shared/actions/require-jobs@main
+        with:
+          needs: ${{ toJSON(needs) }}

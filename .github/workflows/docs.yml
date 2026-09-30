@@ -112,8 +112,8 @@ jobs:
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "Deploy: $deploy ($reason)"
 
-      - uses: ./.github/actions/setup-pnpm
-      - uses: ./.github/actions/turbo-cache
+      - uses: rxova/shared/actions/setup-pnpm@main
+      - uses: rxova/shared/actions/turbo-cache@main
       - run: pnpm install --frozen-lockfile
 
       # The build also runs starlight-links-validator, check-md-routes (every
@@ -129,24 +129,12 @@ jobs:
           DOCS_RELEASE_VERSION: ${{ inputs.released-version }}
         run: pnpm exec turbo run build --filter=@repo/docs
 
-      # Keyed on the resolved Playwright version, which pins the browser build.
-      # The system libraries Chromium needs are not cacheable, so they are
-      # installed on every run; only the browser download is skipped.
-      - name: Read the Playwright version
-        id: playwright
-        run: echo "version=$(pnpm --filter @repo/docs exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-      - name: Restore the Playwright browsers
-        id: browsers
-        uses: actions/cache@v6
+      # Chromium only, cached by the resolved Playwright version; the system
+      # libraries it needs are installed on every run.
+      - uses: rxova/shared/actions/setup-playwright@main
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-      - name: Install Chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
-        run: pnpm --filter @repo/docs exec playwright install --with-deps chromium
-      - name: Install Chromium's system dependencies
-        if: steps.browsers.outputs.cache-hit == 'true'
-        run: pnpm --filter @repo/docs exec playwright install-deps chromium
+          browsers: chromium
+          working-directory: apps/docs
 
       # Accessibility (axe, both themes), keyboard order, the copy button, theme
       # persistence, reduced motion, mobile overflow and the base path, against
