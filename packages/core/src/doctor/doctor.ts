@@ -1,3 +1,4 @@
+import { errorMessage, isError } from '@rxova/ts-utils'
 import { runProcess } from '../process/process.js'
 import type { Provider } from '../provider/provider.types.js'
 import type { CheckResult } from './doctor.types.js'
@@ -8,7 +9,7 @@ function firstLine(text: string): string {
 }
 
 export function errorDetail(error: unknown): string {
-  return error instanceof Error ? firstLine(error.message) : String(error)
+  return isError(error) ? firstLine(error.message) : errorMessage(error)
 }
 
 /** Passes when `command args` exits 0; the detail is the first line it printed. */

@@ -184,6 +184,9 @@ importers:
       '@rxova/repo-config':
         specifier: ^0.5.0
         version: 0.5.0(@arethetypeswrong/cli@0.18.5)(@changesets/changelog-github@1.0.1)(@commitlint/config-conventional@21.2.3)(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@eslint/js@10.0.1(eslint@10.11.0(jiti@2.6.1)(supports-color@10.2.2)))(@playwright/test@1.63.0)(@vitest/coverage-v8@5.0.1)(eslint@10.11.0(jiti@2.6.1)(supports-color@10.2.2))(globals@17.12.0)(knip@6.37.0)(prettier@3.9.8)(publint@0.3.24)(tsdown@0.23.0(@arethetypeswrong/core@0.18.5)(@volar/typescript@2.4.28(typescript@6.0.3))(oxc-resolver@11.24.2)(publint@0.3.24)(tsx@4.23.15)(typescript@6.0.3))(typescript-eslint@8.70.0(eslint@10.11.0(jiti@2.6.1)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(typescript@6.0.3)(vitest@5.0.1)
+      '@rxova/ts-utils':
+        specifier: ^0.2.1
+        version: 0.2.1
       '@types/node':
         specifier: ^26.6.1
         version: 26.6.2
@@ -1677,6 +1680,15 @@ packages:
       typescript-eslint:
         optional: true
       vitest:
+        optional: true
+
+  '@rxova/ts-utils@0.2.1':
+    resolution: {integrity: sha512-iy7t/hN0HfJTijwHH/RYpP3mMCKb4WcIHAtfJkUmyAB/rT6idIYdEaNlNCdjAQ8EyMQlANsadkCXJd0Bz+4Htg==}
+    engines: {node: '>=22.13'}
+    peerDependencies:
+      react: '>=18'
+    peerDependenciesMeta:
+      react:
         optional: true
 
   '@shikijs/core@4.4.3':
@@ -5596,6 +5608,8 @@ snapshots:
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
+
+  '@rxova/ts-utils@0.2.1': {}
 
   '@shikijs/core@4.4.3':
     dependencies:

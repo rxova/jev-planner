@@ -11,5 +11,8 @@ export default defineConfig(
     format: ['esm', 'cjs'],
     fixedExtension: true,
     entry: ['src/index.ts'],
+    // @rxova/ts-utils is a root dev dependency, inlined so nothing downstream
+    // has to install it.
+    deps: { onlyBundle: ['@rxova/ts-utils'] },
   }),
 )
