@@ -6,6 +6,7 @@
   "description": "The jev-planner landing page and documentation, deployed to GitHub Pages at jev-planner.com.",
   "scripts": {
     "dev": "astro dev",
+    "sync": "astro sync",
     "build": "astro build && rxova-docs-kit check-md-routes && node ./scripts/check-site-build.mjs",
     "og": "node ./scripts/make-og.mjs",
     "preview": "astro preview",

@@ -21,6 +21,12 @@
       "env": ["DOCS_URL", "DOCS_BASE_URL", "DOCS_COMMIT", "DOCS_RELEASE_VERSION"],
       "outputLogs": "new-only"
     },
+    // The content types `astro:content` resolves to, which `src/lib/docs.ts`
+    // needs before it can be linted with type information.
+    "sync": {
+      "outputs": ["node_modules/.astro/**", ".astro/**"],
+      "outputLogs": "new-only"
+    },
     // No `^build` and no coverage: every module under test is plain JavaScript
     // over plain objects, which is the whole reason they are split out from the
     // Astro-only adapter beside them.
