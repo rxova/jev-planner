@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "rxova/jev-planner" }],
+  "changelog": ["@rxova/repo-config/changelog", { "repo": "rxova/jev-planner" }],
   "commit": false,
   "fixed": [],
   "linked": [],
