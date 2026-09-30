@@ -8,14 +8,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
       // Tests and prose cannot change dist, so editing them should not cost a
-      // rebuild. The shared preset is named explicitly: @repo/config has no
-      // build task, so nothing in `dependsOn` would carry a change to it.
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/config/tsdown.base.ts",
-        "!**/*.test.*",
-        "!README.md"
-      ],
+      // rebuild. The shared tsdown preset comes from @rxova/repo-config, a
+      // declared dev dependency, so a bump to it changes the lockfile entry
+      // Turbo already hashes.
+      "inputs": ["$TURBO_DEFAULT$", "!**/*.test.*", "!README.md"],
       "outputLogs": "new-only"
     },
     "typecheck": {
@@ -23,12 +19,11 @@
       "outputs": [],
       "outputLogs": "new-only"
     },
-    // Keyed on the shared preset for the same reason as build: a raised
-    // threshold has to re-run every suite, not replay yesterday's pass.
+    // A raised threshold in the shared vitest preset arrives as a bump of
+    // @rxova/repo-config, which re-keys every suite through the lockfile.
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/config/vitest.base.ts"],
       "outputLogs": "new-only"
     },
     // publint and attw read the built artifacts, so never a stale dist.

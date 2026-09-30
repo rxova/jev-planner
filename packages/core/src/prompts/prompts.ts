@@ -65,7 +65,7 @@ export function revisionPrompt(input: {
   feedback?: string
   /** `feedback` is the disagreements a debate left open, not the judge's verdict. */
   targeted?: boolean
-  resumed?: boolean
+  resumed?: boolean | undefined
 }): string {
   const peers = listLabels(input.peerPlans.map(({ label }) => label))
   const ownPlan = input.resumed
@@ -94,7 +94,7 @@ export function finalPlanPrompt(input: {
   verdict: string
   /** In `debate` review: the disputes and the judge's rulings on them. */
   disputes?: string
-  resumed?: boolean
+  resumed?: boolean | undefined
 }): string {
   return `${planContract(SETTLE_CONTRADICTIONS)}
 
@@ -133,7 +133,7 @@ export function critiquePrompt(input: {
   task: string
   ownPlan: string
   peerPlans: readonly (AuthoredPlan & { name: AgentName })[]
-  resumed?: boolean
+  resumed?: boolean | undefined
 }): string {
   const ownPlan = input.resumed
     ? ''
@@ -161,7 +161,7 @@ export function replyPrompt(input: {
   task: string
   ownPlan: string
   objections: readonly ReceivedObjection[]
-  resumed?: boolean
+  resumed?: boolean | undefined
 }): string {
   const ownPlan = input.resumed ? '' : `Your plan:\n<own-plan>\n${input.ownPlan}\n</own-plan>\n\n`
   const received =
@@ -203,7 +203,7 @@ ${taskBlock(input.task, input.resumed)}${ownPlan}`.trimEnd()
 export function claimCheckPrompt(input: {
   task: string
   claims: readonly ClaimToCheck[]
-  resumed?: boolean
+  resumed?: boolean | undefined
 }): string {
   return `You are checking disputed claims about this repository, not planning. Work read-only.
 Open the files each claim is about and answer on one line per claim, by its id:

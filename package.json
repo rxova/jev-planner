@@ -27,18 +27,11 @@
     "knip:check": "knip",
     "check:exports": "turbo run check:exports",
     "pack:smoke": "turbo run pack:smoke",
-    "check:llms": "node --import tsx ./packages/tooling/src/check-llms/check-llms.ts",
+    "check:llms": "rxova-repo-config check-llms",
     "changeset": "changeset",
     "release": "turbo run build --filter=jev-planner && changeset publish",
-    "verify": "node --import tsx ./packages/tooling/src/verify/verify.ts",
+    "verify": "rxova-repo-config verify",
     "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{ts,tsx,js,jsx,mjs,cjs}": [
-      "eslint --fix --no-warn-ignored",
-      "prettier --write"
-    ],
-    "*.{json,jsonc,css,md,mdx,yaml,yml}": "prettier --write"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.1",
@@ -46,6 +39,7 @@
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
     "@eslint/js": "^10.0.1",
+    "@rxova/repo-config": "^0.5.0",
     "@types/node": "^26.6.1",
     "eslint": "^10.10.0",
     "globals": "^17.12.0",
@@ -54,9 +48,54 @@
     "lint-staged": "^17.5.1",
     "prettier": "^3.9.7",
     "sherif": "^1.13.0",
-    "tsx": "^4.23.13",
     "turbo": "^2.11.4",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.70.0"
+  },
+  "repoConfig": {
+    "verify": {
+      "steps": [
+        {
+          "name": "dependency versions",
+          "command": "pnpm run sherif:check"
+        },
+        {
+          "name": "unused files, exports and dependencies",
+          "command": "pnpm run knip:check"
+        },
+        {
+          "name": "dependency dedupe",
+          "command": "pnpm exec turbo run //#dedupe:check"
+        },
+        {
+          "name": "format",
+          "command": "pnpm run format:check"
+        },
+        {
+          "name": "lint",
+          "command": "pnpm run lint"
+        },
+        {
+          "name": "llms.txt",
+          "command": "pnpm run check:llms"
+        },
+        {
+          "name": "typecheck",
+          "command": "pnpm exec turbo run typecheck"
+        },
+        {
+          "name": "unit tests",
+          "command": "pnpm exec turbo run test"
+        },
+        {
+          "name": "build",
+          "command": "pnpm exec turbo run build --filter='!@repo/docs'"
+        },
+        {
+          "name": "package exports",
+          "command": "pnpm run check:exports"
+        }
+      ]
+    }
   }
 }
