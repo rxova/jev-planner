@@ -5,8 +5,7 @@
 // thing. Every claim is lifted from packages/jev-planner/README.md; nothing here
 // is allowed to promise more than the README does.
 
-import { renderMarkdown } from "../../lib/docs-pages.mjs";
-import { withBase } from "../../lib/base-url.mjs";
+import { renderMarkdown, withBase } from "@rxova/docs-kit";
 
 export const TITLE = "jev-planner";
 

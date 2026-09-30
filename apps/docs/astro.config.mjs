@@ -6,7 +6,7 @@ import starlight from "@astrojs/starlight";
 import starlightLinksValidator from "starlight-links-validator";
 import sitemap from "@astrojs/sitemap";
 
-import { rehypeMdLinks } from "./src/lib/rehype-md-links.mjs";
+import { rehypeMdLinks } from "@rxova/docs-kit";
 import { remarkDiagrams } from "./src/lib/remark-diagrams.mjs";
 import { assertReleaseVersion, manifestVersion } from "./src/lib/version-marker.mjs";
 

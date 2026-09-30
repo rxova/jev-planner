@@ -13,17 +13,29 @@
 //   a sub-path — `rxova.github.io/jev-planner/`, which is what GitHub Pages falls
 //   back to without the custom domain — and then it 404s.
 //
-// Like check-md-routes, it reads `dist`, and it reads the site's prefix back out
+// Like `rxova-docs-kit check-md-routes`, it reads `dist`, and it reads the site's prefix back out
 // of the build rather than taking it as an argument, so it cannot be pointed at
 // a different mount from the one that was built.
 
-import { readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 import { manifestVersion, markerProblems } from "../src/lib/version-marker.mjs";
-import { collect } from "./check-md-routes.mjs";
+
+/** Every file under `dir` whose name ends in `ext`, as POSIX paths relative to `dir`. */
+async function collect(dir, ext, root = dir) {
+  const found = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...(await collect(path, ext, root)));
+    else if (entry.isFile() && entry.name.endsWith(ext)) {
+      found.push(relative(root, path).split(sep).join("/"));
+    }
+  }
+  return found;
+}
 
 export const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 
