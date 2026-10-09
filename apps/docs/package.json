@@ -16,24 +16,24 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@astrojs/markdown-remark": "^7.3.0",
-    "@astrojs/sitemap": "^3.7.3",
-    "@astrojs/starlight": "^0.42.1",
+    "@astrojs/markdown-remark": "^7.3.1",
+    "@astrojs/sitemap": "^3.7.4",
+    "@astrojs/starlight": "^0.42.5",
     "@fontsource/space-grotesk": "5.3.0",
-    "@rxova/brand": "0.14.1",
-    "astro": "^7.3.3",
-    "sharp": "^0.35.0",
+    "@rxova/brand": "0.15.1",
+    "astro": "^7.3.5",
+    "sharp": "^0.35.5",
     "starlight-links-validator": "^0.26.0"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9",
+    "@astrojs/check": "^0.9.10",
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "github-slugger": "^2.0.0",
     "typescript": "6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.23.3"
   }
 }
