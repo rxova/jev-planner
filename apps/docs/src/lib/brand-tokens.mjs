@@ -38,7 +38,8 @@ export function declarations(css, selector) {
  * so a renamed token fails `pnpm og` instead of rendering an unstyled card.
  */
 export function parseCardTokens(css) {
-  const dark = declarations(css, ":root[data-theme='dark']");
+  const dark =
+    declarations(css, ':root[data-theme="dark"]') ?? declarations(css, ":root[data-theme='dark']");
   if (!dark) throw new Error("tokens.css has no :root[data-theme='dark'] block");
   const shared = declarations(css, ":root") ?? {};
   const tokens = { ...shared, ...dark };

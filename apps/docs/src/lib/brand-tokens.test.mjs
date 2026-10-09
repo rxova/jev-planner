@@ -49,6 +49,13 @@ describe("parseCardTokens", () => {
     });
   });
 
+  it("accepts the double-quoted theme selector shipped by @rxova/brand v1", () => {
+    expect(parseCardTokens(CSS.replaceAll("'dark'", '"dark"'))).toMatchObject({
+      bg: "#000000",
+      fg: "#eeeeee",
+    });
+  });
+
   it("names every missing token", () => {
     const css = CSS.replace("  --rx-muted: #999999;\n", "").replace(/--rx-accent-c:[^;]+;/, "");
     expect(() => parseCardTokens(css)).toThrow("tokens.css is missing --rx-muted, --rx-accent-c");
