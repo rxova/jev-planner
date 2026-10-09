@@ -1,5 +1,5 @@
 /*
- * jev-planner on top of the rxova brand. `@rxova/brand/starlight.css`, loaded
+ * jev-planner on top of the rxova brand. `@rxova/astro-ui/styles/starlight.css`, loaded
  * before this file, maps the `--rx-*` tokens onto Starlight's variables: warm
  * monochrome, one violet accent, and the three-stop gradient as the only other
  * colour. What is here is where this site departs from that mapping.
