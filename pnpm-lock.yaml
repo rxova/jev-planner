@@ -238,6 +238,9 @@ importers:
       '@fontsource/space-grotesk':
         specifier: 5.3.0
         version: 5.3.0
+      '@rxova/astro-ui':
+        specifier: 0.7.0
+        version: 0.7.0(@astrojs/starlight@0.42.5(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(astro@7.3.7(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(@types/node@26.6.4)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(supports-color@10.2.2)(typescript@6.0.3))(astro@7.3.7(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(@types/node@26.6.4)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       '@rxova/brand':
         specifier: 1.4.0
         version: 1.4.0
@@ -1691,6 +1694,16 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@rxova/astro-ui@0.7.0':
+    resolution: {integrity: sha512-o4/w3RPH19SJMakGbr7c7Zj8ZZamohSTDgEMBlJo3VCk6WftMS3Bjicu1cKOGYUqP27CAsmPBcwDTBhO3F54ig==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@astrojs/starlight': '>=0.36.0'
+      astro: '>=5.6.0'
+    peerDependenciesMeta:
+      '@astrojs/starlight':
+        optional: true
 
   '@rxova/brand@1.4.0':
     resolution: {integrity: sha512-0h744WyoTAg2T+Zx2AynsbAM1HBtZ/tLgMbPf0kxn/Q3DJyCsr3ZO8PAHbSYv24j69ogmX52NwYS5S6inMM+2A==}
@@ -3173,6 +3186,9 @@ packages:
   lru-cache@11.5.3:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
     engines: {node: 20 || >=22}
+
+  lucide-static@1.53.0:
+    resolution: {integrity: sha512-xddbAP/qViJOeURl46uiTwmX6hn79PcaHW4xDQcM/bCiO1wd1eYE6hIVXr1dko14aK5HAadZNmAqaEWusc8q1A==}
 
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
@@ -5741,6 +5757,14 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
+  '@rxova/astro-ui@0.7.0(@astrojs/starlight@0.42.5(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(astro@7.3.7(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(@types/node@26.6.4)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(supports-color@10.2.2)(typescript@6.0.3))(astro@7.3.7(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(@types/node@26.6.4)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))':
+    dependencies:
+      '@rxova/brand': 1.4.0
+      astro: 7.3.7(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(@types/node@26.6.4)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
+      lucide-static: 1.53.0
+    optionalDependencies:
+      '@astrojs/starlight': 0.42.5(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(astro@7.3.7(@astrojs/markdown-remark@7.3.2(supports-color@10.2.2))(@types/node@26.6.4)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(supports-color@10.2.2)(typescript@6.0.3)
+
   '@rxova/brand@1.4.0':
     dependencies:
       '@fontsource/ibm-plex-mono': 5.3.0
@@ -7252,6 +7276,8 @@ snapshots:
   longest-streak@3.1.0: {}
 
   lru-cache@11.5.3: {}
+
+  lucide-static@1.53.0: {}
 
   magic-string@1.4.3:
     dependencies:

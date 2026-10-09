@@ -13,5 +13,6 @@ import { baseKnipConfig } from "@rxova/repo-config/knip";
  */
 export default baseKnipConfig({
   // `rxova-repo-config check-exports` runs `attw` from a shell command, where knip cannot see it.
-  ignoreDependencies: ["@arethetypeswrong/cli"],
+  // `@rxova/astro-ui` is reached only through the Starlight `customCss` string.
+  ignoreDependencies: ["@arethetypeswrong/cli", "@rxova/astro-ui"],
 });
