@@ -24,7 +24,7 @@
     "@rxova/brand": "1.4.0",
     "astro": "^7.3.8",
     "sharp": "^0.35.5",
-    "starlight-links-validator": "^0.26.0"
+    "starlight-links-validator": "^0.27.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",

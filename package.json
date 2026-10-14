@@ -7,7 +7,7 @@
     "url": "git+https://github.com/rxova/jev-planner.git"
   },
   "type": "module",
-  "packageManager": "pnpm@12.10.1",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=22.23.3"
   },
@@ -42,13 +42,13 @@
     "@rxova/docs-kit": "^0.1.1",
     "@rxova/repo-config": "^0.8.0",
     "@rxova/ts-utils": "^0.2.1",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "husky": "^9.1.7",
-    "knip": "^6.40.0",
+    "knip": "^6.41.0",
     "lint-staged": "^17.6.0",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "sherif": "^1.13.0",
     "turbo": "^2.11.7",
     "typescript": "6.0.3",
