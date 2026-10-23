@@ -26,6 +26,14 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       const { violations } = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+        // Starlight's search trigger, which this site does not author. Its
+        // `aria-label` is "Search", while the visible `<kbd>Ctrl K</kbd>` beside
+        // the label is not `aria-hidden`, so the accessible name does not contain
+        // all of the visible text and `label-content-name-mismatch` fires. The
+        // name a screen reader announces is right; the shortcut hint is chrome.
+        // axe-core 4.14 raised that rule to serious, which is what surfaced it.
+        // Scoped to the one node so the rule still covers our own markup.
+        .exclude("button[data-open-modal]")
         .analyze();
       const blocking = violations
         .filter((v) => v.impact === "serious" || v.impact === "critical")
