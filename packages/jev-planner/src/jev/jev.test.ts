@@ -9,6 +9,9 @@ function fakeClient(extraAnswers: Record<string, unknown> = {}): {
   const requests: Record<string, unknown>[] = [];
   const client = new TypeSafeClient({
     apiKey: "test-key",
+    // The SDK compresses request bodies of 1 KiB or more with zstd, and these
+    // payloads are over it. The assertions below read the request as JSON.
+    compression: false,
     fetch: async (_url, init) => {
       requests.push(JSON.parse(init?.body as string) as Record<string, unknown>);
       return new Response(
